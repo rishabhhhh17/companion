@@ -22,7 +22,8 @@ import { lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { commandsWhere } from "../../../protocol/commands.ts";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
-import { reviewModeOf, reviewSilenced, type Command, type REVIEW_AWAY, type ReviewChecks, type ReviewKeyPlace, type ReviewRating, type ReviewStrictness, type ReviewTouch } from "../../../protocol/index.ts";
+import { kindOfReason } from "../memory/learned.ts";
+import { reviewModeOf, reviewSilenced, type Command, type LearnedKind, type REVIEW_AWAY, type ReviewChecks, type ReviewKeyPlace, type ReviewRating, type ReviewStrictness, type ReviewTouch } from "../../../protocol/index.ts";
 import { loadRules } from "../rules.ts";
 import { NEEDS_GIT, type Checkpoint, type CheckpointStore } from "../checkpoints.ts";
 import type { FastLike } from "../lanes.ts";
@@ -110,6 +111,9 @@ export type ReviewDeps = {
   silenced?: (project: string) => readonly string[];
   /** M57 feature 1: where each review that ran is kept as one row (the task log, tasklog.ts), and what was done with it. */
   history?: ReviewHistory;
+  /** M95, the light tutor: a problem this review found that a later change fixed (the person kept it), by its kind of
+   *  problem and a key for that one reason. Never in the key practice's copy, which its practice counts. */
+  learned?: (project: string, kind: LearnedKind, key: string) => void;
   /** M79 (T18): known serious problems of the packages a change added, on OSV.dev (osv.ts). Only names and versions are
    *  sent, only while packages.check is on and the review may send more than the checks. Absent: never looked up. */
   packages?: PackageLookup;
@@ -132,7 +136,8 @@ type Batch = { id: string; project: string; from: string; to: string; files: Fil
 type Held = { from: Promise<string | null>; to: Promise<string | null> | null; only: Promise<string[]>[] | null; capped: boolean; quiet: boolean; stops: number };
 /** A review that ran, kept for Fix it and for its recheck (M57 feature 4): how each shown reason is checked again by the
  *  rules, and the places of those that no longer hold. */
-type Reviewed = { batch: Batch; words: ReviewWords; rechecks: Recheck[]; fixed: Set<number> };
+// kinds: each reason's kind, in the order of rechecks; at: when it was reviewed (M95, so a key is never reused after a restart).
+type Reviewed = { batch: Batch; words: ReviewWords; rechecks: Recheck[]; fixed: Set<number>; kinds: string[]; at: number };
 
 /** M75: how long after the other tool's done signal the batch is said, for its last write to land. */
 export const DONE_SETTLE_MS = 1500;
@@ -728,6 +733,13 @@ export class ReviewService {
     } catch { /* the rules' replay is already on the card */ }
     finally { clearTimeout(timer); stop.removeEventListener("abort", end); }
   }
+  /** M95: one reason a later change took out, for the light tutor, when it is a clear kind of problem. Said on Learn as a
+   *  review found it and a later change took it out, never as more (nothing checks where the key went). */
+  private learnedFix(rec: Reviewed, i: number): void {
+    const kind = kindOfReason(rec.kinds[i]);
+    if (!kind || !this.deps.learned || this.deps.setting("tutor.on") === false) return;
+    try { if (this.deps.rulesOnly?.(rec.batch.project) === true) return; this.deps.learned(rec.batch.project, kind, `${rec.batch.id}\0${rec.at}\0${i}`); } catch { /* the tutor is a nicety */ }
+  }
   private said(b: Batch, did: Parameters<ReviewHistory["did"]>[2]): void {
     try { this.deps.history?.did(b.project, b.id, did); } catch { /* the row is a nicety */ }
   }
@@ -801,8 +813,11 @@ export class ReviewService {
       const text = want.size ? await store.readFiles(newer.to, (x) => want.has(x)) : {};
       const migrations = ts.some((t) => t.how === "table") ? await store.readFiles(newer.to, (x) => MIGRATION.test(x)) : {};
       const changedSinceBefore = new Set([...(await store.diff(rec.batch.from, newer.to)).map((c) => c.file), ...(await store.envChanged(rec.batch.from, newer.to))]);
+      // M95: a newer version that is the one before the change (the change undone, or its files deleted back to how they
+      // were) fixes nothing the person can learn from, so the tutor is not told, though the review still closes.
+      const undone = changedSinceBefore.size === 0;
       let grew = false;
-      for (const i of open) if (!recheckHolds(rec.rechecks[i], { text, changedSinceBefore, migrations })) { rec.fixed.add(i); grew = true; }
+      for (const i of open) if (!recheckHolds(rec.rechecks[i], { text, changedSinceBefore, migrations })) { rec.fixed.add(i); grew = true; if (!undone) this.learnedFix(rec, i); }
       if (!grew || !this.reviewed.has(rec.batch.id)) continue;
       const closed = rec.fixed.size >= rec.rechecks.length;
       if (closed) { this.reviewed.delete(rec.batch.id); this.said(rec.batch, "no_longer_applies"); }
@@ -986,7 +1001,7 @@ export class ReviewService {
       // M57 feature 1: one row in the task log. Names of files only, the summary with secrets hidden; no file text.
       try { this.deps.history?.add({ project: b.project, batch: b.id, at: new Date().toISOString(), files: b.files.map((f) => f.file).slice(0, 20), count: b.count, rating: shown.rating, touches, checks, summary: clip(redact(summary), 400), kinds: [...new Set(shown.reasons.map((r) => r.kind))] }); } catch { /* the row is a nicety */ }
       const rechecks = shown.reasons.map((r) => recheckOf(r, { b, added, stillUsed, open }));
-      this.reviewed.set(b.id, { batch: b, words: review, rechecks, fixed: new Set() });
+      this.reviewed.set(b.id, { batch: b, words: review, rechecks, fixed: new Set(), kinds: shown.reasons.map((r) => r.kind), at: Date.now() });
       // The oldest go first, but a review that found something may still be the card on the page (newer ones wait behind
       // it), so its Fix it and Looks fine keep working: safe ones go before it, and it goes only past KEEP_WARNED.
       while (this.reviewed.size > KEEP_REVIEWED) {

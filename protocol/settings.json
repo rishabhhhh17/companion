@@ -9,7 +9,7 @@
     { "key": "prompt.on", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "runner", "pages"], "store": "settings", "live": true },
     { "key": "groups.islandName", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "groups.showUntried", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
-    { "key": "groups.tried", "section": "groups", "kind": "list", "default": [], "maxItems": 24, "allowedItems": ["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "drawIt", "whichTask", "watch", "connections", "whereWasI", "review", "showMe", "lessons", "yourTurn", "practice", "talk", "dictate", "speak", "promptHelp", "errorHelp", "secondLook", "convert"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "hidden": true },
+    { "key": "groups.tried", "section": "groups", "kind": "list", "default": [], "maxItems": 25, "allowedItems": ["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "drawIt", "whichTask", "watch", "connections", "whereWasI", "review", "showMe", "lessons", "yourTurn", "practice", "tutor", "talk", "dictate", "speak", "promptHelp", "errorHelp", "secondLook", "convert"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "hidden": true },
     { "key": "groups.cutNotice", "section": "groups", "kind": "list", "default": [], "maxItems": 5, "allowedItems": ["convert", "watch", "secondLook", "dictate", "drawIt"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "hidden": true },
 
     { "key": "keys.hotkeys", "section": "keys", "kind": "custom", "default": null, "scope": "app", "applies": ["shell"], "store": "keys", "live": true },
@@ -213,6 +213,7 @@
     { "key": "teach.startWhereYouAre", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "teach.yourTurn", "section": "memory", "kind": "switch", "default": true, "scope": "app", "applies": ["pages", "runner"], "store": "settings", "live": false,
       "from": { "pageStorage": { "name": "companion.yourTurn", "map": "isOn" } } },
+    { "key": "tutor.on", "section": "memory", "kind": "switch", "default": true, "scope": "app", "applies": ["pages", "runner"], "store": "settings", "live": true },
 
     { "key": "ph.style", "section": "otherApps", "kind": "choice", "default": "full", "options": ["full", "light"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "ph.useProjectInfo", "section": "otherApps", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },

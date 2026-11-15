@@ -8,7 +8,7 @@ import { runCommand, shq, type RunOptions, type RunResult } from "./proof/exec.t
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import type { Command, Event, MarkKind, Problem } from "../../protocol/index.ts";
+import type { Command, Event, LearnedKind, LearnedSource, MarkKind, Problem } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
 import { parseDiagnosis, rescueGoal, rescuePrompt } from "./rescue.ts";
 import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
@@ -39,6 +39,7 @@ import { madeBySquibby, removeSection, syncAgentsFiles } from "./memory/agentsmd
 import { exportNotes, restoreNotes } from "./memory/backup.ts";
 import type { StartView } from "./memory/sessionstart.ts";
 import { pickNotes, TRIED_SOURCE, triedLine } from "./memory/startblock.ts";
+import { kindOfPractice, kindOfTask, LearnedStore } from "./memory/learned.ts";
 import { explainPlain, explainRequest } from "./explain.ts";
 import { changeTarget, diffForExplain, repeatedChange, revertHunk, taskHunks, teachable, turnChange, type ChangeAt, type Hunk, type Repeat } from "./teach.ts";
 import { recapLines } from "./recap.ts";
@@ -268,8 +269,10 @@ type Step1 = NonNullable<RunOpts["step"]>;
 
 // "Your turn": a proven fix that made the same small change in two places can be offered to the person (teach.ts). offer: the
 // task's receipt checkpoint, the snapshot just after it, and the two places. turn: what the person was given after a press.
-type TeachOffer = { checkpoint: string; afterId: string; repeat: Repeat };
-type TeachTurn = { checkpoint: string; start: string; restore: string; hunk: Hunk };
+// about: the kind of problem the fix was about (M95, the light tutor), decided by fixed rules (memory/learned.ts
+// kindOfTask); null when the task was not a fix, and then nothing is learned from it.
+type TeachOffer = { checkpoint: string; afterId: string; repeat: Repeat; about: LearnedKind | null };
+type TeachTurn = { checkpoint: string; start: string; restore: string; hunk: Hunk; about: LearnedKind | null };
 // The place to ring for a hunk: its first line with words on it, as the file shows it now (side "after") or as it was ("before").
 // Either way the place starts at the same line: lines above it are the same before and after.
 const placeOf = (h: Hunk, side: "before" | "after"): ChangeAt => {
@@ -430,6 +433,43 @@ export class AgentRunner {
 
   // ---------- memory ----------
   private memories = new Map<string, MemoryStore>();
+  // M95, the light tutor (memory/learned.ts): beside the profile, paused with it. asked: the explanations this engine gave
+  // that carried a check question, by project and checkpoint, with the kind of problem they were about. Only an answer to
+  // one of these is ever noted, and only once.
+  private learnedStore: LearnedStore | null = null;
+  private asked = new Map<string, { kind: LearnedKind; answered: boolean }>();
+  private learned(): LearnedStore | null {
+    if (!this.o.memoryDir) return null;
+    this.learnedStore ??= new LearnedStore({ dir: this.o.memoryDir, paused: () => this.memoryFor(NO_PROJECT)?.isPaused() === true });
+    return this.learnedStore;
+  }
+  private tutorOn(): boolean { return this.setting<boolean>("tutor.on") !== false; }
+  /** What Learn shows: the switch, the pause and the signals (none with the switch off). */
+  private tellLearned() {
+    const l = this.learned();
+    const on = this.tutorOn();
+    let signals: ReturnType<LearnedStore["list"]> = [];
+    try { signals = on && l ? l.list() : []; } catch { signals = []; }
+    this.emit({ type: "tutor.learned", on, paused: this.memoryFor(NO_PROJECT)?.isPaused() === true, signals } as never);
+  }
+  /** One signal for the tutor, only with its switch on. Never in the way of anything else. */
+  private learn(s: { key: string; kind: LearnedKind; source: LearnedSource; missed?: boolean }): void {
+    if (!this.tutorOn()) return;
+    try { this.learned()?.note(s, this.now()); } catch { /* the tutor is a nicety */ }
+    this.tellLearned();
+  }
+  /** M95: a problem a review found that a later change fixed, and the person kept (review/service.ts, main.ts). */
+  learnFromReview(project: string, kind: LearnedKind, key: string): void { this.learn({ key: `review\0${resolve(project)}\0${key}`, kind, source: "review" }); }
+  private tutorCommand(cmd: Extract<Command, { type: "tutor.list" | "tutor.note" | "tutor.forget" }>): void {
+    if (cmd.type === "tutor.note" && this.tutorOn()) {
+      if (cmd.source === "practice") { const kind = kindOfPractice(cmd.practice); if (kind) this.learn({ key: `practice\0${cmd.practice}`, kind, source: "practice" }); return; }
+      const at = `${resolve(cmd.project)}\0${cmd.checkpoint}`;
+      const q = this.asked.get(at);
+      if (q && !q.answered) { q.answered = true; this.learn({ key: `check\0${at}`, kind: q.kind, source: "check", missed: cmd.right !== true }); return; }
+    }
+    if (cmd.type === "tutor.forget") { try { this.learned()?.forget(cmd.kind, cmd.part); } catch { /* the list says what is there */ } }
+    this.tellLearned();
+  }
   private memoryFor(project: string): MemoryStore | null {
     if (!this.o.memoryDir) return null;
     // No folder chosen: only the profile and the settings for every project, never a folder named after the stand in.
@@ -629,7 +669,7 @@ export class AgentRunner {
 
   // Explain: asks the fast model why the task did what it did, from the real change. A problem here is never a problem for
   // the task. Its cost is the person's own, so it counts in today's spending, and it is not asked for once the day's limit is reached.
-  private async explain(cmd: StartCmd, input: { label: string; changed: { file: string; kind: string }[]; said: string; diff: string }, checkpoint: string, signal: AbortSignal, step?: Step1) {
+  private async explain(cmd: StartCmd, input: { label: string; changed: { file: string; kind: string }[]; said: string; diff: string }, checkpoint: string, signal: AbortSignal, step?: Step1, about: LearnedKind | null = null) {
     if (!this.o.explainer || input.changed.length === 0) return;
     try {
       // Explain after a task (explain.mode): off asks nothing, short reasons asks for no question and shows none.
@@ -644,7 +684,12 @@ export class AgentRunner {
       try {
         const { explanation: e, costUsd } = await explainPlain((req) => this.o.explainer!(req, ac.signal), explainRequest(input, { question }), { question });
         this.bookSpend(cmd.project, costUsd);
-        if (e && !ac.signal.aborted) this.emit({ type: "explain.ready", agent: cmd.agent, checkpoint, bullets: e.bullets, ...(question && e.question ? { question: e.question } : {}), ...(step ? { step } : {}), usdEstimate: costUsd } as never);
+        if (e && !ac.signal.aborted) {
+          // M95: an explanation with a check question under a fix, so the person's answer to it can be noted once (the light
+          // tutor). A question under any other task is never noted (about is null).
+          if (question && e.question && about) { this.asked.set(`${resolve(cmd.project)}\0${checkpoint}`, { kind: about, answered: false }); while (this.asked.size > 100) this.asked.delete(this.asked.keys().next().value!); }
+          this.emit({ type: "explain.ready", agent: cmd.agent, checkpoint, bullets: e.bullets, ...(question && e.question ? { question: e.question } : {}), ...(step ? { step } : {}), usdEstimate: costUsd } as never);
+        }
       } finally { clearTimeout(timer); signal.removeEventListener("abort", stop); }
     } catch (e) { if (process.env.COMPANION_DEBUG_LOG === "1") console.error("explain failed:", (e as Error).message); /* no explanation is better than a broken task */ }
   }
@@ -676,7 +721,8 @@ export class AgentRunner {
         else { m.setAgentsChoice("declined"); const gone = ["AGENTS.md", "CLAUDE.md"].filter((f) => removeSection(join(dir, f))); if (gone.length) { this.noteShared(cmd.project, gone); this.emit({ type: "memory.agents_written", project: cmd.project, files: gone } as never); } }
         break;
       }
-      case "memory.erase": { const r = m.eraseAll(cmd.scope); if (!r.ok) refuse(r.reason); else if (cmd.scope === "project") this.syncShared(cmd.project, true); break; }
+      // M95: erasing the profile erases What you have learned too (it lives beside profile.md and is part of memory).
+      case "memory.erase": { const r = m.eraseAll(cmd.scope); if (!r.ok) refuse(r.reason); else if (cmd.scope === "project") this.syncShared(cmd.project, true); else { try { this.learned()?.clear(); } catch { /* the list says what is there */ } this.tellLearned(); } break; }
       // M78: every note of the project and the profile and the house rules, in one plain file the page saves on a tap.
       case "memory.export": this.emit({ type: "memory.exported", project: cmd.project, text: exportNotes(cmd.project === NO_PROJECT ? "" : resolve(cmd.project), m, this.now()) } as never); return;
       // M78: an export the person chose, put back after their yes. Nothing is removed; every line passes the filter again.
@@ -1048,6 +1094,7 @@ export class AgentRunner {
         this.tellSaved(cmd.project);
         return;
       }
+      case "tutor.list": case "tutor.note": case "tutor.forget": this.tutorCommand(cmd); return;
       case "jobs.list": { try { this.tellSaved(cmd.project); } catch { this.emit({ type: "jobs.saved", project: cmd.project, jobs: [] } as never); } return; }
       case "jobs.drop": { try { this.savedJobs().drop(resolve(cmd.project), cmd.job); this.tellSaved(cmd.project); } catch { /* the list stays as it was */ } return; }
       // M58: star or name a save point. Only the shadow store's own notes change: never a file in the project, never git.
@@ -1609,7 +1656,9 @@ export class AgentRunner {
     const changedAt = changeTarget(hunks);
     const projectKey = resolve(cmd.project);
     const repeat = yourTurn && status === "done" && (proof === "passed" || proof === "partial") && !cmd.offTheRecord && !this.driving.has(cmd.agent) ? repeatedChange(hunks) : null;
-    if (repeat) this.teachOffers.set(projectKey, { checkpoint: before.id, afterId: lastAfter, repeat }); else if (changed.length) this.teachOffers.delete(projectKey);
+    // M95: what the task fixed, if it was a fix (a proof that failed and then passed counts, with the failing check's words).
+    const about = kindOfTask({ practice: cmd.practice, mode: cmd.mode, prompt: cmd.prompt, label: lbl, ...(lastFailure && (proof === "passed" || proof === "partial") ? { failed: lastFailure } : {}) });
+    if (repeat) this.teachOffers.set(projectKey, { checkpoint: before.id, afterId: lastAfter, repeat, about }); else if (changed.length) this.teachOffers.delete(projectKey);
     // Off the record work gets no saved picture (nothing about it is kept), and none when "Make before and after pictures"
     // is off (the check itself is the same either way).
     const picture = status === "done" && proof === "passed" && !!shot && !!this.o.pictures && !cmd.offTheRecord && pictures.make;
@@ -1641,7 +1690,7 @@ export class AgentRunner {
     if (backTo && !abort.signal.aborted) await this.backToWorking(cmd.project, backTo);
     if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!, checking, pictures.keep));
     // One explanation per finished task, and per finished Drive step (each step is its own run), in the background.
-    if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord && explainHere) { const ex = new AbortController(); this.picturing.add(ex); this.owner.set(ex, "flow"); void this.explain(cmd, { label: lbl, changed, said, diff: diffForExplain(hunks) }, before.id, ex.signal, opts.step).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
+    if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord && explainHere) { const ex = new AbortController(); this.picturing.add(ex); this.owner.set(ex, "flow"); void this.explain(cmd, { label: lbl, changed, said, diff: diffForExplain(hunks) }, before.id, ex.signal, opts.step, about).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
     // What a follow up or Try again carries on from. Off the record keeps no conversation to continue.
     this.lastTask.set(cmd.agent, { project: cmd.project, model: cmd.model, mode: cmd.mode, budgetUsd: opts.followBudgetUsd ?? cmd.budgetUsd, offTheRecord: offRecord, ...(offRecord || !sessionId ? {} : { sessionId }), goal, first, ending: endingOf(status, proof), ...(lastSaid && asked ? { asked: true, question: makeLabel(questionOf(finalWords) ?? "", 100) } : {}), ...(proof === "failed" && lastFailure ? { failure: lastFailure } : {}), ...(cmd.practice ? { practice: cmd.practice } : {}) });
     const stuck: Stuck | undefined = proof === "failed" && lastFailure && (sameRun(sigs) || (askAny && ranOut)) ? { failure: lastFailure, end: endOf() } : undefined;
@@ -2184,7 +2233,7 @@ export class AgentRunner {
       const start = await store.snapshot(`Your turn: ${second.file}`);
       await store.noteAgentEnd(start.id).catch(() => undefined);   // the change put back is ours; what the person does next is theirs
       this.teachOffers.delete(key);
-      this.teaching.set(key, { checkpoint: cmd.checkpoint, start: start.id, restore: restore.id, hunk: second });
+      this.teaching.set(key, { checkpoint: cmd.checkpoint, start: start.id, restore: restore.id, hunk: second, about: offer.about });
       say(true, { target: placeOf(second, "before"), example: { file: first.file, line: placeOf(first, "after").line, was: shown(first.before), now: shown(first.after) }, change: { was: offer.repeat.was, now: offer.repeat.now }, restore: restore.id });
     } catch (e) {
       say(false, { reason: `${PRODUCT} could not set that up. Nothing was changed.` });
@@ -2222,6 +2271,8 @@ export class AgentRunner {
       if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
       const fl = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
       say(res.verdict, did === "same", { ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}) });
+      // M95: the person's own change, proven by the checks, is something they learned (once per fix).
+      if (res.verdict === "passed" && turn.about) this.learn({ key: `turn\0${key}\0${cmd.checkpoint}`, kind: turn.about, source: "yourTurn" });
       this.state(cmd.agent, res.verdict === "failed" ? "needsYou" : "idle");
     } catch (e) {
       say("cancelled", false, { reason: isNeedsGit(e) ? NEEDS_GIT : `${PRODUCT} could not check it. Try again.` });

@@ -19,7 +19,7 @@ export type Panel =
   | "task" | "proof" | "receipt" | "teach" | "browser" | "voice" | "point" | "everyday" | "bisect" | "errorHelp" | "secondLook" | "showMe" | "recap" | "toast"
   | "whatsNew" | "watch" | "review"
   | "history"
-  | "practice" | "lessons" | "walk"
+  | "practice" | "lessons" | "walk" | "tutor"
   | "memory"
   | "settings";
 export type Place = Tab | "every";
@@ -30,7 +30,7 @@ export const PANEL_TAB: Record<Panel, Place> = {
   research: "now", rescue: "now", task: "now", proof: "now", receipt: "now", teach: "now", browser: "now", voice: "now", point: "now", everyday: "now",
   bisect: "now", errorHelp: "now", secondLook: "now", showMe: "now", recap: "now", toast: "now", whatsNew: "now", watch: "now", review: "now",
   history: "did",
-  practice: "learn", lessons: "learn", walk: "learn",
+  practice: "learn", lessons: "learn", walk: "learn", tutor: "learn",
   memory: "memory",
   settings: "settings",
 };

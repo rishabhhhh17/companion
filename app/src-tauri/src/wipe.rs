@@ -335,6 +335,18 @@ mod tests {
         assert!(!m.data.join("runner/spending.json").exists());
     }
     #[test]
+    fn m95_what_you_have_learned_is_memory_and_delete_everything_clears_it() {
+        // M95: the light tutor's file (runner/src/memory/learned.ts) sits beside profile.md, with its damaged copy and temporary files.
+        for n in ["learned.json", "learned.damaged.json", "learned.json.1a2b3c4d.tmp"] { assert_eq!(runner_group(n), "memory", "{n}"); }
+        let m = mac("learned");
+        write(m.data.join("runner/learned.json"), "{\"version\":1,\"signals\":[{\"id\":\"t_00000000000000000000\",\"kind\":\"key_in_code\",\"source\":\"practice\",\"date\":\"2026-11-14\"}],\"forgotten\":[]}").unwrap();
+        let g = items(&m.home, &m.data);
+        assert!(g.iter().find(|i| i.id == "memory").unwrap().paths.iter().any(|p| p.ends_with("runner/learned.json")));
+        let (_, failed) = erase(&m.home, &m.data);
+        assert!(failed.is_empty(), "{failed:?}");
+        assert!(!m.data.join("runner/learned.json").exists());
+    }
+    #[test]
     fn the_watch_list_is_listed_as_a_setting_and_removed_with_everything_else() {
         for n in ["watch.json", "watch.damaged.json", "watch.json.1a2b3c4d.tmp"] { assert_eq!(runner_group(n), "settings", "{n}"); }
         let m = mac("watch");

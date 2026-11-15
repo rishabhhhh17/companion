@@ -105,6 +105,9 @@ import { HandoffCard } from "./handoffCard.tsx";
 import { RunwayAsk, SavedJobsList, type RunwayAskState } from "./runwayPanels.tsx";
 import { resetOrWait, runwayNow, savedStartOutcome, warnBeforeJob } from "./runway.ts";
 import { dropSavedJob, listSavedJobs, saveJob } from "./commands.ts";
+import { tutorCheck, tutorForget, tutorList, tutorPractice } from "./commands.ts";
+import { TutorPanel } from "./tutorPanel.tsx";
+import { missedLead, practiceNotesDue, type Learned } from "./tutor.ts";
 import { AiToolsNowRow, useDoneState } from "./aiToolsScreen.tsx";
 import { StatusStrip } from "./statusStrip.tsx";
 import { homeFacts, type NotchFactId } from "./notchQuick.ts";
@@ -206,8 +209,11 @@ function StreamBox({ text }: { text: string }) {
   return <div className="ph-stream line muted" style={{ "--stream-lines": STREAM_LINES } as React.CSSProperties}><p>{shown.current}</p></div>;
 }
 
-// title and note: the same box for an everyday fix's why (everyday.ts whyShown), open from the start there.
-function ExplainBox({ e, title = S.explainTitle, note = S.explainCost, open = false }: { e: Explain; title?: string; note?: string; open?: boolean }) {
+// M95: the answer to a check question, for the light tutor (Card sets it; the engine notes it once, if the tutor is on).
+const tutorAnswer = { note: (_checkpoint: string, _right: boolean) => {} };
+// title and note: the same box for an everyday fix's why (everyday.ts whyShown), open from the start there. tutor: false for
+// that one, whose question is about an everyday app, not a fix in a project.
+function ExplainBox({ e, title = S.explainTitle, note = S.explainCost, open = false, tutor = true }: { e: Explain; title?: string; note?: string; open?: boolean; tutor?: boolean }) {
   const [picked, setPicked] = useState<number | null>(null);
   return (
     <details className="explain" open={open}>
@@ -218,7 +224,7 @@ function ExplainBox({ e, title = S.explainTitle, note = S.explainCost, open = fa
         <div>
           <div className="line"><b>{S.explainCheck}:</b> {e.question.text}</div>
           <div className="row">
-            {e.question.options.map((o, i) => <button key={i} className="btn" type="button" disabled={picked !== null} onClick={() => setPicked(i)}>{o}</button>)}
+            {e.question.options.map((o, i) => <button key={i} className="btn" type="button" disabled={picked !== null} onClick={() => { setPicked(i); if (tutor && e.checkpoint) tutorAnswer.note(e.checkpoint, i === e.question!.correct); }}>{o}</button>)}
           </div>
           {picked !== null && <div className="line" role="status">{picked === e.question.correct ? S.explainRight : `${S.explainNot} ${e.question.options[e.question.correct]}`}</div>}
         </div>
@@ -1000,6 +1006,9 @@ export function Card() {
     else { pressed(); dispatch({ type: "ui.findProblem" }); void sendOrExplain(findProblem(project), () => dispatch({ type: "ui.practiceStopProving" })); }
   }, [m.practice?.stage]);
   // Each stage counts once in the beta numbers (only if they are on), and found and done go in the shell's record.
+  // M95, the light tutor: its switch, and the practices told to it this session (so none is sent twice).
+  const tutorOn = useSetting("tutor.on") !== false;
+  const tutorSent = useRef(new Set<string>());
   const practiceWas = useRef<Practice | null>(null);
   useEffect(() => {
     const was = practiceWas.current, now = m.practice;
@@ -1007,7 +1016,22 @@ export function Card() {
     for (const n of practiceNotes(was, now)) count(n);
     const mark = markFor(was, now);
     if (mark && now) void invoke("practice_mark", { which: now.kind, stage: mark }).then(loadPractice).catch(() => {});
+    // M95: a practice finished is something the person learned (the engine keeps it once, only with the tutor on).
+    if (mark === "done" && now && tutorOn && toolOn("tutor")) { tutorSent.current.add(now.kind); void sendQuiet(tutorPractice(now.project, now.kind)); }
   }, [m.practice]);
+  // M95: practices the record says are done that the tutor has not kept yet (finished before this version): told once.
+  useEffect(() => {
+    if (!project || !toolOn("tutor")) return;
+    for (const id of practiceNotesDue(m.learned ?? null, practiceRec, tutorSent.current)) { tutorSent.current.add(id); void sendQuiet(tutorPractice(project, id)); }
+  }, [m.learned, practiceRec, project]);
+  // The switch changed while Learn was open: ask again, so the list shows or hides at once.
+  useEffect(() => { if (home.tab === "learn" && toolOn("tutor")) void sendQuiet(tutorList()); }, [tutorOn]);
+  // M95: Practise next from a check question answered with a different reason leads the practice list (one suggestion).
+  const tutorMissed = (l: Learned | null, rows: ReturnType<typeof listRows>) => {
+    const s = l?.on ? missedLead(l.signals, rows.map((r) => ({ id: r.entry.id, state: r.state, needsNode: r.needsNode }))) : null;
+    return s ? { id: s.id, why: s.why, notThis: () => void sendQuiet(tutorForget(s.forget, "missed")) } : null;
+  };
+  tutorAnswer.note = (checkpoint, right) => { if (tutorOn && project && toolOn("tutor")) void sendQuiet(tutorCheck(project, checkpoint, right)); };
   // Not a hook (M59, the rules of hooks lint): it asks the shell to open a folder, from presses and events.
   const openFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(failNote(e, "folder")));
   const pickFolder = () => void invoke("pick_project").catch((e) => { if (String(e)) setFolderNote(failNote(e, "folder")); });
@@ -1751,7 +1775,7 @@ export function Card() {
   // the lessons (those that read the project need a chosen folder; the others, installing a tool or leaving a builder, do
   // not), what Companion knows, and the task history.
   useEffect(() => {
-    if (home.tab === "learn") { void sendQuiet(walkList(project || NO_PROJECT)); loadPractice(); if (needsMacCheck(m.doctor)) void sendQuiet(checkMac()); }
+    if (home.tab === "learn") { void sendQuiet(walkList(project || NO_PROJECT)); loadPractice(); if (needsMacCheck(m.doctor)) void sendQuiet(checkMac()); if (toolOn("tutor")) void sendQuiet(tutorList()); }
     if (home.tab === "memory" && project) void sendQuiet(listMemory(project));
     if (home.tab === "did" && project) void sendQuiet(listTasks(project));
   }, [home.tab, project]);
@@ -2966,10 +2990,18 @@ export function Card() {
       {/* M71: the tour is the featured practice card's quiet button (or a row of the list once every practice is done). */}
       {home.tab === "learn" && tour && <section className="panel onboarding look" aria-label={S.firstLook.watch}><FirstLook onGo={() => setTour(false)} /></section>}
       {home.tab === "learn" && !learnShown() && <section className="panel" role="status" aria-label={S.groups.title}><div className="line">{S.groups.learnOff}</div></section>}
+      {groups.groupOn("guide") && show("tutor") && toolOn("tutor") && (
+        <TutorPanel learned={tutorOn ? m.learned ?? null : m.learned ? { ...m.learned, on: false } : null}
+          rows={listRows(practiceRec, m.doctor).map((r) => ({ id: r.entry.id, state: r.state, there: r.there, title: r.title, needsNode: r.needsNode }))}
+          lessons={lessonsShown(m.lessons ?? [], project, practiceRec, VERCEL_LESSON_ID)} busy={workingOn(m) || !!practiceOpening}
+          act={{ start: beginPractice, open: continuePractice, lesson: (id) => beginLesson(id, false), forget: (kind, part) => void sendQuiet(tutorForget(kind, part)) }}
+          featuredBelow={groups.groupOn("guide") && show("practice")} />
+      )}
       {groups.groupOn("guide") && show("practice") && (
         <PracticeList rows={listRows(practiceRec, m.doctor)} busy={workingOn(m)} nodeFix={nodeMissing(m.doctor)?.fix ?? null} withoutNode={practiceWithoutNode(m.doctor) && (practiceWithoutNode(m.doctor)!.fix ?? "")} note={m.practice && m.practice.project === project ? "" : practiceNote} damaged={practiceRec.damaged}
           openId={m.practice && m.practice.project === project ? m.practice.kind : null} opening={practiceOpening}
-          act={{ start: beginPractice, open: continuePractice, startOver: restartPractice, remove: removePractice }} onTour={home.tab === "learn" && !tour ? () => setTour(true) : undefined} />
+          act={{ start: beginPractice, open: continuePractice, startOver: restartPractice, remove: removePractice }} onTour={home.tab === "learn" && !tour ? () => setTour(true) : undefined}
+          missed={groups.groupOn("guide") && show("tutor") && toolOn("tutor") && tutorOn ? tutorMissed(m.learned ?? null, listRows(practiceRec, m.doctor)) : null} />
       )}
       {groups.groupOn("guide") && show("lessons") && !m.walk && (
         <section className="panel" role="status" aria-label={S.lessonsTitle}>
@@ -3470,7 +3502,7 @@ export function Card() {
             <ul>{ed.fixes.map((f, i) => <li className="line" key={i}>{f}</li>)}</ul>
           </>)}
           {ed.fromTable && ed.stage !== "none" && <div className="line muted" role="note">{S.everydayFromTable}</div>}
-          {["fixed", "saidWorks"].includes(ed.stage) && everydayWhy && <ExplainBox e={everydayWhy} title={S.everydayWhyTitle} note={S.everydayWhyNote} open key={`why:${ed.req ?? ""}`} />}
+          {["fixed", "saidWorks"].includes(ed.stage) && everydayWhy && <ExplainBox e={everydayWhy} title={S.everydayWhyTitle} note={S.everydayWhyNote} open tutor={false} key={`why:${ed.req ?? ""}`} />}
           <div className="row">
             {ed.stage === "ask" && <>
               <button className="btn primary" type="button" onClick={() => dispatch({ type: "ui.everydaySaid", worked: true })}>{S.lessonYes}</button>

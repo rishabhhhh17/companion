@@ -134,7 +134,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "privacy.danger", items: [f("danger")] },
     ],
     more: [
-      { id: "more.privacy.memory", items: ["memory.learnFromFiles", "memory.learnFromWords", "memory.rememberGoals", "memory.triedAndFailed", "memory.tellClaude", "memory.recallLength", "memory.toastSeconds", "task.offRecordByDefault"] },
+      { id: "more.privacy.memory", items: ["tutor.on", "memory.learnFromFiles", "memory.learnFromWords", "memory.rememberGoals", "memory.triedAndFailed", "memory.tellClaude", "memory.recallLength", "memory.toastSeconds", "task.offRecordByDefault"] },
       { id: "more.privacy.calls", items: ["calls.apps", "numbers.on", "numbers.yours"] },
     ],
   },

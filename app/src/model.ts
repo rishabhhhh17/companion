@@ -1,5 +1,6 @@
 // What the character and cards show, decided here as plain code (no screen needed to test it).
 // Input: events from the runner (protocol) plus a few events from the app itself.
+import { learnedFrom, type Learned } from "./tutor.ts";
 import { startFrom, type StartState } from "./memoryStart.ts";
 import { reviewReduce, type ReviewCard } from "./review.ts";
 import { NO_PROJECT, SETTINGS_LESSON_ID } from "./commands.ts";
@@ -298,6 +299,8 @@ export type Model = {
   runway?: Runway | null;
   /** M89: the jobs saved for after the reset, for the project they were listed for. */
   savedJobs?: { project: string; jobs: SavedJobView[] } | null;
+  // M95: the light tutor's signals (kinds, sources and days), for every project; none until Learn has asked.
+  learned?: Learned | null;
   runnerUp: boolean;
   /** Return was pressed and the engine has not answered yet (the audit, item 27): the words sent, so Home shows them at once
    *  with Starting, and Flowflow thinks. Cleared once the engine starts the task, or refuses it, or anything else ends it. */
@@ -923,6 +926,7 @@ function reduceRest(m: Model, e: Ev): Model {
     // line); its row comes with the next tasks.list. Claude waiting: the notch's amber mark and line, cleared by the engine.
     // M89: the usage runway (any project: the limit is the person's) and the jobs saved for after the reset.
     case "usage.runway": { const r = runwayFrom(e, Date.now()); return r ? { ...m, runway: r } : m; }
+    case "tutor.learned": { const l = learnedFrom(e); return l ? { ...m, learned: l } : m; }
     case "jobs.saved": { const p = typeof e.project === "string" ? e.project : ""; const jobs = p ? savedFrom(e, p) : null; return jobs ? { ...m, savedJobs: { project: p, jobs } } : m; }
     case "guard.saved": return typeof e.project === "string" ? { ...m, notice: S.guard.savedNotice, guardSaved: { project: e.project, at: Date.now() } } : m;
     // M85: the person's own AI tool was told to ask them first: the notch's line for a few seconds (any project), and the

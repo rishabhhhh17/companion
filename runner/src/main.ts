@@ -122,6 +122,8 @@ const review = new ReviewService({
   rulesOnly: (p) => isKeyPractice(p),
   // M57 feature 1: each review that ran is one row in the task history (names of files only), kept review.keepDays days.
   history: { add: (r) => taskLog.addReview(r, { keepDays: Number(runnerSettings.get("review.keepDays")) }), did: (p, b, d) => taskLog.reviewDid(p, b, d) },
+  // M95, the light tutor: a problem this review found that a later change fixed, and the person kept.
+  learned: (p, kind, key) => runner.learnFromReview(p, kind, key),
   // M79 (T18): known serious problems in packages a change added, on OSV.dev. Names and versions only, a day's cache in
   // this data folder, and packages.check turns it off. A stand in engine (tests) never reaches OSV.
   ...(settings.engine === "sdk" && !settings.assistStub ? { packages: new OsvClient({ cacheFile: join(settings.data, "osv-cache.json") }) } : {}),

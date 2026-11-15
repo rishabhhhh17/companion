@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## What you have learned, and what to practise next: 15 Nov 2026
+
+- **Learn now follows what you have done.** A new part, What you have learned, lists the kinds of problems you have met and handled in Squibby, one plain line each, worded from what really happened: "A key written into the code: found and moved to settings, once" after a practice or your own change the checks proved, "a review found it and a later change took it out" after a review, or "Check question answered: why a key in the code is a problem". Under each line it says where it came from and when. Only fixes count: an ordinary feature task never adds a line, whatever its words mention.
+- **One thing to practise next.** When you picked a different reason on a check question, the practice that goes through it leads Learn's practice list, with one line on why. Otherwise the list leads as before. Learn never suggests two practices at once, and never one that needs Node while Node is missing.
+- **Yours to read and forget.** Every line has Forget, and a forgotten line does not come back. Not this one under a suggestion forgets the answer it came from. It only learns from what you do inside Squibby, it stays on this Mac, it is never sent to Claude, and Pause memory stops it too, and erasing your profile's memory on the Memory page erases it as well. No scores, streaks or levels.
+- **A switch,** What you have learned, on Learn, in Settings under Privacy, More options. On by default. Delete everything clears it.
+- Practice projects you finished before this version show up the first time you open Learn. Nothing here calls a model or costs anything.
+
 ## What Squibby saved you: 15 Nov 2026
 
 - **Your numbers now says what Squibby stopped or caught.** Under History, Your numbers has a new part, What Squibby saved you, for the last seven days: fix loops it stopped instead of trying the same way again, tasks it paused for using far more than usual (and how many of those you then stopped or undid, said on the same row), broken tasks Which task broke it found using only your checks, wrong changes a review caught that you then fixed or undid (a loosened test, a done that was not done, failed checks, or a change that was not what you asked for or that said one thing and ran another), and asks before a command that touches a live system. Copies saved before a destructive command were already counted there. A weakened check or a done that was not done shows in both parts once you fixed it or undid it, and the page says so.

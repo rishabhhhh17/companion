@@ -94,11 +94,13 @@ export function sendBackText(r: ReviewWords): string {
 }
 
 /** The request for Fix it: an ordinary task in this project, started with a safety copy and Undo like every other. */
+/** How a review's Fix it request starts (memory/learned.ts reads it as a fix, for the light tutor). */
+export const REVIEW_FIX_INTRO = "Another AI tool just changed files in this project, and a review of that change found problems. Fix them.";
 export function fixPrompt(r: ReviewWords): string {
   const problems = quote(r.reasons.map((x) => line(x.say)));
   const notes = quote(r.notes.map(line));
   return finish([
-    "Another AI tool just changed files in this project, and a review of that change found problems. Fix them.",
+    REVIEW_FIX_INTRO,
     QUOTED_FIX,
   ], [
     { title: "What changed:", lines: r.summary ? quote([plain(r.summary)]) : [] },

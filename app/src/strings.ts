@@ -1429,6 +1429,49 @@ export const S = {
   obPracticeTitle: "See it work first",
   obPracticeHelp: `${PRODUCT} will copy a small project with one thing wrong on purpose into a new folder in your home folder. You will see how ${PRODUCT} finds a problem, fixes it and proves the fix, so you know what to do the next time you are really stuck.`,
   obPractice: (title: string, time: string, cost: string) => `Try it: ${title} (${time.toLowerCase()}, ${cost.toLowerCase()})`,
+  // M95, the light tutor on Learn (app/src/tutor.ts, tutorPanel.tsx): what you have learned and what to practise next.
+  // Plain facts with their source, never praise, a streak, a level or points (rule 16).
+  tutor: {
+    title: "What you have learned",
+    lead: `Kinds of problems you have met and handled, only from what you did in ${PRODUCT}: practice projects, check questions, your own changes and reviews. It stays on this Mac.`,
+    noneTitle: "Nothing yet",
+    noneLine: "Finish a practice project, answer the check question under a fix, or make a Your turn change, and it shows here.",
+    off: "What you have learned is switched off. Turn it back on in Settings, under Privacy, More options.",
+    paused: "Memory is paused, so nothing new is added here.",
+    from: "From",
+    forget: "Forget",
+    forgetLine: (title: string) => `Forget: ${title}`,
+    sources: { practice: "Practice project finished", check: "Check question answered", yourTurn: "Your own change, proven by the checks", review: "Found by a review, then gone after a later change" },
+    // How a line is worded, from its strongest source. handled is said only for a practice or a Your turn change, where the
+    // checks proved it; a review only saw the problem go, and a check answer only picked the right reason.
+    byReview: "a review found it and a later change took it out",
+    byCheck: (asked: string) => `Check question answered: ${asked}`,
+    // title: the line as it is listed; about: the same thing inside a sentence; handled: what the person did, proven by the
+    // checks; asked: what a check question about it asks.
+    kinds: {
+      key_in_code: { title: "A key written into the code", about: "a key written into the code", handled: "found and moved to settings", asked: "why a key in the code is a problem" },
+      missing_setting: { title: "A setting that was not set", about: "a setting that was not set", handled: "found and put in the settings file", asked: "why a setting that was not set stops a project" },
+      broken_link: { title: "A link to a page that is not there", about: "a link to a page that is not there", handled: "found and matched to its page", asked: "why a link to a page that is not there fails" },
+      renamed_file: { title: "A file that was moved or renamed", about: "a file that was moved or renamed", handled: "found and pointed at its new name", asked: "why a moved or renamed file breaks the lines that use it" },
+      open_table: { title: "A database table anyone could read", about: "a database table anyone could read", handled: "found and closed to strangers", asked: "why a table anyone can read is a problem" },
+      failing_request: { title: "A button whose request fails", about: "a button whose request fails", handled: "found, fixed and proven by the checks", asked: "why a button's request fails" },
+      weakened_check: { title: "A check made weaker so it would pass", about: "a check made weaker so it would pass", handled: "caught and put back", asked: "why a weaker check proves less" },
+      done_not_done: { title: "A done that was not done", about: "a done that was not done", handled: "caught before it was trusted", asked: "why done needs proof" },
+      other: { title: "Other problems in your projects", about: "other problems in your projects", handled: "fixed, and the reason understood", asked: "why a fix worked" },
+    } as Record<"key_in_code" | "missing_setting" | "broken_link" | "renamed_file" | "open_table" | "failing_request" | "weakened_check" | "done_not_done" | "other", { title: string; about: string; handled: string; asked: string }>,
+    nextTitle: "Practise next",
+    why: {
+      missed: (about: string) => `You picked a different reason on a check question about ${about}. This practice goes through it step by step.`,
+      notMet: (about: string) => `You have not met ${about} yet. This practice shows one, safely, in a copy.`,
+      again: (about: string) => `You have met ${about} in your own work. This practice goes through it step by step.`,
+      lesson: "Made from your own project. Every practice project is done.",
+    },
+    allDone: "Every practice project is done. New lessons come from your own projects.",
+    start: "Start",
+    continue: "Continue",
+    notThis: "Not this one",
+    notThisHelp: "Forgets the check question this practice was suggested from.",
+  },
   // The practice projects (app/sample/practices.json; app/src/practice.ts). One entry per practice id: its title, what it
   // teaches, what is wrong in it, and what the found and done steps add. Times and costs are estimates until measured.
   practices: {
@@ -2358,6 +2401,7 @@ export const S = {
       lessons: { name: "Lessons", invite: "Try a lesson on the Learn tab." },
       yourTurn: { name: "Your turn", invite: "Try Your turn: make a small change yourself after a fix." },
       practice: { name: "Practice", invite: "Try a practice project on the Learn tab." },
+      tutor: { name: "What you have learned", invite: "Finish a practice project to see it in What you have learned." },
       talk: { name: "Hold to talk", invite: "Try hold to talk: hold the keys and say what you want." },
       dictate: { name: "Type by voice", invite: "Try Type by voice: click into any text box, hold its keys and speak." },
       speak: { name: "Spoken answers", invite: "Try Say answers out loud in Settings to hear short answers." },
@@ -2514,6 +2558,7 @@ export const S = {
     "task.offRecordByDefault": { label: "Start every task off the record", help: "The Off the record box starts ticked, and is ticked again after each Start, Plan it, Rescue or Look up. Off the record keeps nothing: no memory, no Explain, no pictures, no Your turn and no notes from Look up. The conversation is not carried on.", also: ["private", "off the record", "incognito", "nothing kept", "privacy"] },
     "where.after": { label: "Show Where was I after a break of", help: `After a break, a few lines in Home say what you were doing, what is unfinished, and one next step. They come from your fixes with ${PRODUCT} and changes to your project. Nothing is sent anywhere, and Claude is not asked.`, also: ["recap", "where you left off", "break", "away", "summary"], options: { off: "Off", "30min": "30 minutes", "2h": "2 hours", nextDay: "The next day" } },
     "teach.startWhereYouAre": { label: "Lessons start where you are", help: `When you start a lesson, steps your project already shows are done are passed by. For steps people often have done, such as having an account, ${PRODUCT} asks Did you already do this? first. Start over always begins at step one. Off, a new lesson always begins at step one. A lesson you pick up again after a pause always carries on where you are.`, also: ["lesson", "skip", "already done", "guided setup", "start over"] },
+    "tutor.on": { label: "What you have learned, on Learn", help: `A short list of the kinds of problems you have handled in ${PRODUCT}, each with its source, and one practice to try next. Only from practice projects, check questions, your own changes and reviews here. Off, nothing new is kept and the list is hidden. Delete everything clears it.`, also: ["tutor", "learned", "learn", "practise", "practice", "next", "progress", "teach"] },
     "teach.yourTurn": { label: "Your turn after a fix", help: "When a fix makes the same change in two places, offer to leave the second one for you.", also: ["practice", "learn", "teach"] },
     "ph.style": { label: "Prompt help rewrites", help: "A full rewrite makes your prompt clearer and more specific. A light touch only makes what you wrote clearer and adds nothing new.", also: ["prompt", "rewrite", "improve", "style"], options: { full: "Full rewrite", light: "Light touch, clarity only" } },
     "ph.useProjectInfo": { label: "Use project info in Prompt help", help: `Prompt help can send a short description of your project folder to make a prompt more specific. It sends its name, the script and package names from package.json, its top level names, and your house rules. Nothing else from your files is sent. What ${PRODUCT} remembers follows its own setting.`, also: ["project", "context", "folder"] },

@@ -91,6 +91,9 @@
     { "id": "practice", "group": "guide", "tried": "shell", "permissions": [], "settings": [],
       "commands": ["create_practice", "practice_list", "practice_mark", "open_practice", "restart_practice", "remove_practice", "remove_all_practices"],
       "runner": ["practice.key"], "stays": ["remove_practice", "remove_all_practices"] },
+    { "id": "tutor", "group": "guide", "tried": "page", "permissions": [], "settings": ["tutor.on"],
+      "commands": [],
+      "runner": ["tutor.list", "tutor.note", "tutor.forget"] },
 
     { "id": "talk", "group": "voice", "hotkeys": ["talk"], "tried": "shell", "permissions": ["microphone"], "settings": ["talk.maxHold", "talk.autoSend"],
       "commands": ["voice_download"],

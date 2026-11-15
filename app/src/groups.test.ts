@@ -438,7 +438,7 @@ describe("the pages are wired to the catalog", () => {
   });
   test("a group with its state shows in Settings: on or off, what it may ask for, and what is not tried yet", () => {
     const v = groupView("guide", none);
-    expect(v.on).toBe(true); expect(v.permissions).toEqual(["screenRecording"]); expect(v.untried).toEqual(["showMe", "lessons", "yourTurn", "practice"]);
+    expect(v.on).toBe(true); expect(v.permissions).toEqual(["screenRecording"]); expect(v.untried).toEqual(["showMe", "lessons", "yourTurn", "practice", "tutor"]);
     expect(groupView("voice", none).permissions).toEqual(["microphone", "accessibility"]);
     expect(groupView("files", none).permissions).toEqual([]);
     expect(groupView("guide", off("guide")).on).toBe(false);

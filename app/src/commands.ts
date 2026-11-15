@@ -1,6 +1,6 @@
 // Builds the commands the pages send. Rust checks each one again before it reaches the runner.
 import type { DoneTool } from "./doneSignal.ts";
-import { MAX_REQUEST_CHARS, type Command, type NewFolderKind, type Problem, type ShellCommand, type WatchKind } from "../../protocol/index.ts";
+import { MAX_REQUEST_CHARS, type Command, type LearnedKind, type NewFolderKind, type Problem, type ShellCommand, type WatchKind } from "../../protocol/index.ts";
 import { fixFoundPrompt, PRACTICE_BUDGET_USD } from "../../runner/src/fixfound.ts";
 // Model ids live in one place, with the runner's (T10).
 import { MODELS } from "../../runner/src/models.ts";
@@ -95,6 +95,11 @@ export const showWeek = (project: string): Command => ({ v: 1, id: id(), type: "
 // it is started, or removed). Never off the record.
 export const saveJob = (project: string, kind: "job" | "rescue", prompt: string, resetsAt?: string): Command => ({ v: 1, id: id(), type: "jobs.save", project, kind, prompt: prompt.slice(0, 4000), ...(resetsAt ? { resetsAt } : {}) });
 export const listSavedJobs = (project: string): Command => ({ v: 1, id: id(), type: "jobs.list", project });
+// M95, the light tutor: what it keeps (for every project), a practice finished or a check question answered, and Forget.
+export const tutorList = (): Command => ({ v: 1, id: id(), type: "tutor.list" });
+export const tutorPractice = (project: string, practice: string): Command => ({ v: 1, id: id(), type: "tutor.note", project, source: "practice", practice });
+export const tutorCheck = (project: string, checkpoint: string, right: boolean): Command => ({ v: 1, id: id(), type: "tutor.note", project, source: "check", checkpoint, right });
+export const tutorForget = (kind: LearnedKind, part: "learned" | "missed"): Command => ({ v: 1, id: id(), type: "tutor.forget", kind, part });
 export const dropSavedJob = (project: string, job: string): Command => ({ v: 1, id: id(), type: "jobs.drop", project, job });
 export const answerAgents = (project: string, answer: "yes" | "no" | "remove"): Command => ({ v: 1, id: id(), type: "memory.agents", project, answer });
 export const askRecap = (project: string, since: string): Command => ({ v: 1, id: id(), type: "recap.ask", project, since });

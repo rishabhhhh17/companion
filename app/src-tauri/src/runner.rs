@@ -910,6 +910,36 @@ mod tests {
         assert!(saved.iter().all(|s| s["jobs"].as_array().is_some_and(|j| j.len() <= 10)));
     }
     #[test]
+    fn m95_the_tutor_notes_name_the_chosen_project_and_its_list_carries_kinds_sources_and_days_only() {
+        // M95: the shared fixtures (read by the runner's suite and the pages too).
+        let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");
+        let lines: Vec<Value> = fixtures.lines().filter(|l| l.contains("\"type\":\"tutor.")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(lines.len(), 4);
+        for v in &lines {
+            assert!(check_command(v).is_ok(), "{v}");
+            let t = v["type"].as_str().unwrap();
+            if t == "tutor.note" {
+                assert!(PROJECT_BOUND.contains(&t));
+                let project = v["project"].as_str().unwrap();
+                assert!(check_project(v, project).is_ok(), "{v}");
+                assert!(check_project(v, "/somewhere/else").is_err(), "{v}");
+                assert!(check_project(&json!({ "v": 1, "id": "x", "type": t, "project": NO_PROJECT, "source": "practice", "practice": "key" }), "").is_err(), "not before a folder is chosen");
+            } else {
+                assert!(!PROJECT_BOUND.contains(&t), "{t} is for every project");
+                assert!(v.get("project").is_none());
+            }
+        }
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let learned: Vec<Value> = events.lines().filter(|l| l.contains("\"type\":\"tutor.learned\"")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(learned.len(), 2);
+        for e in &learned {
+            for k in e.as_object().unwrap().keys() { assert!(["v", "id", "ts", "type", "on", "paused", "signals"].contains(&k.as_str()), "{k}"); }
+            for s in e["signals"].as_array().unwrap() {
+                for k in s.as_object().unwrap().keys() { assert!(["kind", "source", "date", "missed"].contains(&k.as_str()), "{k}"); }
+            }
+        }
+    }
+    #[test]
     fn m79_the_weekly_summary_passes_only_for_the_chosen_project_and_its_events_and_the_package_findings_read() {
         // M79: the shared fixtures (read by the runner's suite and the pages too).
         let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");

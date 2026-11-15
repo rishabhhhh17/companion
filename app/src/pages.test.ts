@@ -78,8 +78,9 @@ describe("Learn, calm and useful (spec 3.8)", () => {
   // M71: the practice to do now is Learn's featured card (what it teaches, its time, Start); every practice is one row.
   test("the lead is the practice to do now with what it teaches; each practice is one row; no cost line; no dead end Close", () => {
     const panel = read("./practicePanel.tsx");
-    expect(panel).toContain("const leadId = openId ? null : practicePath(rows);");
-    expect(panel).toContain("line={<><p className=\"ui-lead-line\">{lead.teaches}</p>");
+    // M95 review: a missed check answer's practice (the light tutor) may lead instead, with the tutor's why for its line.
+    expect(panel).toContain("const leadId = openId ? null : missed && rows.some((r) => r.entry.id === missed.id && r.state !== \"done\" && !r.needsNode) ? missed.id : practicePath(rows);");
+    expect(panel).toContain("line={<><p className=\"ui-lead-line\">{why ? why.why : lead.teaches}</p>");
     expect(panel).not.toContain("{r.time} · {r.cost}");
     const card = read("./card.tsx");
     expect(card).toContain("{S.screens.lessonsNone}");

@@ -21,7 +21,7 @@ export type Tool = {
 export type ToolId =
   | "askBox" | "engine" | "stop" | "projects" | "account" | "settings" | "memory" | "ship" | "research"
   | "drive" | "followUp" | "rescue" | "findProblem" | "proof" | "undo" | "explain" | "drawIt" | "whichTask" | "watch" | "connections" | "whereWasI" | "review"
-  | "showMe" | "lessons" | "yourTurn" | "practice"
+  | "showMe" | "lessons" | "yourTurn" | "practice" | "tutor"
   | "talk" | "speak" | "promptHelp" | "errorHelp" | "secondLook" | "convert";
 
 export const GROUPS = catalog.groups as unknown as Group[];
@@ -155,6 +155,8 @@ export function usedBy(ev: unknown, ctx: { followUp?: boolean; walk?: boolean; r
     case "assist.prompt.done": tool = "promptHelp"; break;
     case "error.explained": tool = ev.ok === true ? "errorHelp" : null; break;
     case "secondlook.result": tool = ev.ok === true ? "secondLook" : null; break;
+    // M95: the light tutor is used once it holds something the person did (a practice finished, a check answered, ...).
+    case "tutor.learned": tool = ev.on === true && Array.isArray(ev.signals) && ev.signals.length > 0 ? "tutor" : null; break;
   }
   return tool && toolOn(tool, read) ? [tool] : [];
 }

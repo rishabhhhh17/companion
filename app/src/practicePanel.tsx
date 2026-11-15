@@ -276,7 +276,11 @@ export const practiceColour = (i: number): Colour => PRACTICE_COLOURS[i % PRACTI
  *  one line and its time (Done, in green, once proven). A row opens its practice: Start, Continue, or Start over (asked
  *  first). A practice with a copy on this Mac has Remove my copy on the right, asked first. It never brings Learn
  *  forward by itself (home.ts). No cost line (F29). */
-export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, damaged, openId, opening = null, act, onTour }: { rows: ListRow[]; busy: boolean; nodeFix: string | null; withoutNode?: string | null; note: string; damaged: boolean; openId: string | null;
+export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, damaged, openId, opening = null, act, onTour, missed = null }: { rows: ListRow[]; busy: boolean; nodeFix: string | null; withoutNode?: string | null; note: string; damaged: boolean; openId: string | null;
+  /** M95: the light tutor's Practise next when it comes from a check question answered with a different reason
+   *  (tutor.ts practiseNext): that practice leads instead of the course path, with the tutor's why and Not this one, so
+   *  Learn makes one suggestion, never two. */
+  missed?: { id: string; why: string; notThis: () => void } | null;
   /** M72 (the walkthrough, item 5): the practice being opened now (its copy is being made), said where it was pressed. */
   opening?: string | null; act: ListActions;
   /** The recorded first run again (firstLook.ts), the featured card's quiet button. */
@@ -288,7 +292,8 @@ export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, da
   // practice card's Find it: Now (the review, 2 Nov 2026).
   const stateOf = (r: ListRow): ListRow["state"] => (openId === r.entry.id && r.state === "notStarted" ? "inProgress" : r.state);
   // The featured card: the practice to do now (practice.ts practicePath), unless it is already open in its own card above.
-  const leadId = openId ? null : practicePath(rows);
+  const leadId = openId ? null : missed && rows.some((r) => r.entry.id === missed.id && r.state !== "done" && !r.needsNode) ? missed.id : practicePath(rows);
+  const why = missed && missed.id === leadId ? missed : null;
   const lead = rows.find((r) => r.entry.id === leadId) ?? null;
   const allDone = rows.length > 0 && rows.every((r) => r.state === "done");
   const askRow = ask ? rows.find((r) => r.entry.id === ask.id) ?? null : null;
@@ -300,11 +305,14 @@ export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, da
         <Lead className="ui-feature learn-lead" meaning="practice" labelledBy={`${base}-lead`}
           tag={<Tag meaning="practice" words={lead.state === "inProgress" ? S.practiceState.inProgress : undefined} />}
           title={<h2 className="ui-lead-title" id={`${base}-lead`}>{lead.title}</h2>}
-          line={<><p className="ui-lead-line">{lead.teaches}</p><p className="learn-lead-fact" role="status">{opening === lead.entry.id ? S.practiceOpening : <>{lead.time}{lead.needsNode ? ` · ${S.practiceNeedsNode}` : ""}</>}</p></>}
+          line={<><p className="ui-lead-line">{why ? why.why : lead.teaches}</p><p className="learn-lead-fact" role="status">{opening === lead.entry.id ? S.practiceOpening : <>{lead.time}{lead.needsNode ? ` · ${S.practiceNeedsNode}` : ""}</>}</p></>}
           actions={<>
             <Button kind="primary" disabled={busy || lead.needsNode || !!opening} label={`${lead.state === "inProgress" ? S.practiceContinue : S.practiceStart}: ${lead.title}`}
               onClick={() => (lead.state === "inProgress" && lead.there ? act.open(lead.entry.id) : act.start(lead.entry.id))}>{lead.state === "inProgress" ? S.practiceContinue : S.practiceStart}</Button>
-            {onTour && <Button kind="secondary" onClick={onTour}>{S.firstLook.watch}</Button>}
+            {/* A tutor's suggestion has Not this one in the tour's place; the tour is then a row of the list. */}
+            {onTour && !why && <Button kind="secondary" onClick={onTour}>{S.firstLook.watch}</Button>}
+            {why && <Button kind="quiet" label={`${S.tutor.notThis}: ${lead.title}`} describedBy={`${base}-notthis`} onClick={why.notThis}>{S.tutor.notThis}</Button>}
+            {why && <span id={`${base}-notthis`} hidden>{S.tutor.notThisHelp}</span>}
           </>} />
       ) : allDone ? (
         <Lead className="ui-feature learn-lead" meaning="proven" labelledBy={`${base}-lead`} tag={<Tag meaning="proven" />}
@@ -336,7 +344,7 @@ export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, da
               : state === "inProgress" && r.there ? { id: rowAct, label: S.practiceStartOver, colour: "grey", ariaLabel: `${S.practiceStartOver}: ${r.title}`, onClick: () => setAsk({ id, what: "startOver", back: rowAct }) }
               : { id: rowAct, label: S.practiceRemove, colour: "grey", ariaLabel: `${S.practiceRemove}: ${r.title}`, onClick: () => setAsk({ id, what: "remove", back: rowAct }) }} />;
         })}
-        {!lead && onTour && <Row colour="blue" icon="eye" title={S.practiceTourRow} line={S.practiceTourLine} onOpen={onTour} openLabel={S.firstLook.watch} />}
+        {(!lead || why) && onTour && <Row colour="blue" icon="eye" title={S.practiceTourRow} line={S.practiceTourLine} onOpen={onTour} openLabel={S.firstLook.watch} />}
       </ListGroup>
       {ask && askRow && ask.what === "startOver" && (
         <ConfirmStep className="learn-ask" label={S.practiceStartOverSure} back={overId} onCancel={() => setAsk(null)}><p className="learn-ask-line">{askRow.title}. {S.practiceStartOverSure}</p>

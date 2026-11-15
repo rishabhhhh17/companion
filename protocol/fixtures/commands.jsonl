@@ -129,3 +129,7 @@
 {"v":1,"id":"m89c2","type":"jobs.save","project":"p_9f2c","kind":"rescue","prompt":""}
 {"v":1,"id":"m89c3","type":"jobs.list","project":"p_9f2c"}
 {"v":1,"id":"m89c4","type":"jobs.drop","project":"p_9f2c","job":"sj_12"}
+{"v":1,"id":"m95c1","type":"tutor.list"}
+{"v":1,"id":"m95c2","type":"tutor.note","project":"p_9f2c","source":"practice","practice":"key"}
+{"v":1,"id":"m95c3","type":"tutor.note","project":"p_9f2c","source":"check","checkpoint":"cp_12","right":false}
+{"v":1,"id":"m95c4","type":"tutor.forget","kind":"key_in_code","part":"learned"}

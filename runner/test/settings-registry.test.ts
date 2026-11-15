@@ -42,6 +42,8 @@ describe("the shipped list of settings", () => {
       // Area 3: memory, Explain and teaching (settings-memory.test.ts)
       "explain.after": "everyTask", "memory.learnFromFiles": true, "memory.learnFromWords": true, "memory.rememberGoals": true, "memory.tellClaude": true,
       "memory.recallLength": "normal", "task.offRecordByDefault": false, "memory.toastSeconds": "10", "where.after": "30min",
+      // M95: the light tutor in Learn, on: it learns only from explicit signals inside the app, and Delete everything clears it.
+      "tutor.on": true,
       // Area 4 (Home, the island and the character): each usual value is what the app does today.
       "island.show": true, "island.openForQuestions": true, "home.escStops": true, "island.showWork": true, "talk.captions": true,
       // M55, live progress: while a job works, the notch says its step in a word, with a thin line of the four steps under it.

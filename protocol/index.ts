@@ -150,6 +150,26 @@ export const MAX_SAVED_JOB_CHARS = 4000;
 export type JobsSave = Envelope & { type: "jobs.save"; project: string; kind: (typeof SAVED_JOB_KINDS)[number]; prompt: string; resetsAt?: string };
 export type JobsList = Envelope & { type: "jobs.list"; project: string };
 export type JobsDrop = Envelope & { type: "jobs.drop"; project: string; job: string };
+/** M95: the light tutor in Learn (runner/src/memory/learned.ts). The kinds of problem the person has met and handled, from
+ *  explicit signals inside Squibby only (rule 15): a practice project finished, an Explain check question answered right
+ *  (a wrong answer is kept as missed, only to suggest what to practise next), a Your turn change of their own that the
+ *  checks proved, and a problem a review found that a later change fixed and the person kept. Only a kind, a source and a
+ *  day: never words, a file, a path or a score (rule 16). */
+export const LEARNED_KINDS = ["key_in_code", "missing_setting", "broken_link", "renamed_file", "open_table", "failing_request", "weakened_check", "done_not_done", "other"] as const;
+export type LearnedKind = (typeof LEARNED_KINDS)[number];
+export const LEARNED_SOURCES = ["practice", "check", "yourTurn", "review"] as const;
+export type LearnedSource = (typeof LEARNED_SOURCES)[number];
+/** The kind of problem each practice project is about (an id in app/sample/practices.json). */
+export const PRACTICE_LEARNED: Readonly<Record<string, LearnedKind>> = { signup: "failing_request", setting: "missing_setting", route: "broken_link", import: "renamed_file", "open-table": "open_table", key: "key_in_code" };
+/** The most signals kept; the oldest go first. */
+export const MAX_LEARNED = 500;
+export type LearnedSignal = { kind: LearnedKind; source: LearnedSource; date: string; missed?: true };
+export type TutorList = Envelope & { type: "tutor.list" };
+/** From the page, on the person's own press: a practice finished, or the answer to an Explain check question (the engine
+ *  knows the kind from its own explanation of that checkpoint; the page never says one). */
+export type TutorNote = Envelope & { type: "tutor.note"; project: string; source: "practice" | "check"; practice?: string; checkpoint?: string; right?: boolean };
+/** Forget one line (part learned) or what a suggestion was made from (part missed). */
+export type TutorForget = Envelope & { type: "tutor.forget"; kind: LearnedKind; part: "learned" | "missed" };
 /** M58 (feature 9): the key practice, on the person's press. write: the practice's pretend AI writes its made up key into the
  *  copy (then the review looks at once, by its rules alone); fix: the fixed fix moves it to .env.local, with a safety copy
  *  first. Only in a practice copy of the key practice (runner/src/practicekey.ts); no model, no cost. */
@@ -330,7 +350,7 @@ export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?
 export const REVIEW_CLOSED_HOW = ["looksFine", "sentBack", "quiet"] as const;
 export type ReviewDismiss = Envelope & { type: "review.dismiss"; project: string; batch: string; how?: (typeof REVIEW_CLOSED_HOW)[number] };
 export type ReviewFix = Envelope & { type: "review.fix"; project: string; batch: string; agent: string; model: string; budgetUsd: number };
-export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | CostChoose | ProofSignIn | WeekShow | ShipWhyLive | JobsSave | JobsList | JobsDrop;
+export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | CostChoose | ProofSignIn | WeekShow | ShipWhyLive | JobsSave | JobsList | JobsDrop | TutorList | TutorNote | TutorForget;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -532,6 +552,8 @@ export type UsageRunway = Envelope & { type: "usage.runway"; state: (typeof RUNW
   nextPct?: number; nextResetsAt?: string; nextWindow?: (typeof RUNWAY_WINDOWS)[number] };
 export type SavedJobView = { id: string; kind: (typeof SAVED_JOB_KINDS)[number]; prompt: string; savedAt: string; resetsAt?: string };
 export type JobsSaved = Envelope & { type: "jobs.saved"; project: string; jobs: SavedJobView[] };
+/** M95: what the light tutor keeps, for Learn. on: the switch (tutor.on); paused: Pause memory, which stops new signals too. */
+export type TutorLearned = Envelope & { type: "tutor.learned"; on: boolean; paused: boolean; signals: LearnedSignal[] };
 export type ShipWhyLiveEvent = Envelope & { type: "ship.whyLive"; project: string; stage: "running" | "done" | "stopped"; parts: LivePart[]; liveUrl?: string; /** M87 review: why nothing ran (not_set_up: this Mac's engine has no tools for it) */ reason?: "not_set_up" };
 /** M58 (UI 13): where the person's own Vercel sign in is. opened: Vercel's own page (url, always https on vercel.com) is
  *  ready to open in their browser. lesson: the step could not run here, so the step by step lesson is offered. */
@@ -700,7 +722,7 @@ export type ReviewReplay = {
   checks: { label: string; status: "passed" | "failed" | "skipped"; exit?: number }[]; shot?: string;
 };
 export type ReviewUntold = { beyond: string[]; beyondMore: number; todos: number; checks: ReviewChecks };
-export type Event = GuardSaved | GuardAsked | HookWaiting | HookBusy | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved;
+export type Event = GuardSaved | GuardAsked | HookWaiting | HookBusy | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved | TutorLearned;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -725,6 +747,12 @@ const NEXT_ACTIONS = ["fixWatch", "findProblem", "review", "open", "none"];
 const oneOfNext = (n: Record<string, unknown>): boolean => NEXT_ACTIONS.includes(n.action as string) && (n.action !== "fixWatch" || (typeof n.watch === "string" && n.watch.length > 0));
 const opt: (k: string, c: Check) => Check = (k, c) => (m) => (m[k] === undefined ? null : c(m));
 // M89: a time, a whole percent, and a saved job's words (a Rescue may have none).
+/** One tutor signal: exactly a known kind, a known source, a day, and missed only as true. */
+export const learnedSignalOk = (x: unknown): boolean => {
+  const o = x as Record<string, unknown>;
+  return !!o && typeof o === "object" && !Array.isArray(o) && (LEARNED_KINDS as readonly unknown[]).includes(o.kind) && (LEARNED_SOURCES as readonly unknown[]).includes(o.source)
+    && typeof o.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.date) && (o.missed === undefined || o.missed === true) && Object.keys(o).every((k) => ["kind", "source", "date", "missed"].includes(k));
+};
 const isoOk = (k: string): Check => (m) => (typeof m[k] === "string" && (m[k] as string).length <= 40 && !Number.isNaN(Date.parse(m[k] as string)) ? null : `"${k}" must be a time`);
 const pctOk: Check = (m) => (typeof m.usedPct === "number" && Number.isInteger(m.usedPct) && m.usedPct >= 0 && m.usedPct <= 100 ? null : '"usedPct" must be a whole number from 0 to 100');
 const savedPromptOk: Check = (m) => (typeof m.prompt === "string" && Array.from(m.prompt).length <= MAX_SAVED_JOB_CHARS && (m.kind === "rescue" || m.prompt.trim().length > 0) ? null : `"prompt" must be the request, at most ${MAX_SAVED_JOB_CHARS} characters`);
@@ -1020,6 +1048,13 @@ const COMMANDS: Record<string, Check[]> = {
   // M87: Why is live broken?, on the person's press. A typed address is a plain https address only.
   "jobs.save": [str("project"), oneOf("kind", [...SAVED_JOB_KINDS]), savedPromptOk, opt("resetsAt", isoOk("resetsAt"))],
   "jobs.list": [str("project")],
+  // M95: the light tutor. A note names a practice from the catalog, or an Explain checkpoint and whether the answer was
+  // right; nothing else (no words, no kind: the engine decides the kind itself).
+  "tutor.list": [],
+  "tutor.note": [str("project"), oneOf("source", ["practice", "check"]), (m) => (m.source === "practice"
+    ? (typeof m.practice === "string" && Object.hasOwn(PRACTICE_LEARNED, m.practice) && m.checkpoint === undefined && m.right === undefined ? null : 'a practice note names a practice and nothing else')
+    : (typeof m.checkpoint === "string" && m.checkpoint.length > 0 && m.checkpoint.length <= 80 && typeof m.right === "boolean" && m.practice === undefined ? null : 'a check note names its checkpoint and whether the answer was right'))],
+  "tutor.forget": [oneOf("kind", [...LEARNED_KINDS]), oneOf("part", ["learned", "missed"])],
   "jobs.drop": [str("project"), (m) => (typeof m.job === "string" && /^sj_\d{1,12}$/.test(m.job) ? null : '"job" must be a saved job\'s id')],
   "ship.whyLive": [str("project"), opt("url", (m) => (typeof m.url === "string" && /^https:\/\/[^\s]+$/.test(m.url) && m.url.length <= 500 ? null : '"url" must be an https address'))],
   // M58 (feature 9): the key practice's pretend AI and its fixed fix, on the person's press.
@@ -1134,6 +1169,9 @@ const EVENTS: Record<string, Check[]> = {
     opt("nextPct", (m) => (typeof m.nextPct === "number" && Number.isInteger(m.nextPct) && m.nextPct >= 0 && m.nextPct <= 100 ? null : '"nextPct" must be a whole number from 0 to 100')), opt("nextResetsAt", isoOk("nextResetsAt")), opt("nextWindow", oneOf("nextWindow", [...RUNWAY_WINDOWS])),
     (m) => { const n = ["nextPct", "nextResetsAt", "nextWindow"].filter((k) => m[k] !== undefined).length; return n === 0 || n === 3 ? null : "the next window carries its share, its reset and its name together"; },
     (m) => (Object.keys(m).every((k) => ["v", "id", "ts", "type", "state", "source", "usedPct", "resetsAt", "window", "retryInS", "nextPct", "nextResetsAt", "nextWindow"].includes(k)) ? null : "the runway carries numbers and times only")],
+  // M95: kinds, sources and days only; never words, files or a score.
+  "tutor.learned": [bool("on"), bool("paused"), (m) => (Array.isArray(m.signals) && m.signals.length <= MAX_LEARNED && m.signals.every(learnedSignalOk) ? null : '"signals" must be a list of kinds, sources and days'),
+    (m) => (Object.keys(m).every((k) => ["v", "id", "ts", "type", "on", "paused", "signals"].includes(k)) ? null : "the tutor carries kinds, sources and days only")],
   "jobs.saved": [str("project"), (m) => (Array.isArray(m.jobs) && m.jobs.length <= 10 && m.jobs.every((j) => { const o = j as Record<string, unknown>; return !!o && typeof o === "object" && typeof o.id === "string" && /^sj_\d{1,12}$/.test(o.id) && (SAVED_JOB_KINDS as readonly string[]).includes(o.kind as string) && savedPromptOk(o) === null && isoOk("savedAt")(o) === null && (o.resetsAt === undefined || isoOk("resetsAt")(o) === null); }) ? null : '"jobs" must be at most 10 saved jobs')],
   "ship.whyLive": [str("project"), oneOf("stage", ["running", "done", "stopped"]), livePartsOk, opt("liveUrl", (m) => (typeof m.liveUrl === "string" && /^https:\/\//.test(m.liveUrl) ? null : '"liveUrl" must be an https address')), opt("reason", (m) => (m.reason === "not_set_up" ? null : '"reason" must be not_set_up'))],
   // M58 (UI 13): where the person's own Vercel sign in is. The page opens only an https page on vercel.com itself.
