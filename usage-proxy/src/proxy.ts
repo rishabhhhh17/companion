@@ -25,6 +25,9 @@ export type Deps = {
   userIdSecret?: string;
   /** The remote switch. Off means every request is refused with a message pointing to the user's own key. */
   enabled: () => boolean;
+  /** M100 review: the fixing loop's switch (setting LOOP_ON). Off, or missing, a request with the loop's tools is refused
+   *  however good its sign in token; only Second Look's capped search and plain requests go through. */
+  loopOn?: () => boolean;
   fetch?: typeof fetch;
   upstream?: string;
   now?: () => number;
@@ -147,7 +150,7 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
     if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return refuse("too_big", error(413, "invalid_request_error", "That request is too big to send."), user.id);
     const raw = await readCapped(req);
     if (raw === null) return refuse("too_big", error(413, "invalid_request_error", "That request is too big to send."), user.id);
-    const checked = checkRequest(req.method, url.pathname, raw, await deriveUserId(user.id, d.userIdSecret as string));
+    const checked = checkRequest(req.method, url.pathname, raw, await deriveUserId(user.id, d.userIdSecret as string), { loopOn: d.loopOn?.() === true });
     if (!checked.ok) return refuse("bad_request", error(checked.status, "invalid_request_error", checked.message), user.id);
 
     // A plan kept through a late payment lasts only until its end date (Dodo's past_due_ends_at); then it is free.

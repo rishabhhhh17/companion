@@ -4,6 +4,8 @@
 //
 // What is set where (never in this repo):
 //   PROXY_ON                  the switch. Off unless it is exactly on, 1 or true. Set it with `wrangler secret put PROXY_ON`.
+//   LOOP_ON                   M100: the fixing loop's switch, off the same way. Off, a request with the loop's tools is refused
+//                             for every sign in token. Turned on only by the go live checklist.
 //   ANTHROPIC_API_KEY         Squibby's key. Without it nothing is forwarded.
 //   METADATA_USER_ID_SECRET   the key for the opaque metadata.user_id (userid.ts). Without it nothing is forwarded.
 //   GOOGLE_CLIENT_ID          Sign in with Google. Without it the sign in route answers 503.
@@ -31,6 +33,7 @@ export { StoreObject } from "./store-do.ts";
 export type Env = {
   STORE: NamespaceLike;
   PROXY_ON?: string;
+  LOOP_ON?: string;
   ANTHROPIC_API_KEY?: string;
   METADATA_USER_ID_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;
@@ -53,6 +56,9 @@ export const DEV_ONLY_SETTINGS = ["DEV_TOKENS", "UPSTREAM_BASE"] as const;
 /** The operator's key must be at least this long, like the user id secret. */
 export const MIN_OPERATOR_KEY_CHARS = 32;
 const OPERATOR_MAX_BODY = 4096;
+
+/** M100 review: the fixing loop's switch (LOOP_ON), read the same way as the main one: off unless on, 1 or true. */
+export function loopSwitchOn(value: unknown): boolean { return switchOn(value); }
 
 /** The switch, from its setting. Anything but on, 1 or true (spaces and case aside) is off, and so is no setting at all. */
 export function switchOn(value: unknown): boolean {
@@ -80,6 +86,7 @@ function partsFor(env: Env, ctx: Ctx, now: () => number): Parts {
     anthropicKey: env.ANTHROPIC_API_KEY ?? "",
     userIdSecret: env.METADATA_USER_ID_SECRET,
     enabled: () => switchOn(env.PROXY_ON),
+    loopOn: () => loopSwitchOn(env.LOOP_ON),
     now,
     log: logLine,
     ...(env.UPSTREAM_BASE ? { upstream: env.UPSTREAM_BASE } : {}),

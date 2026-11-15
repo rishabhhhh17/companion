@@ -14,6 +14,8 @@
 #   DODO_PRODUCTS             the product table, as JSON (see dodo-products.example.json).
 #   PROXY_ON                  the switch. Not needed to deploy: without it, or with anything but "on", nothing is forwarded.
 #                             Turn on: `wrangler secret put PROXY_ON` and type on. Turn off: `wrangler secret delete PROXY_ON`.
+#   LOOP_ON                   the fixing loop's own switch (M100). Off the same way: the loop's tools are refused for every
+#                             sign in token until the go live checklist turns it on.
 # Not used: STRIPE_WEBHOOK_SECRET. Stripe's webhook is not built on this server; Dodo Payments is the provider.
 
 name = "squibby-usage"

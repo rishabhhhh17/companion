@@ -4,7 +4,8 @@
 // stays well under its price (a test reads prices.json to hold that).
 // The Pro allowance below was sized for the light features this proxy may carry (F22).
 // It has not been checked against the cost of fixing now that Squibby pays for every job (F29). It is not changed here:
-// M100 measures real fixes, allowanceReport below says how many an allowance covers, and the founder sets the number.
+// M100 measures real fixes (runner/scripts/measure-fixes.ts, 10 fixture fixes on Squibby's own loop; real numbers need a
+// run with --spend), allowanceReport below says how many an allowance covers, and the founder sets the number.
 export type Plan = { name: string; dailyUsd: number; monthlyUsd: number };
 export const PLANS: Record<string, Plan> = {
   free: { name: "free", dailyUsd: 0.2, monthlyUsd: 2 },
@@ -69,10 +70,11 @@ export function allowanceReport(plan: Plan, costsUsd: readonly number[]): Allowa
     ],
   };
 }
-/** Measured costs from a JSON value: a list of amounts, a list of records with costUsd, or { costsUsd: [...] }. */
+/** Measured costs from a JSON value: a list of amounts, a list of records with costUsd, { costsUsd: [...] }, or what
+ *  runner/scripts/measure-fixes.ts --out saves ({ standIn, costsUsd, fixes: [{ costUsd }] }). */
 export function costsFrom(v: unknown): number[] {
-  const list: unknown[] = Array.isArray(v) ? v
-    : v && typeof v === "object" && Array.isArray((v as { costsUsd?: unknown }).costsUsd) ? (v as { costsUsd: unknown[] }).costsUsd : [];
+  const o = v && typeof v === "object" && !Array.isArray(v) ? (v as { costsUsd?: unknown; fixes?: unknown }) : null;
+  const list: unknown[] = Array.isArray(v) ? v : o && Array.isArray(o.costsUsd) ? o.costsUsd : o && Array.isArray(o.fixes) ? o.fixes : [];
   const out: number[] = [];
   for (const x of list) {
     const n = typeof x === "number" ? x : x && typeof x === "object" ? (x as { costUsd?: unknown }).costUsd : undefined;

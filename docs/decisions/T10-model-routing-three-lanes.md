@@ -110,3 +110,6 @@ Second Look alone may add Anthropic's web search server tool to a fast lane requ
 
 ## Revisit if
 The Show me how eval shows Sonnet 5.5 misses the bar on hard multi step questions (route those to Opus 5.5), spike (g) misses the one second target, or Haiku 4.5 is retired (section 3; section 14).
+
+## Note (M100, 15 Nov 2026)
+Under F29 Squibby picks the model and pays. The fixing loop (`messages-loop`) takes its model from the same table (`MODELS.agent`, `claude-sonnet-5-5`, with `apiShape(model, "agent")`), Anthropic models only in the first cut, and its cost is estimated from the same list prices (`estimateUsd`). F22 is unchanged for Claude Code; the plain API lanes and the loop go through Squibby's usage server, which accepts only the models in this table.

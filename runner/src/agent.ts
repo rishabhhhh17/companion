@@ -299,12 +299,16 @@ export function approvalKey(tool: ToolUse, v: Verdict): string {
 // scripted test engine carries the plain test runner (engine.ts testToolRunner, no sandbox, for fixture folders only).
 // Anything else (an engine of our own loop, F29) cannot be built without a sandboxed executor: the constructor refuses it,
 // and this stand in throws if it is ever reached.
+/** M100 review: Research on an engine with no web search (Squibby's own loop today). Plain, with what to do instead. */
+export const RESEARCH_NO_WEB = `Research is not available with ${PRODUCT_S} included AI yet, because it needs to search the web for its sources. Add your own Claude key in Settings to use Research.`;
 export const NO_EXECUTOR = "Nothing can run here yet: this way of working has no safe, sandboxed place to run its tools, so nothing was started.";
 export const noExecutor: ToolExecutor = async () => { throw new Error(NO_EXECUTOR); };
 /** The executor a runner uses: the one it was given, else the scripted test engine's own; never a silent fallback. */
+// M100: Squibby's own loop (engine/messages-loop) carries its sandboxed executor (ownExecutor), so it is built with one.
 export function executorFor(o: { executor?: ToolExecutor; engine: Engine }): ToolExecutor {
   if (o.executor) return o.executor;
   if (o.engine.executesTools === true) return noExecutor;   // the engine runs its own tools: none are run here
+  if (o.engine.ownExecutor) return o.engine.ownExecutor;
   if (o.engine.testToolRunner) return o.engine.testToolRunner;
   throw new Error(NO_EXECUTOR);
 }
@@ -1388,7 +1392,9 @@ export class AgentRunner {
     const yourTurn = this.setting<boolean>("teach.yourTurn", cmd.project) === true;
     const room = this.room(cmd.project) + prior;
     if (room <= 0) { this.dailyLimit(cmd.agent, cmd.project); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
-    const budget = Math.min(cmd.budgetUsd, room);
+    // An engine with its own limit for one task (Squibby's own loop: HARD_CAP_USD) keeps it for every round of this task, fix
+    // rounds included, since each round is given only what is left of this one budget.
+    const budget = Math.min(cmd.budgetUsd, room, this.o.engine.maxTaskUsd ?? Infinity);
     const store = this.store(cmd.project);
     // Off the record, nothing of the request is kept in the label. A fix for an error the person selected in another app says
     // which app (its display name only, never the selected text); every other label has none of the engine's own words.
@@ -1486,7 +1492,7 @@ export class AgentRunner {
           if (turn.tool) {
             finalWords = ""; afterTool = true;   // what it said before a tool is not what it ended on
             const a = await this.authorizeTool(cmd, session, turn.tool, before.id, notUndoable, ranCommand);
-            try { result = a.allow ? await exec(turn.tool, { project: cmd.project }) : { ok: false, output: a.reason }; }
+            try { result = a.allow ? await exec(turn.tool, { project: cmd.project, signal: abort.signal }) : { ok: false, output: a.reason }; }
             finally { if (a.wid) { this.watchers.get(cmd.agent)?.end(a.wid); this.fileDone(a.wid); } }
             if (a.allow && turn.tool.name === "Bash") this.noteShell(session, result?.shell);
             if (abort.signal.aborted) { status = "interrupted"; return false; }
@@ -1788,7 +1794,7 @@ export class AgentRunner {
     if (this.projectInUse(spec.project)) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", spec.agent); return; }
     const room = this.room(spec.project);
     if (room <= 0) { this.dailyLimit(spec.agent, spec.project); return; }
-    const budget = Math.min(spec.budgetUsd, room);
+    const budget = Math.min(spec.budgetUsd, room, this.o.engine.maxTaskUsd ?? Infinity);
     const maxTurns = this.setting<number>("work.maxTurns", spec.project);
     const abort = new AbortController();
     this.modes.set(spec.agent, spec.mode);
@@ -1817,6 +1823,7 @@ export class AgentRunner {
       // A built in tool Companion never gives keeps its own plain reason (safety.ts NOT_GIVEN), not this flow's general one.
       const notGiven = NOT_GIVEN.get(tool.name);
       let refused = notGiven ? refusal(notGiven) : allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
+      refused ??= this.o.engine.screen?.(tool, spec.project) ?? null;   // M100: the own loop's screen, stricter only
       // The same safety rules as a normal task, with every "ask" turned into "no": these flows only look, inside the project.
       if (!refused && allowed.has(tool.name)) { const v = await withLookup(evaluateReadOnly({ tool: tool.name, input: tool.input }, { project: spec.project }), tool.name, tool.input); if (v.decision !== "allow") refused = refusal(v.reason); }
       const ok = allowed.has(tool.name) && !refused;
@@ -1839,7 +1846,7 @@ export class AgentRunner {
           let result: ToolResult | undefined;
           if (turn.tool) {
             const a = await authorize(turn.tool);
-            result = !a.allow ? { ok: false, output: a.reason } : turn.tool.name === "ExitPlanMode" ? { ok: true, output: "The plan was handed back." } : await exec(turn.tool, { project: spec.project });
+            result = !a.allow ? { ok: false, output: a.reason } : turn.tool.name === "ExitPlanMode" ? { ok: true, output: "The plan was handed back." } : await exec(turn.tool, { project: spec.project, signal: abort.signal });
           } else if (turn.text) text += turn.text + "\n";
           next = await gen.next(result);
         }
@@ -1890,6 +1897,9 @@ export class AgentRunner {
   private async researchAsk(cmd: Extract<Command, { type: "research.ask" }>): Promise<void> {
     const question = cmd.question.replace(/\s+/g, " ").trim();
     if (!question) { this.fail("Research needs a question to look into.", cmd.agent); return; }
+    // Research must cite a web source for every note. On an engine with no web (Squibby's own loop today) it could only answer
+    // from memory with sources that look real, so it is not offered there at all, and nothing is sent.
+    if (this.o.engine.searchesWeb === false) { this.fail(RESEARCH_NO_WEB, cmd.agent); return; }
     const web = new Set([...READ_ONLY_TOOLS, "WebSearch", "WebFetch", "ToolSearch"]);
     const check = (t: ToolUse) => (t.name === "WebFetch" && !isSafeUrl(String(t.input.url ?? ""))) ? refusal("research may only open public web pages, never this computer or a private network") : null;
     await this.readOnly({ mode: "research", agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, allow: web, check, tools: RESEARCH_TOOLS, refuse: refusal("research can look things up, but never change the project") }, async (ask, st) => {
@@ -2937,6 +2947,10 @@ export class AgentRunner {
 
   private async authorizeTool(cmd: StartCmd, s: Session, tool: ToolUse, checkpoint: string, notUndoable: string[], countCommand: (command?: string) => void, sdkId?: string): Promise<{ allow: boolean; reason: string; wid?: string }> {
     const toolUseId = `toolu_${randomBytes(4).toString("hex")}`;
+    // M100: an engine of Squibby's own loop refuses some calls outright, before anything else is judged or asked (a git
+    // write, a file outside the project, a tool it does not have): stricter only, never a way past the checks below.
+    const screened = this.o.engine.screen?.(tool, cmd.project);
+    if (screened) { this.emit({ type: "agent.tool", agent: cmd.agent, tool: tool.name, summary: summary(tool), toolUseId, undoable: true, outcome: "blocked" } as never); return { allow: false, reason: screened }; }
     const base = await withLookup(evaluate({ tool: tool.name, input: tool.input }, { project: cmd.project, started: { shells: s.shells }, ...(s.webSearch === false ? { webSearch: false } : {}) }), tool.name, tool.input);
     // House rules can only make a call stricter, never looser.
     const loaded = loadRules(cmd.project);

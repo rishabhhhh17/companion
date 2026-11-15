@@ -47,6 +47,9 @@ describe("how many fixes an allowance covers", () => {
     expect(costsFrom([{ costUsd: 0.4 }, { costUsd: "x" }, { other: 1 }, 0.5])).toEqual([0.4, 0.5]);
     expect(costsFrom("nope")).toEqual([]);
     expect(costsFrom(null)).toEqual([]);
+    // M100 review: what measure-fixes --out saves reads straight in.
+    expect(costsFrom({ standIn: false, fixes: [{ id: "add", costUsd: 0.1 }, { id: "x", costUsd: 0.2 }] })).toEqual([0.1, 0.2]);
+    expect(costsFrom({ standIn: false, costsUsd: [0.1], fixes: [{ costUsd: 0.1 }] })).toEqual([0.1]);
   });
   test("the script reads a file of fixture costs and prints the report, changing nothing", async () => {
     const dir = mkdtempSync(join(tmpdir(), "m97-allowance-"));
@@ -60,5 +63,21 @@ describe("how many fixes an allowance covers", () => {
     const bad = Bun.spawnSync(["bun", new URL("../scripts/allowance.ts", import.meta.url).pathname, join(dir, "missing.json")], { stdout: "pipe", stderr: "pipe" });
     expect(bad.exitCode).toBe(1);
     expect(bad.stderr.toString()).toContain("Could not read");
+  });
+  test("M100 review: measure-fixes' saved file goes through costsFrom, and the script refuses stand in numbers", async () => {
+    const { costsFile } = await import("../../runner/scripts/measure-fixes.ts");
+    const fixes = [{ id: "add", proven: true, costUsd: 0.4, requests: 4, ended: "done" }, { id: "round", proven: false, costUsd: 0.9, requests: 9, ended: "budget" }];
+    expect(costsFrom(costsFile(fixes, false))).toEqual([0.4, 0.9]);
+    const dir = mkdtempSync(join(tmpdir(), "m100-allowance-"));
+    const script = new URL("../scripts/allowance.ts", import.meta.url).pathname;
+    const real = join(dir, "real.json"), fake = join(dir, "fake.json");
+    writeFileSync(real, JSON.stringify(costsFile(fixes, false)));
+    writeFileSync(fake, JSON.stringify(costsFile(fixes, true)));
+    const ok = Bun.spawnSync(["bun", script, real], { stdout: "pipe", stderr: "pipe" });
+    expect(ok.exitCode).toBe(0);
+    expect(ok.stdout.toString()).toContain("pro: 2 measured fixes.");
+    const no = Bun.spawnSync(["bun", script, fake], { stdout: "pipe", stderr: "pipe" });
+    expect(no.exitCode).toBe(1);
+    expect(no.stderr.toString()).toMatch(/stand in/);
   });
 });

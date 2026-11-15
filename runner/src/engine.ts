@@ -55,15 +55,28 @@ export type EngineOptions = {
 // Thrown by an engine that was stopped by a limit, so the runner can record the right reason and cost.
 export class EngineStop extends Error { constructor(message: string, public costUsd = 0) { super(message); } }
 
-/** Runs one tool call an engine asked for, in the project, and says what happened. */
-export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<ToolResult>;
+/** Runs one tool call an engine asked for, in the project, and says what happened. signal: the task's own stop (Stop, Stop
+ *  everything, a pause), so a command that is running ends at once. */
+export type ToolExecutor = (call: ToolUse, ctx: { project: string; signal?: AbortSignal }) => Promise<ToolResult>;
 
 export interface Engine {
   // true when the engine runs tools itself and asks `authorize` first; false when the runner runs them.
   readonly executesTools?: boolean;
+  /** M100 (F29): an engine of Squibby's own loop carries its sandboxed executor (engine/messages-loop/executor.ts), so the
+   *  runner runs every tool call it asks for there, after judging it. Never the plain test runner. */
+  readonly ownExecutor?: ToolExecutor;
+  /** M100: an engine of Squibby's own loop may refuse a call outright before the runner judges or asks anything (the reason
+   *  goes back to the model). Stricter only: a call it passes is still judged by safety.ts and the cards. */
+  screen?(tool: ToolUse, project: string): string | null;
   /** Must fix 29: only the scripted test engine has one (testToolRunner). An engine that does not run tools itself and has
    *  none must be given an executor (AgentRunner refuses to start without it). */
   readonly testToolRunner?: ToolExecutor;
+  /** M100 review: the most one task may spend on this engine, all its rounds together (a fix round after a failed check, a
+   *  follow up in the same run). The runner clamps the task's budget to it. Absent: the task's own budget is the limit. */
+  readonly maxTaskUsd?: number;
+  /** M100 review: false when the engine has no web search or page fetch (Squibby's own loop today). Research is refused on
+   *  it, since it must cite its sources. Absent: the engine can search (Claude Code). */
+  readonly searchesWeb?: boolean;
   // Yield turns. After a tool turn the runner sends the tool's result back through next().
   start(opts: EngineOptions): AsyncGenerator<Turn, void, ToolResult | undefined>;
 }

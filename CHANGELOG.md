@@ -2,6 +2,16 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Squibby's own fixing, built and switched off: 16 Nov 2026
+
+- **Squibby can now fix things with its own AI loop, paid by Squibby.** You will not need an AI key or an AI account. Squibby asks the AI through its own server, which holds Squibby's key, so that key never sits on your Mac. It is built and tested, but it stays switched off for everyone until the launch checklist is done.
+- **The same safety as before, every step.** Every file it reads or changes and every command it runs is checked first, and anything risky still shows you a card. It never changes your git, never reads your settings or key files, and never touches files outside your project. Commands run in the same safety box the checks use, with no internet except for an install you said yes to, and with no key or sign in token they could read. A search or a message that only mentions git is no longer mistaken for a change to git.
+- **Undo and proof work the same.** A safe copy is made before it changes anything, your project's own checks decide whether a fix is proven (never what the AI says about itself), and Undo puts everything back. Stop everything ends it at once, even in the middle of a command.
+- **A hard limit on what one fix can cost.** Before each request it works out the most that request could cost, and it never sends one that would go past the limit for one fix. That limit covers the whole fix, including the tries after a failed check. Your plan's own limit applies on top.
+- **Fixes from a review (16 Nov):** if an answer is cut off in the middle of writing a file, that half written change is never made; the AI is asked to do it in smaller pieces. Research is not offered on this route yet, because it has no web search here and would have to make up its sources. Before each fix it checks that Squibby's own server can be reached, not Anthropic's. The server lets the fixing tools through only while its own switch is on, and that switch is off.
+- **Handing a fix to your own AI tool stays free.** If you already use Claude Code, Cursor or another tool, Squibby can still give the fix to it, and that costs Squibby nothing.
+- **How many fixes Pro includes is not decided yet.** A small tool runs 10 practice fixes and says what they cost, so the founder can set the number with real figures. It has only run on a stand in so far, which costs nothing and proves nothing about real prices.
+
 ## The usage server, ready for Cloudflare: 15 Nov 2026
 
 - **Nothing you can see changes yet.** This is the groundwork for Squibby paying for your fixes: the server that will hold Squibby's own AI key, so that key never sits on your Mac.

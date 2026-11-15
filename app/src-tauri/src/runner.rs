@@ -104,7 +104,10 @@ pub struct Locations { pub bun: PathBuf, pub runner: PathBuf, pub data: PathBuf,
 /// COMPANION_REVIEW=1 turns on the second model review of risky changes (proof rung 7).
 /// COMPANION_LANES=direct sends the light lanes straight to the Messages API, and COMPANION_MANAGED_BASE names Companion's
 /// usage server (https only) for managed usage (F22, switched off); neither carries a secret.
-const ENV_ALLOWED: &[&str] = &["COMPANION_LANES", "COMPANION_MANAGED_BASE", "COMPANION_ROUTE", "COMPANION_MODEL", "COMPANION_KEYCHAIN_SERVICE", "COMPANION_KEYCHAIN_ACCOUNT", "CLAUDE_CONFIG_DIR", "COMPANION_ASSIST_STUB", "COMPANION_AIM", "COMPANION_AIM_MODEL", "COMPANION_FAST_MODEL", "COMPANION_VISION_MODEL", "COMPANION_REVIEW"];
+/// COMPANION_FIXING_LOOP=on (M100, F29) fixes on Squibby's own loop on managed usage. Only a development build reads the
+/// developer file, so a release build never has it: fixing there stays off until the go live checklist wires it to the
+/// remote switch.
+const ENV_ALLOWED: &[&str] = &["COMPANION_LANES", "COMPANION_MANAGED_BASE", "COMPANION_FIXING_LOOP", "COMPANION_ROUTE", "COMPANION_MODEL", "COMPANION_KEYCHAIN_SERVICE", "COMPANION_KEYCHAIN_ACCOUNT", "CLAUDE_CONFIG_DIR", "COMPANION_ASSIST_STUB", "COMPANION_AIM", "COMPANION_AIM_MODEL", "COMPANION_FAST_MODEL", "COMPANION_VISION_MODEL", "COMPANION_REVIEW"];
 
 pub fn allowed_env(dev: &Value) -> BTreeMap<String, String> {
     dev.get("env").and_then(Value::as_object).map(|o| {
@@ -1181,6 +1184,10 @@ mod tests {
         assert_eq!(d.get("COMPANION_LANES").map(String::as_str), Some("direct"));
         assert_eq!(d.get("COMPANION_MANAGED_BASE").map(String::as_str), Some("https://usage.example.com"));
         assert!(d.get("ANTHROPIC_API_KEY").is_none());
+        // M100: the fixing loop's switch too, and still never a token.
+        let f = allowed_env(&json!({"env": {"COMPANION_FIXING_LOOP": "on", "COMPANION_TOKEN": "cmp_x"}}));
+        assert_eq!(f.get("COMPANION_FIXING_LOOP").map(String::as_str), Some("on"));
+        assert!(!f.contains_key("COMPANION_TOKEN"));
     }
     #[test]
     fn an_installed_app_uses_the_engine_that_came_with_it_and_the_developer_file_still_wins() {

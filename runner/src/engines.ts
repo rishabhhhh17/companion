@@ -14,12 +14,17 @@ import { SdkEngine, resolveClaudeBinary } from "./sdkEngine.ts";
 import { MODELS, modelForChoice } from "./models.ts";
 import type { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
 import { PRODUCT, PRODUCT_S } from "./names.ts";
+import { MessagesLoopEngine, type LoopAuth } from "./engine/messages-loop/loop.ts";
 
 export type Settings = {
   engine: "sdk" | "scripted"; route: "api_key" | "plan" | "managed"; data: string;
   // The light lanes (Prompt help, Explain, Draw it for me, Show me how, pictures, everyday looks): Claude Code (today's default)
   // or straight on the Messages API ("direct", F22 update). Managed usage always uses direct, sent to Companion's own server.
-  lanes: "claude_code" | "direct"; managedBase?: string; ref: KeychainRef; claudeBin?: string; claudeBinId?: string; script: Step[]; model?: string; assistStub: boolean;
+  lanes: "claude_code" | "direct"; managedBase?: string;
+  // M100 (F29): Squibby's own fixing loop on managed usage (engine/messages-loop). Off unless COMPANION_FIXING_LOOP=on, which
+  // only the developer file of a development build can pass today (app/src-tauri runner.rs); a release build stays off until
+  // the go live checklist wires it to the remote switch. Only on the managed route: the own key and plan routes keep Claude Code.
+  fixing: "off" | "loop"; ref: KeychainRef; claudeBin?: string; claudeBinId?: string; script: Step[]; model?: string; assistStub: boolean;
   // For testing, the two small lanes' models can be switched too (the defaults are in models.ts).
   fastModel?: string; visionModel?: string;
   // Experimental pointing through the Computer Use tool (API key route only). Off unless COMPANION_AIM=computer_use.
@@ -43,6 +48,7 @@ export function readSettings(env: Record<string, string | undefined>): Settings 
     engine: env.COMPANION_ENGINE === "scripted" ? "scripted" : "sdk",
     route: env.COMPANION_ROUTE === "plan" ? "plan" : env.COMPANION_ROUTE === "managed" ? "managed" : "api_key",
     lanes: env.COMPANION_LANES === "direct" ? "direct" : "claude_code",
+    fixing: env.COMPANION_FIXING_LOOP === "on" ? "loop" : "off",
     ...(httpsBase(env.COMPANION_MANAGED_BASE) ? { managedBase: httpsBase(env.COMPANION_MANAGED_BASE) } : {}),
     data: env.COMPANION_DATA ?? join(homedir(), "Library", "Application Support", "Companion", "runner"),
     ref: { service: env.COMPANION_KEYCHAIN_SERVICE ?? DEFAULT_REF.service, account: env.COMPANION_KEYCHAIN_ACCOUNT ?? DEFAULT_REF.account },
@@ -113,7 +119,32 @@ class LazySdkEngine implements Engine {
 }
 
 export function createEngine(s: Settings, deps: EngineDeps = {}): Engine {
-  return s.engine === "scripted" ? new ScriptedEngine(s.script) : new LazySdkEngine(s, deps);
+  if (s.engine === "scripted") return new ScriptedEngine(s.script);
+  // M100: on managed usage with the loop switched on, fixing runs on Squibby's own loop through Squibby's server, never on
+  // Claude Code (F22: Squibby may not pay for Claude Code without Anthropic's written yes). Otherwise as before: on managed
+  // usage Claude Code refuses with MANAGED_FIXING_OFF, and the own key and plan routes run Claude Code.
+  if (s.route === "managed" && s.fixing === "loop") return new MessagesLoopEngine({ auth: managedAuth(s, deps), ...(deps.fetchFn ? { fetchFn: deps.fetchFn } : {}) });
+  return new LazySdkEngine(s, deps);
+}
+
+/** M100 review: the address the quick look before each task round checks (must fix 16): the one that round's requests go
+ *  to. Claude Code talks to Anthropic; Squibby's own loop talks to Squibby's usage server, so a blocked Anthropic address never
+ *  stops a fix that would work, and a usage server that is down is caught at once. Null: no look (the scripted test engine,
+ *  or the loop with no server named, where the engine itself says it is not switched on). */
+export function taskReachHost(s: Settings): string | null {
+  if (s.engine !== "sdk") return null;
+  return s.route === "managed" && s.fixing === "loop" ? reachHost(s) : "api.anthropic.com";
+}
+
+/** The sign in token and Squibby's server, for the fixing loop: only a token shaped value, only to an https server named in
+ *  the settings. Never the person's own Claude key (the same rule as the light lanes on managed usage, directLanes). */
+export function managedAuth(s: Settings, deps: EngineDeps = {}): () => Promise<LoopAuth | null> {
+  const key = deps.keyFn ?? (async () => { const a = await resolveAuth(s.ref); return a.method === "api_key" ? a.apiKey : null; });
+  return async () => {
+    if (s.route !== "managed" || !s.managedBase) return null;
+    const k = await key();
+    return k && MANAGED_TOKEN.test(k) ? { token: k, base: s.managedBase } : null;
+  };
 }
 
 // The two small lanes, created per request so they always use the current sign in.

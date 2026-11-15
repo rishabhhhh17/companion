@@ -312,7 +312,7 @@ No continuous screen capture, no keystroke logging, no reading other apps' conte
 | A calm glow or dot as the only presence | Abstract characters with identities and skins | Founder decision; characters carry the brand and make several agents readable |
 | A setup "Brief" form before anything works | Memory without forms; optional questionnaire | Kills first session value |
 | "Next Move" suggestion cards with Send, Edit, Skip through a wrapper command, earning autonomy slowly | Drive mode agents from day one; Prompt help for when the user prompts their own tools | Founder decision: agents from day one |
-| Managed credits by default, Companion paying for models | Bring your own Claude | Anthropic's terms forbid paying for or reselling usage in products that run Claude Code |
+| Managed credits by default, Companion paying for models (no longer dropped: F29, 1 Nov 2026, made Squibby pay for every job; M100 builds it on Squibby's own loop on the plain Messages API) | Bring your own Claude (replaced by F29) | Anthropic's terms forbid paying for or reselling usage in products that run Claude Code, so Squibby pays only on its own loop, never for Claude Code without a written agreement (F22) |
 | A Claude login inside Companion, or touching Claude tokens | The user's own key, cloud credential, or sign in through Anthropic's own flow | Anthropic's terms |
 | WhatsApp for remote control or as a Loop Closer source | Phone web app and Telegram; "paste or export a chat" | Meta's ban on general purpose assistants; no legal personal API |
 | The names Autopilot, Pilot, Copilot, Clicky, Jarvis, Sidekick, anything like Claude | Drive mode; names to be chosen | Taken or risky |

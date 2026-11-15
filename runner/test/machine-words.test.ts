@@ -26,6 +26,10 @@ const NOT_FOR_A_PERSON: Record<string, RegExp> = {
   "sdkEngine.ts": /^`You are working inside a user's project folder/,
   "explain.ts": /^"Never use these words:/,
   "tasklog.ts": /^"(UPDATE|INSERT|SELECT|CREATE)\b/,
+  // M100: Squibby's own loop. Its system prompt and its tool descriptions are read by the model, never by the person, and
+  // must name git to tell the model to leave it alone (like sdkEngine.ts's prompt above).
+  "loop.ts": /^"Never change git \(commits/,
+  "tools.ts": /^"(List the project's files whose paths match|Run one shell command in the project folder)/,
 };
 
 function sourceFiles(dir: string): string[] {
