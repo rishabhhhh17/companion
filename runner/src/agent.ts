@@ -8,7 +8,7 @@ import { runCommand, shq, type RunOptions, type RunResult } from "./proof/exec.t
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import type { Command, Event, Problem } from "../../protocol/index.ts";
+import type { Command, Event, MarkKind, Problem } from "../../protocol/index.ts";
 import { PROTOCOL_VERSION } from "../../protocol/index.ts";
 import { parseDiagnosis, rescueGoal, rescuePrompt } from "./rescue.ts";
 import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
@@ -1036,7 +1036,7 @@ export class AgentRunner {
         try { const m = this.memoryFor(cmd.project); if (m) decisions = pickNotes(p, m).filter((x) => x.kind === "rule" || x.kind === "decision").map((x) => clip(x.text, 300)).slice(0, 10); } catch { /* memory is a nicety here */ }
         // M88 (Your numbers): with the jobs Squibby ran and the days with any row, for the same seven days.
         const now = this.now();
-        this.emit({ type: "week.summary", project: cmd.project, week: { ...this.o.log.week(p, now), ...this.o.log.usage(p, now), decisions } } as never);
+        this.emit({ type: "week.summary", project: cmd.project, week: { ...this.o.log.week(p, now), ...this.o.log.usage(p, now), ...(this.o.log.spared ? { spared: this.o.log.spared(p, now) } : {}), decisions } } as never);
         return;
       }
       // M89: a job kept for after the usage reset, on the person's press only ("Save for after the reset"). One tap on it
@@ -1213,6 +1213,12 @@ export class AgentRunner {
   }
   private projectBusy = new Map<string, string>();   // project folder -> the agent working on it
   private openTasks = new Map<string, number>();     // agent -> its unfinished row in the task log
+  private lastRow = new Map<string, number>();       // M94: agent -> its latest task row (a Drive step's, once it has ended)
+  /** M94 (What Squibby saved you): one real event in the task log, as it happens. Never in the way of the work. */
+  private markSaved(kind: MarkKind, project: string, ref: string | number | undefined, choice?: string): void {
+    if (ref === undefined) return;
+    try { this.o.log.mark?.({ project, kind, ref, at: this.now().toISOString(), ...(choice ? { choice } : {}) }); } catch { /* the count is a nicety */ }
+  }
   private taskUsd = new Map<string, number>();       // agent -> what its running task has booked so far
   private touched = new Set<string>();               // agents whose task has started changing the project
 
@@ -1370,6 +1376,7 @@ export class AgentRunner {
     this.emit({ type: "checkpoint.created", project: cmd.project, agent: cmd.agent, checkpoint: before.id, label: `Before: ${lbl}`, files: before.files, skipped: before.skipped, ...practice } as never);
     const taskId = this.o.log.start({ project: cmd.project, agent: cmd.agent, mode: cmd.mode, label: lbl, startedAt: this.now().toISOString(), checkpoint: before.id });
     this.openTasks.set(cmd.agent, taskId);
+    this.lastRow.set(cmd.agent, taskId);
     this.touched.add(cmd.agent);
     this.state(cmd.agent, "thinking");
 
@@ -1551,6 +1558,8 @@ export class AgentRunner {
         // M58, the fixed ladder: look up this exact error (only with web search on), or go back to Last working and plan
         // (only when a version passed its checks here; the page asks first, and the files go back after the receipt).
         const working = this.lastWorking(cmd.project);
+        // M94: the loop breaker fired: no more automatic tries on this approach. Counted once per task.
+        this.markSaved("loop_stopped", cmd.project, taskId);
         const choice = await this.askStuck(cmd.agent, lbl, lastFailure, abort.signal, end, stuckOptions({ webSearch, lastWorking: !!working && working.snapshot !== before.id }));
         if (choice === "research" && !webSearch) { this.fail("Looking up the error needs Let tasks search the web, which is off in Settings. Nothing more was changed.", cmd.agent); break; }
         if (choice === "lastWorking") { if (working) backTo = working.snapshot; else this.fail("There is no working version saved yet, so nothing was put back.", cmd.agent); break; }
@@ -1615,6 +1624,8 @@ export class AgentRunner {
     // with the words before them. Never off the record's words kept anywhere: the flags are only on this receipt.
     let flags: { kind: "not_asked" | "said_other"; say: string }[] = [];
     try { flags = driftFlags({ request: cmd.prompt ?? "", changed: changed.map((c) => c.file), steps, project: cmd.project }); } catch { flags = []; }
+    // M94: the flags' kinds only (never their words), so an Undo of this task later counts as a wrong change caught.
+    for (const f of flags) this.markSaved("drift", cmd.project, taskId, f.kind);
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(lastSaid && proof !== "passed" && claimsPassed(lastSaid) ? { claimedPassed: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...(notesStay.length ? { notesStay } : {}), ...(flags.length ? { flags } : {}), ...practice } as never);
     // A proven fix (M45: it ended done and its checks passed) counts once toward Free's month (plan.ts). Nothing else does,
     // and an Undo or Bring back later never changes it.
@@ -2422,6 +2433,8 @@ export class AgentRunner {
         // Kept even when it can only be shown: an undo asked for anyway is checked again, and refused with the reason.
         this.bisected.set(key, { before: o.task.before, after: o.task.after, label: o.task.label });
         found = true;
+        // M94: found with the checks alone, no model: counted once per version it names.
+        this.markSaved("bisect_found", cmd.project, o.task.before);
         result("found", { step, task: { label: o.task.label, at: o.task.at, checkpoint: o.task.before }, changed: changed.slice(0, 50), changedCount: changed.length, undo: plan.safe ? "safe" : "show_only", ...(plan.reason ? { why: plan.reason } : {}), ...(diff ? { diff } : {}) });
         return;
       }
@@ -2759,6 +2772,8 @@ export class AgentRunner {
         // The same failure on every check (three, as usual), or with work.askOnAnyFailure any failures: stop and ask, once
         // per step.
         if (r.status === "not_done" && r.stuck && !this.driveStop.has(cmd.agent)) {
+          // M94: the loop breaker fired for this step: counted once, on the step's own task.
+          this.markSaved("loop_stopped", plan.project, this.lastRow.get(cmd.agent));
           this.emit({ type: "loop.stuck", agent: cmd.agent, index, title, failure: r.stuck.failure, options: STUCK_OPTIONS, ...loopHow(r.stuck.end) } as never);
           this.state(cmd.agent, "needsYou");
           const choice = await new Promise<string>((res) => this.choices.set(cmd.agent, res));   // answerChoice forgets it once answered
@@ -2805,6 +2820,8 @@ export class AgentRunner {
         this.costAnswers.set(agent, end);
       });
       this.emit({ type: "cost.resolved", agent, choice } as never);
+      // M94: the pause and what the person chose (Stop everything ends it as a stop), on the task's own row.
+      this.markSaved("cost_paused", c.project, this.openTasks.get(agent), choice);
       if (choice === "keep" && !s.abort.signal.aborted) { c.at = nextPauseAt(c.at); this.state(agent, "working"); return; }
       if (choice === "undo") this.costUndo.set(agent, { project: c.project, checkpoint: c.before });
       s.abort.abort();
@@ -2947,7 +2964,7 @@ export class AgentRunner {
       // M85: the ask and its reason in History, with what the person answered (a stop leaves no row: nobody answered). The
       // row names the command or the file itself (the row's own label says it was asked). An off the record task keeps no
       // row: its words are not kept (M85 review).
-      if (how !== "cancelled" && !cmd.offTheRecord) try { this.o.log.asked({ project: resolve(cmd.project), command: askedWhat(tool), reason: clip(redact(verdict.reason), 300), at: this.now().toISOString(), by: "squibby", answer: how === "allowed" ? (forProject ? "always" : "once") : how === "expired" ? "expired" : "no" }); } catch { /* the row is a nicety */ }
+      if (how !== "cancelled" && !cmd.offTheRecord) try { this.o.log.asked({ project: resolve(cmd.project), command: askedWhat(tool), reason: clip(redact(verdict.reason), 300), at: this.now().toISOString(), by: "squibby", answer: how === "allowed" ? (forProject ? "always" : "once") : how === "expired" ? "expired" : "no", live: !!live }); } catch { /* the row is a nicety */ }
       if (!allowed) { tell("denied"); return { allow: false, reason: how === "cancelled" ? "Stopped: nothing more runs in this task." : `The person said no to this, so ${PRODUCT} did not run it. Carry on without it, or end with one short question if you need them to choose.` }; }
       if (s.abort.signal.aborted) { tell("blocked"); return { allow: false, reason: "Stopped: nothing more runs in this task." }; }
       // A web address that asked was not looked up before the answer (withLookup): it is now, and one that leads to this Mac

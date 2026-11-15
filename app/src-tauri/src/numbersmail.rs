@@ -13,8 +13,10 @@ pub const MAX_JSON: usize = 2_000;
 /// The largest count it may hold.
 const MAX_COUNT: u64 = 1_000_000;
 const TOP: [&str; 10] = ["numbers", "from", "to", "changesReviewed", "filesReviewed", "caught", "fixesProven", "undos", "savedCopies", "savedCopiesUsed"];
-const OPTIONAL: [&str; 3] = ["jobsHanded", "aiToolsConnected", "daysUsed"];
+const OPTIONAL: [&str; 4] = ["jobsHanded", "aiToolsConnected", "daysUsed", "spared"];
 const CAUGHT: [&str; 4] = ["keys", "weakenedChecks", "falseDones", "riskyPackages"];
+/// M94 (What Squibby saved you): the counts of real events that stopped waste, exactly these and nothing else. No amount.
+const SPARED: [&str; 6] = ["loopsStopped", "paused", "pausedStopped", "foundNoModel", "wrongCaught", "liveAsks"];
 
 fn count(v: &Value) -> bool { v.as_u64().is_some_and(|n| n <= MAX_COUNT) }
 fn day(v: &Value) -> bool {
@@ -35,6 +37,8 @@ pub fn check_json(text: &str) -> Result<(), &'static str> {
             "from" | "to" => day(x),
             "caught" => x.as_object().is_some_and(|c| c.len() == CAUGHT.len() && CAUGHT.iter().all(|ck| c.get(*ck).is_some_and(count))),
             "daysUsed" => x.as_u64().is_some_and(|n| n <= 8),
+            "spared" => x.as_object().is_some_and(|c| c.len() == SPARED.len() && SPARED.iter().all(|sk| c.get(*sk).is_some_and(count))
+                && c["pausedStopped"].as_u64() <= c["paused"].as_u64()),
             k if TOP.contains(&k) || OPTIONAL.contains(&k) => count(x),
             _ => false,
         };
@@ -77,7 +81,7 @@ pub fn mailto(to: &str, subject: &str, body: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    const OK: &str = r#"{"numbers":1,"from":"2026-11-07","to":"2026-11-14","changesReviewed":6,"filesReviewed":14,"caught":{"keys":1,"weakenedChecks":1,"falseDones":2,"riskyPackages":1},"fixesProven":3,"undos":1,"savedCopies":2,"savedCopiesUsed":1,"jobsHanded":4,"aiToolsConnected":2,"daysUsed":5}"#;
+    const OK: &str = r#"{"numbers":1,"from":"2026-11-07","to":"2026-11-14","changesReviewed":6,"filesReviewed":14,"caught":{"keys":1,"weakenedChecks":1,"falseDones":2,"riskyPackages":1},"fixesProven":3,"undos":1,"savedCopies":2,"savedCopiesUsed":1,"jobsHanded":4,"aiToolsConnected":2,"daysUsed":5,"spared":{"loopsStopped":2,"paused":1,"pausedStopped":1,"foundNoModel":1,"wrongCaught":2,"liveAsks":1}}"#;
 
     #[test]
     fn only_counts_and_dates_pass() {
@@ -92,6 +96,17 @@ mod tests {
             let mut v: Value = serde_json::from_str(OK).unwrap(); v[k] = serde_json::from_str(bad).unwrap();
             assert!(check_json(&v.to_string()).is_err(), "{k}={bad}");
         }
+        // M94: What Squibby saved you is exactly its six counts: never an amount, a word, or more stopped pauses than pauses.
+        for (k, bad) in [("usdSaved", "3"), ("tokensSaved", "1200"), ("note", r#""stopped the payment loop""#)] {
+            let mut v: Value = serde_json::from_str(OK).unwrap(); v["spared"][k] = serde_json::from_str(bad).unwrap();
+            assert!(check_json(&v.to_string()).is_err(), "spared.{k} must never ride along");
+        }
+        for (k, bad) in [("loopsStopped", "-1"), ("paused", "1.5"), ("liveAsks", r#""2""#), ("pausedStopped", "5")] {
+            let mut v: Value = serde_json::from_str(OK).unwrap(); v["spared"][k] = serde_json::from_str(bad).unwrap();
+            assert!(check_json(&v.to_string()).is_err(), "spared.{k}={bad}");
+        }
+        let mut v: Value = serde_json::from_str(OK).unwrap(); v["spared"].as_object_mut().unwrap().remove("wrongCaught");
+        assert!(check_json(&v.to_string()).is_err(), "all six or none");
         let mut v: Value = serde_json::from_str(OK).unwrap(); v["caught"]["note"] = Value::from("the key was sk-live-123");
         assert!(check_json(&v.to_string()).is_err(), "no words inside what was caught either");
         let mut v: Value = serde_json::from_str(OK).unwrap(); v.as_object_mut().unwrap().remove("undos");

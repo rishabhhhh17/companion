@@ -491,7 +491,19 @@ export type WeekView = {
   /** M88 (Your numbers): tasks Squibby ran for the person in the seven days, and the days with any row (at most 8, as the
    *  seven days can touch eight dates). Counts only. */
   jobs?: number; days?: number;
+  /** M94 (What Squibby saved you): real events that stopped waste in the same seven days, each counted once (tasklog.ts
+   *  spared). Counts only: no amount ever reaches a page (F29, M69). */
+  spared?: SparedView;
 };
+/** M94: the task log's marks, one per real event (tasklog.ts mark). */
+export const MARK_KINDS = ["loop_stopped", "cost_paused", "bisect_found", "drift"] as const;
+export type MarkKind = (typeof MARK_KINDS)[number];
+/** M94: loopsStopped, tasks the fix loop breaker stopped; paused, tasks the cost pause stopped to ask about, and
+ *  pausedStopped, those the person then stopped or undid (never more than paused); foundNoModel, versions Which task broke
+ *  it? named with no model; wrongCaught, wrong changes a review flagged that the person then fixed or undid; liveAsks, asks
+ *  before a command that touches a live system. Saved copies before destructive commands are WeekView.saved already. */
+export const SPARED_KEYS = ["loopsStopped", "paused", "pausedStopped", "foundNoModel", "wrongCaught", "liveAsks"] as const;
+export type SparedView = Record<(typeof SPARED_KEYS)[number], number>;
 export type WeekShow = Envelope & { type: "week.show"; project: string };
 export type WeekSummary = Envelope & { type: "week.summary"; project: string; week: WeekView };
 /** sinceCheck (must fix 11): whether the project's files changed since the version its last passed check ran on ("same" or
@@ -828,6 +840,12 @@ const caughtOk: Check = (m) => {
   const ok = !!c && typeof c === "object" && !Array.isArray(c) && typeof c.since === "string" && ["falseDones", "keys", "weakened", "saved", "undone"].every((k) => Number.isInteger(c[k]) && (c[k] as number) >= 0);
   return ok ? null : '"caught" must count falseDones, keys, weakened, saved and undone from a since date';
 };
+/** M94: exactly the known counts, each a whole number from 0, and never more stopped pauses than pauses. */
+const sparedOk = (v: unknown): boolean => {
+  const o = v as Record<string, unknown> | null;
+  return !!o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).length === SPARED_KEYS.length
+    && SPARED_KEYS.every((k) => Number.isInteger(o[k]) && (o[k] as number) >= 0) && (o.pausedStopped as number) <= (o.paused as number);
+};
 /** M79: the weekly summary's counts, each a whole number from 0, two real dates, and at most 10 decisions as text. */
 const weekOk: Check = (m) => {
   const w = m.week as Record<string, unknown> | null;
@@ -837,7 +855,8 @@ const weekOk: Check = (m) => {
     && ["reviews", "files", "proven", "undone", "saved", "savedUsed", "againstRules"].every((k) => n(w, k))
     && !!c && typeof c === "object" && !Array.isArray(c) && ["keys", "weakened", "falseDones", "packages"].every((k) => n(c, k))
     && Array.isArray(w.decisions) && w.decisions.length <= 10 && w.decisions.every((d) => typeof d === "string" && d.length > 0 && d.length <= 300)
-    && (w.jobs === undefined || n(w, "jobs")) && (w.days === undefined || (n(w, "days") && (w.days as number) <= 8));
+    && (w.jobs === undefined || n(w, "jobs")) && (w.days === undefined || (n(w, "days") && (w.days as number) <= 8))
+    && (w.spared === undefined || sparedOk(w.spared));
   return ok ? null : '"week" must count reviews, files, proven, undone, saved, savedUsed and againstRules, what was caught, and at most 10 decisions, from since to until';
 };
 // M77: what the changes did not tell you: file names (at most 5) and counts.

@@ -12,7 +12,7 @@ import { S } from "./strings.ts";
 import { invoke, listen } from "./tauri.ts";
 import { Button, ListGroup, ListRow } from "./ui/parts.tsx";
 import { weekAsk, weekFrom, weekPage } from "./weekSummary.ts";
-import { mailArgs, NUMBERS_TO, numbersJson, numbersOf, numbersRows, toolsConnected, type YourNumbers } from "./yourNumbers.ts";
+import { mailArgs, NUMBERS_TO, numbersJson, numbersOf, numbersRows, sparedRows, toolsConnected, type YourNumbers } from "./yourNumbers.ts";
 
 const css = (name: string) => (typeof document === "undefined" ? "" : getComputedStyle(document.documentElement).getPropertyValue(name));
 
@@ -58,6 +58,14 @@ export function NumbersPart({ project, send }: { project: string; send: (cmd: un
             {week && <p className="line muted">{weekPage(week).range}</p>}
             <table className="numbers-table"><tbody>{numbersRows(n).map((r) => <tr key={r.id}><td>{r.label}</td><td className="numbers-n">{r.value}</td></tr>)}</tbody></table>
             <p className="line muted">{t.fromRows}</p>
+            <section className="numbers-spared" aria-labelledby="numbers-spared-title">
+              <p className="line" id="numbers-spared-title" role="heading" aria-level={4}><b>{S.m94.title}</b></p>
+              <p className="line muted">{S.m94.lead}</p>
+              {sparedRows(n).length ? (
+                <table className="numbers-table"><tbody>{sparedRows(n).map((r) => <tr key={r.id}><td>{r.label}</td><td className="numbers-n">{r.value}</td></tr>)}</tbody></table>
+              ) : <p className="line">{S.m94.notCounted}</p>}
+              <p className="line muted">{S.m94.savedAbove}</p>
+            </section>
             {!sending ? (
               <div className="row"><Button size="sm" onClick={() => { setSending(true); setSaid(null); }}>{t.send}</Button><Button size="sm" onClick={() => setOpen(false)}>{t.close}</Button></div>
             ) : (

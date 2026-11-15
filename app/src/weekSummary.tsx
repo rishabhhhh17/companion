@@ -37,6 +37,10 @@ export function WeekPart({ project, send }: { project: string; send: (cmd: unkno
               {page.lines.map((l) => <p className="line" key={l}>{l}</p>)}
               <p className="line"><b>{S.m79.week.caughtTitle}</b></p>
               {page.caught.length ? <ul>{page.caught.map((l) => <li className="line" key={l}>{l}</li>)}</ul> : <p className="line">{S.m79.week.caughtNone}</p>}
+              {page.spared.length > 0 && (<>
+                <p className="line" id="week-spared-title"><b>{S.m94.title}</b></p>
+                <ul aria-labelledby="week-spared-title">{page.spared.map((l) => <li className="line" key={l}>{l}</li>)}</ul>
+              </>)}
             </>)}
             <p className="line"><b>{page.decisionsTitle}</b></p>
             {page.decisions.length ? <ul>{page.decisions.map((d) => <li className="line" key={d}>{d}</li>)}</ul> : <p className="line muted">{S.m79.week.decisionsNone}</p>}

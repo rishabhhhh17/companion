@@ -4,7 +4,7 @@
 // which checks it again and opens a mail draft (the person sends it, or not). The JSON holds counts and dates only: no
 // project name, no file name, no words from any review, no decision. Settings, Privacy turns the page off (numbers.yours).
 // Every word is in strings.ts; the address is in numbers.json, the one config spot (empty until the founder sets one).
-import type { WeekView } from "../../protocol/index.ts";
+import { SPARED_KEYS, type SparedView, type WeekView } from "../../protocol/index.ts";
 import { connection } from "./aiTools.ts";
 import { DONE_TOOLS, type DoneState } from "./doneSignal.ts";
 import NUMBERS_FILE from "./numbers.json";
@@ -17,6 +17,8 @@ export type YourNumbers = {
   caught: { keys: number; weakenedChecks: number; falseDones: number; riskyPackages: number };
   fixesProven: number; undos: number; savedCopies: number; savedCopiesUsed: number;
   jobsHanded?: number; aiToolsConnected?: number; daysUsed?: number;
+  /** M94: What Squibby saved you, the same counts the page shows (none from an older engine). */
+  spared?: SparedView;
 };
 
 /** The one config spot for where the numbers go: an email address, or empty (the draft opens with an empty To line). */
@@ -39,6 +41,7 @@ export function numbersOf(w: WeekView, tools: number | null): YourNumbers {
     ...(typeof w.jobs === "number" ? { jobsHanded: w.jobs } : {}),
     ...(typeof tools === "number" ? { aiToolsConnected: tools } : {}),
     ...(typeof w.days === "number" ? { daysUsed: w.days } : {}),
+    ...(w.spared ? { spared: { ...w.spared } } : {}),
   };
 }
 
@@ -52,6 +55,7 @@ export function numbersJson(n: YourNumbers): string {
   if (n.jobsHanded !== undefined) o.jobsHanded = n.jobsHanded;
   if (n.aiToolsConnected !== undefined) o.aiToolsConnected = n.aiToolsConnected;
   if (n.daysUsed !== undefined) o.daysUsed = n.daysUsed;
+  if (n.spared) o.spared = Object.fromEntries(SPARED_KEYS.map((k) => [k, n.spared![k]]));
   return JSON.stringify(o, null, 2);
 }
 
@@ -69,3 +73,14 @@ export function numbersRows(n: YourNumbers): { id: keyof typeof S.m88.numbers.ro
 /** What the shell is handed on the second press: the JSON and the subject's words (it reads the address itself, from the
  *  same numbers.json, and checks the JSON again). */
 export const mailArgs = (n: YourNumbers): { json: string; subject: string } => ({ json: numbersJson(n), subject: S.m88.numbers.mailSubject });
+
+
+/** M94: What Squibby saved you, every count with its label, in a fixed order (the stopped pauses said in the paused row's label). Empty when the engine sent none (the page
+ *  then says Not counted once, never a made up zero). */
+export function sparedRows(n: YourNumbers): { id: Exclude<(typeof SPARED_KEYS)[number], "pausedStopped">; label: string; value: string }[] {
+  const sp = n.spared;
+  if (!sp) return [];
+  // The stopped pauses are a part of the paused row (its label says how many), not a row of their own.
+  return SPARED_KEYS.filter((k): k is Exclude<typeof k, "pausedStopped"> => k !== "pausedStopped")
+    .map((k) => ({ id: k, label: k === "paused" ? S.m94.pausedLabel(sp.pausedStopped) : S.m94.rows[k], value: String(sp[k]) }));
+}

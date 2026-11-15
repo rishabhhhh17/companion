@@ -79,7 +79,8 @@ describe("week.show", () => {
     expect(c.length).toBe(1);
     for (const l of c) expect(parseCommand(l).ok).toBe(true);
     const ev = fixtureLines("events.jsonl").filter((l) => l.includes('"type":"week.summary"'));
-    expect(ev.length).toBe(2);
+    // M94: a third week, m94e1, carries What Squibby saved you.
+    expect(ev.length).toBe(3);
     for (const l of ev) expect(parseEvent(l).ok).toBe(true);
     // A count that is not a whole number, or too many decisions, is refused.
     const bad = JSON.parse(ev[0]); bad.week.reviews = -1;

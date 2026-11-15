@@ -874,6 +874,14 @@ mod tests {
             "caught": { "keys": w["caught"]["keys"], "weakenedChecks": w["caught"]["weakened"], "falseDones": w["caught"]["falseDones"], "riskyPackages": w["caught"]["packages"] },
             "fixesProven": w["proven"], "undos": w["undone"], "savedCopies": w["saved"], "savedCopiesUsed": w["savedUsed"], "jobsHanded": w["jobs"], "aiToolsConnected": 2, "daysUsed": w["days"] });
         assert_eq!(crate::numbersmail::check_json(&sent.to_string()), Ok(()));
+        // M94: the week that carries What Squibby saved you (m94e1): its counts, as the page sends them, pass too.
+        let w = &weeks.iter().find(|w| w["id"] == "m94e1").unwrap()["week"];
+        let sp = &w["spared"];
+        for k in ["loopsStopped", "paused", "pausedStopped", "foundNoModel", "wrongCaught", "liveAsks"] { assert!(sp[k].as_u64().is_some(), "{k}"); }
+        assert_eq!(sp.as_object().unwrap().len(), 6, "counts only, nothing else");
+        let mut sent = sent;
+        sent["spared"] = sp.clone();
+        assert_eq!(crate::numbersmail::check_json(&sent.to_string()), Ok(()));
     }
     #[test]
     fn m89_saved_jobs_pass_only_for_the_chosen_project_and_the_runway_carries_numbers_and_times_only() {
@@ -917,7 +925,8 @@ mod tests {
         }
         let events = include_str!("../../../protocol/fixtures/events.jsonl");
         let weeks: Vec<Value> = events.lines().filter(|l| l.contains("\"type\":\"week.summary\"")).map(|l| serde_json::from_str(l).unwrap()).collect();
-        assert_eq!(weeks.len(), 2);
+        // M94: a third week (m94e1) carries What Squibby saved you.
+        assert_eq!(weeks.len(), 3);
         for w in &weeks {
             for k in ["reviews", "files", "proven", "undone", "saved", "savedUsed", "againstRules"] { assert!(w["week"][k].as_u64().is_some(), "{k}"); }
             // Counts only: no amount, no streak, no score anywhere in the summary.

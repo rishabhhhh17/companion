@@ -3,7 +3,7 @@
 // (week.summary): changes reviewed, what was caught, fixes proven, Undos, copies saved before destructive commands, and
 // the decisions and house rules Claude Code is told at the start. Parts at zero are left out; an empty week says so
 // plainly. Counts only: no streak, no praise, no score (rule 16). Every word is in strings.ts.
-import type { WeekView } from "../../protocol/index.ts";
+import { SPARED_KEYS, type SparedView, type WeekView } from "../../protocol/index.ts";
 import { showWeek } from "./commands.ts";
 import { dayWords } from "./plan.ts";
 import { S } from "./strings.ts";
@@ -24,16 +24,46 @@ export function weekFrom(e: unknown, project: string): WeekView | null {
   const decisions = Array.isArray(w.decisions) ? w.decisions.filter((d): d is string => typeof d === "string" && d.length > 0).slice(0, 10).map((d) => d.slice(0, 300)) : [];
   // M88 (Your numbers): the jobs and the days used, when the engine counted them (a count that is not a count is dropped).
   const jobs = n("jobs"), days = n("days");
-  return { since: w.since, until: w.until, ...(counts as Record<keyof typeof counts, number>), caught: caught as WeekView["caught"], decisions, ...(jobs !== null ? { jobs } : {}), ...(days !== null && days <= 8 ? { days } : {}) };
+  const spared = sparedFrom(w.spared);
+  return { since: w.since, until: w.until, ...(counts as Record<keyof typeof counts, number>), caught: caught as WeekView["caught"], decisions, ...(jobs !== null ? { jobs } : {}), ...(days !== null && days <= 8 ? { days } : {}), ...(spared ? { spared } : {}) };
 }
 
-/** Whether anything at all happened in the week (the decisions are standing notes, not something that happened). */
-export const weekEmpty = (w: WeekView): boolean => w.reviews + w.proven + w.undone + w.saved + w.caught.keys + w.caught.weakened + w.caught.falseDones + w.caught.packages === 0;
+/** M94: What Squibby saved you, as the engine counted it: exactly the known counts, each whole, and never more stopped
+ *  pauses than pauses. Anything else drops the whole part (it then says Not counted), never a made up zero. */
+export function sparedFrom(v: unknown): SparedView | null {
+  const o = v as Record<string, unknown> | null;
+  if (!o || typeof o !== "object" || Array.isArray(o) || Object.keys(o).length !== SPARED_KEYS.length) return null;
+  const out = {} as SparedView;
+  for (const k of SPARED_KEYS) { const x = whole(o[k]); if (x === null) return null; out[k] = x; }
+  return out.pausedStopped <= out.paused ? out : null;
+}
+
+/** M94: This week's list for What Squibby saved you: only the parts above zero, one to a line, or none at all. */
+export function sparedLine(sp: SparedView | undefined): string[] {
+  if (!sp) return [];
+  const t = S.m94.week;
+  const parts = [
+    ...(sp.loopsStopped ? [t.loops(sp.loopsStopped)] : []),
+    ...(sp.paused ? [t.paused(sp.paused, sp.pausedStopped)] : []),
+    ...(sp.foundNoModel ? [t.found(sp.foundNoModel)] : []),
+    ...(sp.wrongCaught ? [t.wrong(sp.wrongCaught)] : []),
+    ...(sp.liveAsks ? [t.live(sp.liveAsks)] : []),
+  ];
+  return parts;
+}
+
+/** Whether anything at all happened in the week (the decisions are standing notes, not something that happened). M94:
+ *  What Squibby saved you counts too (a stopped fix loop is something that happened); its stopped pauses are already
+ *  among its pauses, so they are not added again. */
+const sparedSum = (sp: SparedView | undefined): number => (sp ? sp.loopsStopped + sp.paused + sp.foundNoModel + sp.wrongCaught + sp.liveAsks : 0);
+export const weekEmpty = (w: WeekView): boolean => w.reviews + w.proven + w.undone + w.saved + w.caught.keys + w.caught.weakened + w.caught.falseDones + w.caught.packages + sparedSum(w.spared) === 0;
 
 const two = (n: number) => String(n).padStart(2, "0");
 const localDay = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`; };
 
-export type WeekPage = { title: string; range: string; empty: boolean; lines: string[]; caught: string[]; decisionsTitle: string; decisions: string[]; rules: string };
+export type WeekPage = { title: string; range: string; empty: boolean; lines: string[]; caught: string[]; decisionsTitle: string; decisions: string[]; rules: string;
+  /** M94: What Squibby saved you, the parts above zero, or none. */
+  spared: string[] };
 /** The page in words. Only parts above zero; an empty week is one plain line. The house rules line is said only when
  *  something was reviewed (otherwise there is nothing it could rest on). */
 export function weekPage(w: WeekView): WeekPage {
@@ -54,6 +84,7 @@ export function weekPage(w: WeekView): WeekPage {
     title: s.title, range: s.range(dayWords(localDay(w.since)), dayWords(localDay(w.until))), empty: weekEmpty(w), lines, caught,
     decisionsTitle: s.decisionsTitle, decisions: w.decisions,
     rules: w.reviews ? (w.againstRules ? s.againstRules(w.againstRules) : s.noneAgainstRules) : "",
+    spared: sparedLine(w.spared),
   };
 }
 

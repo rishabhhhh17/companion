@@ -65,7 +65,10 @@ const WEEK_TABLE_ONLY = new Set(["jobs", "tools", "days"]);
  *  counts those sentences do not say (jobs handed, AI tools connected, days used). Each count is said once. */
 export function shareFromWeek(w: WeekView, project: string, tools: number | null, now: Date): ShareDoc {
   const p = weekPage(w), name = projectName(project);
-  const summary = p.empty ? [S.m79.week.empty] : [...p.lines, ...p.caught.map((c) => `${c}.`)];
+  // M94: a week whose only events are what Squibby saved is not empty, and this page does not carry that part, so it
+  // says nothing was caught rather than a blank summary.
+  const said = [...p.lines, ...p.caught.map((c) => `${c}.`)];
+  const summary = p.empty ? [S.m79.week.empty] : said.length ? said : [S.m79.week.caughtNone];
   return { kind: "week", title: S.m88.share.weekHead, project: name, day: dayOf(now.toISOString()), dateWords: p.range, summary, proof: null, counts: numbersRows(numbersOf(w, tools)).filter((r) => WEEK_TABLE_ONLY.has(r.id) && r.value !== S.m88.numbers.notCounted).map((r) => ({ label: r.label, value: r.value })) };
 }
 

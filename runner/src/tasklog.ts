@@ -5,7 +5,8 @@ import { openDatabase } from "./db.ts";
 import { PRODUCT } from "./names.ts";
 import { CheckpointStore } from "./checkpoints.ts";
 import { clip, redact } from "./redact.ts";
-import { REVIEW_CHECKS, REVIEW_DID, REVIEW_RATINGS, REVIEW_TOUCHES, type ReviewChecks, type ReviewRating, type ReviewRowView, type ReviewTouch, type WeekView } from "../../protocol/index.ts";
+import { LIVE_TAIL } from "./livesystems.ts";
+import { MARK_KINDS, REVIEW_CHECKS, REVIEW_DID, REVIEW_RATINGS, REVIEW_TOUCHES, type MarkKind, type ReviewChecks, type ReviewRating, type ReviewRowView, type ReviewTouch, type SparedView, type WeekView } from "../../protocol/index.ts";
 
 /** M57 feature 1: a review that ran, as it is kept. Names of files only, never their text. */
 export type ReviewRowIn = { project: string; batch: string; at: string; files: string[]; count: number; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; summary: string;
@@ -23,6 +24,12 @@ const ASKED_PREFIX = "Asked first: ";
 /** M85: an ask as History shows it (protocol AskedRowView). */
 export type AskedRow = { id: number; at: string; command: string; reason: string; by: "tool" | "squibby"; answer?: "once" | "always" | "no" | "expired" };
 const SAVED_PREFIX = "Before Claude ran: ";
+/** M94: what each kind of mark may say as its choice; anything else is dropped (never free text). */
+const MARK_CHOICES: Record<MarkKind, readonly string[]> = { loop_stopped: [], cost_paused: ["keep", "stop", "undo"], bisect_found: [], drift: ["not_asked", "said_other"] };
+/** M94: the review reasons that mean a wrong change (a loosened test, words that say the checks pass when they did not, checks
+ *  that failed), and what the person did with it that counts: Fix it, or sent back to their own AI. */
+const WRONG_KINDS = ["weakened_check", "claimed_passed", "checks_failed"];
+const WRONG_DID = ["fix", "sent_back"];
 const WEEK_MS = 7 * 86_400_000;
 export type ReviewDid = (typeof REVIEW_DID)[number];
 /** The most file names a row keeps, and how long its summary may be. */
@@ -73,6 +80,13 @@ export class TaskLog {
     if (!have.includes("failed_check")) this.db.run("ALTER TABLE tasks ADD COLUMN failed_check TEXT");
     // M85: why an ask was asked (its plain reason, redacted), for an ask row.
     if (!have.includes("note")) this.db.run("ALTER TABLE tasks ADD COLUMN note TEXT");
+    // M94: 1 when an ask was about a live system (a copy on this Mac can't bring it back), for What Squibby saved you.
+    if (!have.includes("live")) this.db.run("ALTER TABLE tasks ADD COLUMN live INTEGER NOT NULL DEFAULT 0");
+    // M94 (What Squibby saved you): one row per real event that stopped waste, as it happened. kind: the event; ref: what it
+    // was about (a task's id, or the version Which task broke it? found), so one event is counted once however often it is
+    // written; choice: the person's answer where there is one (a known word only). No words, no amounts.
+    this.db.run(`CREATE TABLE IF NOT EXISTS marks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL, choice TEXT)`);
     // M57 feature 1: one row per review that ran. Names of files only, the summary with secrets hidden, and what the person
     // did with it. No file text, no diff and no reasons' words are ever kept here.
     this.db.run(`CREATE TABLE IF NOT EXISTS reviews (
@@ -99,9 +113,46 @@ export class TaskLog {
   /** M85: an ask, as its own finished row (mode ask): the person's own tool was told to ask (agent "tool", status asked),
    *  or Squibby's own card asked and the person answered (agent "squibby", status once, always, no or expired). Never a
    *  task, so nothing reads a verdict from it. */
-  asked(r: { project: string; command: string; reason: string; at: string; by: "tool" | "squibby"; answer?: "once" | "always" | "no" | "expired" }): number {
-    const q = this.db.query("INSERT INTO tasks (project, agent, mode, label, status, started_at, ended_at, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-    return Number(q.run(r.project, r.by, ASK_MODE, clip(redact(`${ASKED_PREFIX}${r.command}`), 120), r.by === "tool" ? "asked" : r.answer ?? "no", r.at, r.at, clip(redact(r.reason), 300)).lastInsertRowid);
+  asked(r: { project: string; command: string; reason: string; at: string; by: "tool" | "squibby"; answer?: "once" | "always" | "no" | "expired"; live?: boolean }): number {
+    // M94: live, the ask was about a live system. The person's own tool is only ever told to ask about one (guard.ts).
+    const live = r.live ?? (r.by === "tool" || r.reason.includes(LIVE_TAIL));
+    const q = this.db.query("INSERT INTO tasks (project, agent, mode, label, status, started_at, ended_at, note, live) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    return Number(q.run(r.project, r.by, ASK_MODE, clip(redact(`${ASKED_PREFIX}${r.command}`), 120), r.by === "tool" ? "asked" : r.answer ?? "no", r.at, r.at, clip(redact(r.reason), 300), live ? 1 : 0).lastInsertRowid);
+  }
+  /** M94: one real event that stopped waste (MARK_KINDS), as it happened. Never in the way: a write that fails is dropped. */
+  mark(r: { project: string; kind: MarkKind; ref: string | number; at: string; choice?: string }): void {
+    try {
+      if (!(MARK_KINDS as readonly string[]).includes(r.kind)) return;
+      const ref = String(r.ref);
+      if (!/^[A-Za-z0-9_-]{1,80}$/.test(ref)) return;
+      const choice = r.choice && MARK_CHOICES[r.kind].includes(r.choice) ? r.choice : null;
+      this.db.query("INSERT INTO marks (project, at, kind, ref, choice) VALUES (?, ?, ?, ?, ?)").run(r.project, r.at, r.kind, ref, choice);
+    } catch { /* never in the way */ }
+  }
+  /** M94 (What Squibby saved you): the same seven days as week(), counted from real rows only, each event once.
+   *  loopsStopped: tasks the fix loop breaker stopped and asked about. paused: tasks the cost pause stopped to ask about;
+   *  pausedStopped: those the person then stopped or undid (Stop everything ends a pause as a stop). foundNoModel: the
+   *  versions Which task broke it? named (it runs the checks only, never a model). wrongCaught: reviews that flagged a
+   *  loosened test, a done that was not done or failed checks and that the person then fixed (Fix it, or sent back to their
+   *  AI), and Squibby's own tasks flagged Not what you asked for or Said one thing, ran another that the person undid.
+   *  liveAsks: asks before a command that touches a live system. Counts only: no amount ever (F29, M69). */
+  spared(project: string, now: Date = new Date()): SparedView {
+    const since = new Date(now.getTime() - WEEK_MS).toISOString(), until = now.toISOString();
+    const n = (sql: string, ...args: unknown[]): number => { try { return Number((this.db.query(sql).get(...(args as never[])) as { n: number } | null)?.n ?? 0); } catch { return 0; } };
+    const marks = (kind: MarkKind, extra = "") => n(`SELECT COUNT(DISTINCT ref) AS n FROM marks WHERE project = ? AND kind = ? AND at >= ? AND at <= ?${extra}`, project, kind, since, until);
+    const reviews = (() => { try { return this.db.query("SELECT checks, kinds, did FROM reviews WHERE project = ? AND at >= ? AND at <= ?").all(project, since, until) as { checks: string; kinds: string; did: string }[]; } catch { return []; } })();
+    const kindsOf = (t: string): string[] => { try { const v = JSON.parse(t); return Array.isArray(v) ? v.map(String) : []; } catch { return []; } };
+    const reviewsFixed = reviews.filter((r) => WRONG_DID.includes(r.did) && (r.checks === "failed" || kindsOf(r.kinds).some((k) => WRONG_KINDS.includes(k)))).length;
+    const driftUndone = n(`SELECT COUNT(DISTINCT m.ref) AS n FROM marks m JOIN tasks t ON t.id = CAST(m.ref AS INTEGER) AND t.project = m.project
+      WHERE m.project = ? AND m.kind = 'drift' AND m.at >= ? AND m.at <= ? AND t.mode != ? AND t.mode != ? AND t.undone_by IS NOT NULL`, project, since, until, GUARD_MODE, ASK_MODE);
+    return {
+      loopsStopped: marks("loop_stopped"),
+      paused: marks("cost_paused"),
+      pausedStopped: marks("cost_paused", " AND choice IN ('stop', 'undo')"),
+      foundNoModel: marks("bisect_found"),
+      wrongCaught: reviewsFixed + driftUndone,
+      liveAsks: n("SELECT COUNT(*) AS n FROM tasks WHERE project = ? AND mode = ? AND started_at >= ? AND started_at <= ? AND (live = 1 OR note LIKE ?)", project, ASK_MODE, since, until, `%${LIVE_TAIL}%`),
+    };
   }
   /** M85: the project's asks, newest first, at most 50. */
   askedRows(project: string, limit = 50): AskedRow[] {

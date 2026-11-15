@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## What Squibby saved you: 15 Nov 2026
+
+- **Your numbers now says what Squibby stopped or caught.** Under History, Your numbers has a new part, What Squibby saved you, for the last seven days: fix loops it stopped instead of trying the same way again, tasks it paused for using far more than usual (and how many of those you then stopped or undid, said on the same row), broken tasks Which task broke it found using only your checks, wrong changes a review caught that you then fixed or undid (a loosened test, a done that was not done, failed checks, or a change that was not what you asked for or that said one thing and ran another), and asks before a command that touches a live system. Copies saved before a destructive command were already counted there. A weakened check or a done that was not done shows in both parts once you fixed it or undid it, and the page says so.
+- **Only what really happened.** Every count comes from this project's own history on this Mac, and each event is counted one time in this part. There is no guess, and no estimate of time, tokens or money saved. No amount is ever shown, as with the rest of Squibby.
+- **This week lists it under its own title,** What Squibby saved you, one short line per kind, for example "2 fix loops stopped" and "1 ask before a live system". Nothing is said when there is nothing to count. A week where the only thing that happened was, say, a stopped fix loop no longer says nothing happened.
+- **Send these numbers** carries the same counts and nothing else. You still see the exact text first, and nothing leaves your Mac unless you send the draft yourself.
+- Squibby now writes down these moments as they happen. Weeks from before this version show only what was already kept (reviews you then fixed, and asks before live systems); the rest starts counting from now.
+
 ## A calmer notch: a hello and one button: 15 Nov 2026
 
 - **Pointing at the notch shows much less.** "Hey Sam" (your name from Settings) beside the character, one short line only when something matters, and one button that fits the moment, with Open Home beside it. For example: "2 changes to review" and Review changes, "A check failed" and Fix it, "Claude is waiting for you" and See what Claude asks, or just Check my project when nothing is new. While a job runs, the button is Stop. If Squibby is not running, it says so, with See why.

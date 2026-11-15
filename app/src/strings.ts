@@ -3989,4 +3989,29 @@ export const S = {
     // M93: the usage ring moves from the hover panel to Now in Home.
     runwayLabel: "Claude usage",
   },
+  // M94: What Squibby saved you. Counts of real events from this project's own history only: never a guess, never an
+  // estimate of time, tokens or money, and never an amount (F29, M69). No streak, no praise (rule 16).
+  m94: {
+    title: `What ${PRODUCT} saved you`,
+    lead: `What ${PRODUCT} stopped or caught in these seven days. Only things that really happened are counted, one time each in this list. There is no guess here, and no estimate of time, tokens or money saved.`,
+    rows: {
+      loopsStopped: "Fix loops stopped, instead of trying the same way again",
+      paused: "Tasks paused for using far more than usual",
+      foundNoModel: "Broken tasks found by Which task broke it, using only your checks",
+      wrongCaught: "Wrong changes caught, that you then fixed or undid",
+      liveAsks: "Asks before a command that touches a live system",
+    } as Record<"loopsStopped" | "paused" | "foundNoModel" | "wrongCaught" | "liveAsks", string>,
+    // The paused row's label: the stopped ones are part of it, never a saving of their own (the number stays a number).
+    pausedLabel: (stopped: number) => `Tasks paused for using far more than usual${stopped ? ` (${stopped} stopped or undone by you)` : ""}`,
+    savedAbove: "Copies saved before a destructive command are counted above. A weakened check or a done that was not done, caught above, is counted here too once you fixed it or undid it.",
+    notCounted: `Not counted by this version of ${PRODUCT}.`,
+    // This week's list, under the title. Only the parts above zero; nothing when all are zero.
+    week: {
+      loops: (n: number) => (n === 1 ? "1 fix loop stopped" : `${n} fix loops stopped`),
+      paused: (n: number, stopped: number) => `${n === 1 ? "1 task" : `${n} tasks`} paused for using far more than usual${stopped ? ` (${stopped} stopped or undone by you)` : ""}`,
+      found: (n: number) => (n === 1 ? "1 broken task found using only your checks" : `${n} broken tasks found using only your checks`),
+      wrong: (n: number) => (n === 1 ? "1 wrong change caught and then fixed or undone" : `${n} wrong changes caught and then fixed or undone`),
+      live: (n: number) => (n === 1 ? "1 ask before a live system" : `${n} asks before a live system`),
+    },
+  },
 } as const;
