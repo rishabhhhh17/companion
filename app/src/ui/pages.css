@@ -142,3 +142,15 @@
 .saved-job-text b { overflow-wrap: anywhere; }
 .saved-job-text .line { margin: 0; }
 .saved-job-actions { display: flex; gap: var(--space-1); flex: none; }
+/* M93: the usage ring, moved from the notch's hover panel to Now (runwayRing.tsx NowRunway): a quiet caption and the ring,
+   grey while there is room, amber when the limit is close or reached. Colours only from tokens.css. */
+.now-runway { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-4); color: var(--fg-2); font: 500 var(--t-small) / var(--lh-small) var(--font); }
+.now-runway-label { color: var(--fg-2); }
+.runway-ring { display: inline-flex; align-items: center; gap: 4px; color: var(--fg-2); font-variant-numeric: tabular-nums; }
+.runway-ring svg { flex: none; transform: rotate(-90deg); }
+.runway-ring circle { fill: none; stroke-width: 2.25; }
+.runway-ring .runway-ring-track { stroke: var(--line-strong); }
+.runway-ring .runway-ring-fill { stroke: currentColor; stroke-linecap: round; }
+.runway-ring[data-level="near"], .runway-ring[data-level="out"] { color: var(--c-orange-text); }
+.runway-ring-text { display: flex; align-items: baseline; gap: 4px; }
+.runway-ring-text small { color: var(--fg-2); font: 500 var(--t-caption) / 1.15 var(--font); }

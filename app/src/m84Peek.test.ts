@@ -11,7 +11,8 @@ import { initial, reduce, type HistoryItem, type Model } from "./model.ts";
 import type { ReviewCard } from "./review.ts";
 import type { DoneRow, DoneState } from "./doneSignal.ts";
 import type { ReviewRowView, SavedRowView } from "../../protocol/index.ts";
-import { PEEK_GAP, PEEK_PAD, PEEK_ROW_H, TOOLS_SHOWN, undoOffered, latestReview, nextPeek, peekHeight, peekRows, sideTools, todayLine, toolPeeks, toolsRow, type PeekRow } from "./notchPeek.ts";
+import { TOOLS_SHOWN, undoOffered, latestReview, nextPeek, sideTools, todayLine, toolPeeks, toolsRow } from "./notchPeek.ts";
+import { HOVER_H } from "./notchMinimal.ts";
 import { LAYOUT_H, quickFact, quickFactKind } from "./notchQuick.ts";
 import { arrivalFrom } from "./home.ts";
 import { COPY_BASE } from "./practice.ts";
@@ -28,13 +29,12 @@ const batch = (count: number, o: Partial<ReviewCard> = {}): ReviewCard => ({ pro
 const m = (o: Partial<Model> = {}): Model => ({ ...initial(), runnerUp: true, connected: "api_key", folder: P, ...o });
 const hooks = (tool: DoneRow["tool"], on: boolean | "partly"): DoneRow[] => (tool === "claude" ? ["done", "guard", "waiting"] : ["done", "guard"]).map((hook, i) => ({ tool, hook: hook as DoneRow["hook"], on: on === "partly" ? i === 0 : on, file: "x", adds: "y", creates: false }));
 const st = (...rows: DoneRow[][]): DoneState => ({ project: P, tools: rows.flat() });
-const ALL: PeekRow[] = ["head", "tools", "card", "foot"];
 
 describe("the panel never leaves an empty row or a blank gap (the founder's 13 Nov shot)", () => {
   test("the founder's exact case: a project not checked yet, nothing known, Home never opened, the engine not answered yet", () => {
     const x = m();
-    // Every row of the layout has something in it: the head, the tools (checking, then the answer), a card and the foot.
-    expect(peekRows(x, "quick")).toEqual(ALL);
+    // M93 (changed on purpose): the hover panel's M84 rows left it (notchMinimal.ts); the tools row is Home's now and still
+    // says it is checking until the engine answers.
     expect(toolsRow(x, null)).toEqual({ kind: "looking" });
     // The card says the next useful thing: on a real project never checked (and no practice done), the practice offer.
     expect(nextPeek(x, NOW)).toMatchObject({ id: "practice", title: S.m84.next.practice, go: { then: { place: "learn" } } });
@@ -71,28 +71,26 @@ describe("the panel never leaves an empty row or a blank gap (the founder's 13 N
       ["waiting on you", m({ claudeWaiting: { project: P } })], ["reviewed", m({ reviewHistory: [rv()] })],
     ];
     for (const [name, x] of states) {
-      const rows = peekRows(x, "quick");
-      expect(rows[0]).toBe("head");
-      expect(rows.at(-1)).toBe("foot");
-      expect(rows).toContain("card");
       // A card always says something: the latest review, else the next useful thing.
       const card = latestReview(x, NOW) ?? nextPeek(x, NOW);
       expect(card.title.length, name).toBeGreaterThan(0);
-      // The tools row is there only with a project the engine can be asked about, and then it always has a card in it.
-      if (rows.includes("tools")) expect(toolsRow(x, null), name).not.toBeNull();
+      // M93 (changed on purpose): the panel's rows left it; the tools row (Home's) is there only with a project the engine
+      // can be asked about.
+      const askable = x.runnerUp && x.connected !== "none" && !!x.folder;
+      if (askable) expect(toolsRow(x, null), name).not.toBeNull();
       else expect(toolsRow(x, null), name).toBeNull();
     }
   });
 
+  // M93 changed this on purpose (the founder, 14 Nov: "it's too much for just a notch"): the panel is two rows, the greeting
+  // and the one action, so its height is notchMinimal.ts HOVER_H (m93Hover.test.ts holds it against the shell's limits).
   test("the height is the rows' own: no reserved room for a row that is not there, and inside the shell's limits", () => {
-    expect(peekHeight(ALL)).toBe(PEEK_PAD.top + PEEK_PAD.bottom + PEEK_ROW_H.head + PEEK_ROW_H.tools + PEEK_ROW_H.card + PEEK_ROW_H.foot + 3 * PEEK_GAP);
-    expect(peekHeight(["head", "card", "foot"])).toBe(peekHeight(ALL) - PEEK_ROW_H.tools - PEEK_GAP);
     const rs = read("../src-tauri/src/island.rs");
     const min = Number(/pub const PANEL_MIN: f64 = ([\d.]+);/.exec(rs)![1]), max = Number(/pub const PANEL_MAX: f64 = ([\d.]+);/.exec(rs)![1]);
-    for (const r of [ALL, ["head", "card", "foot"] as PeekRow[]]) { expect(peekHeight(r)).toBeGreaterThanOrEqual(min); expect(peekHeight(r)).toBeLessThanOrEqual(max); }
+    expect(HOVER_H).toBeGreaterThanOrEqual(min);
+    expect(HOVER_H).toBeLessThanOrEqual(max);
     // The fixed height of the full layout is LAYOUT_H, the same for the quick and the job layouts (nothing moves as a job starts).
-    expect({ ...LAYOUT_H } as Record<string, number>).toEqual({ quick: peekHeight(ALL), job: peekHeight(ALL) });
-    expect(peekRows(m({ history: [row()] }), "job")).toEqual(ALL);
+    expect({ ...LAYOUT_H } as Record<string, number>).toEqual({ quick: HOVER_H, job: HOVER_H });
   });
 
   test("the M83 facts row with its fixed empty 22 point slot is gone from the panel", () => {

@@ -685,7 +685,6 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .island-panel .ip-result { display: grid; gap: var(--space-2); padding: var(--space-1) var(--space-1); }
 .island-panel .ip-result .proof-chips { margin: 0; }
 .island-panel .ip-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.island-panel .ip-status { margin: 0; padding: 4px 2px; color: var(--notch-fg); font: 500 var(--t-small) / var(--lh-small) var(--font); text-align: center; overflow-wrap: anywhere; }
 .island-panel .ip-jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 /* M26: opened by itself (a question, or a moment of work), the panel is only the cards, narrower, so it covers as little
    of the windows under the notch as it can. */

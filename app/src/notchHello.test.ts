@@ -169,7 +169,7 @@ describe("the page: wings and hello in the notch, black, non activating, quiet",
     expect(page + hello).not.toMatch(/\.focus\(|playSound|new Audio|sound_play/);
     expect(hello).toContain('export const LAST_HELLO_KEY = "companion.notchHello"');
   });
-  test("the settings: wings and hello switches, off by default since M70, in the Notch section, the name in Account (your profile)", () => {
+  test("the settings: wings and hello switches, off by default since M70, in the Notch section, the name there too (M93; it was in Account)", () => {
     const reg = JSON.parse(read("../../protocol/settings.json")) as { settings: Record<string, unknown>[] };
     const def = (k: string) => reg.settings.find((s) => s.key === k);
     expect(def("island.wings")).toMatchObject({ section: "home", kind: "switch", default: false, scope: "app", applies: ["pages"], store: "settings", live: true });
@@ -179,7 +179,10 @@ describe("the page: wings and hello in the notch, black, non activating, quiet",
     const notch = PAGES.general.more.find((t) => t.id === "more.general.notch")!.items;
     expect(notch).toContain("island.wings");
     expect(notch).toContain("island.hello");
-    expect(PAGES.account.groups.find((g) => g.id === "account.you")!.items).toEqual(["you.name"]);
+    // M93 (changed on purpose, the founder asked for it under General): the name sits in General's Notch options, beside the
+    // notch whose hover greets you with it, and no longer in Account.
+    expect(notch).toContain("you.name");
+    expect(PAGES.account.groups.find((g) => g.id === "account.you")).toBeUndefined();
     for (const k of ["island.wings", "island.hello", "you.name"] as const) {
       expect(S.set[k].label, k).toBeTruthy();
       expect(S.set[k].help, k).not.toMatch(/—/);
@@ -285,5 +288,22 @@ describe("the page asks the gate, skips wake ticks while hidden, and keeps the t
     expect(S.set["island.hello"].help).toMatch(/call app/);
     expect(S.set["island.hello"].help).not.toMatch(/screen is shared/);
     expect(S.set["island.hello"].help).toMatch(/Hide from screen sharing/);
+  });
+});
+
+// The M93 review: the hello and the hover greet with the same first word, cleaned the same way.
+describe("one greeting for one name", () => {
+  test("a full name gives the first word in the hello, as in the hover", async () => {
+    const { firstName } = await import("./notchHello.ts");
+    const { hoverGreeting } = await import("./notchMinimal.ts");
+    for (const typed of ["Rishabh Kapadia", "‮Rishabh Kapadia", "  Rishabh  ", "\"Sam\", Smith"]) {
+      expect(helloLine(firstName(typed), null).greet, typed).toBe(hoverGreeting(typed));
+    }
+    expect(helloLine(firstName("Rishabh Kapadia"), null).greet).toBe("Hey Rishabh");
+  });
+  test("the island's hello uses the first word, never the whole typed name", () => {
+    const island = read("./island.tsx");
+    expect(island).toContain('helloLine(firstName(setting("you.name"))');
+    expect(island).not.toContain('helloLine(cleanName(setting("you.name"))');
   });
 });

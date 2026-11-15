@@ -58,8 +58,10 @@ describe("feature 5: the instant key warning", () => {
     expect(view).toContain("keyWarned(r)");
     expect(view).toContain("S.review.keyWarning");
     expect(view).toContain("S.review.rating.stop");
-    const panel = readFileSync(new URL("./islandPanel.tsx", import.meta.url), "utf8");
+    // M93 (changed on purpose): the hover's one short line is decided in notchMinimal.ts, and the panel passes reviewKey to it.
+    const panel = readFileSync(new URL("./notchMinimal.ts", import.meta.url), "utf8");
     expect(panel).toContain("S.panel.reviewKey");
+    expect(readFileSync(new URL("./islandPanel.tsx", import.meta.url), "utf8")).toContain("reviewKey, unseen });");
     const island = readFileSync(new URL("./island.tsx", import.meta.url), "utf8");
     expect(island).toMatch(/reviewKey/);
   });

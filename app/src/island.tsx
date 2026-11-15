@@ -4,7 +4,7 @@ import { setting, settingsReady, startSettings, useSetting } from "./settingsSto
 import { hushReview, quietNow } from "./review.ts";
 import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { invoke, listen } from "./tauri.ts";
-import { DONE_WINGS_MS, ISLAND_MODES, SAVED_LINE_MS, wingMarkShown, islandLine, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
+import { DONE_WINGS_MS, ISLAND_MODES, SAVED_LINE_MS, wingMarkShown, islandLine, islandLineKind, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
 import { readyVersion } from "./updates.ts";
 import { CHEER_AT_MS, CHEER_FOR_MS, TUCK_MS, openness, springFor, springStep, tuckHoldMs, type Spring } from "./islandSpring.ts";
 import { latched, rowMarkShown } from "./notchQuick.ts";
@@ -34,7 +34,7 @@ import { useLook } from "./useLook.ts";
 import { IslandPanel } from "./islandPanel.tsx";
 import { armed, islandJobs, notchStep, resultPeekKey, RESULT_PEEK_MS, type NotchStep } from "./islandPanel.ts";
 import { FlowMini } from "./flowflowMini.tsx";
-import { HELLO_SHOW_MS, LAST_HELLO_KEY, WAKE_TICK_MS, cleanName, helloFact, helloGate, helloLine, lastHelloFrom, restWings, restWingState, wokeAfter, type HelloWhy, type RestWings } from "./notchHello.ts";
+import { HELLO_SHOW_MS, LAST_HELLO_KEY, WAKE_TICK_MS, firstName, helloFact, helloGate, helloLine, lastHelloFrom, restWings, restWingState, wokeAfter, type HelloWhy, type RestWings } from "./notchHello.ts";
 type Kind = "notch" | "pill" | "edge";
 const KINDS: readonly Kind[] = ["notch", "pill", "edge"];
 type Shape = { mode: IslandMode; kind: Kind; w: number; h: number; core: number; row: number; wing: number; hover: boolean };
@@ -189,6 +189,8 @@ function Island() {
     return () => clearTimeout(id);
   }, [m.guardAsked]);
   const line = islandLine(m, { update, group: showGroup && g && g !== "core" ? S.groups.names[g] : null, now: Date.now() });
+  // The M93 review: what the line is about, so the hover panel knows Claude waits without reading the words.
+  const lineKind = islandLineKind(m, { update, now: Date.now() });
   // The wings, and the done tick put away after a few seconds. With When something needs me set to only mark the tab
   // (home.goToNeeds), anything that needs the person shows the amber mark too.
   const raw = islandWings(m, useSetting("home.goToNeeds") === "markTab");
@@ -297,7 +299,7 @@ function Island() {
       const r = helloNow.current;
       return { why, now: Date.now(), last, on: setting("island.hello") === true, quiet: false, homeOpen: r.homeUp, asking: r.ask, kind: shapeKind.current, hidden: document.hidden, awayMs };
     }, () => invoke("quiet_now").then((q) => q === true).catch(() => true));   // not known: stay quiet
-    if (ok) setHello(helloLine(cleanName(setting("you.name")), helloFact(helloNow.current.m, Date.now())));
+    if (ok) setHello(helloLine(firstName(setting("you.name")), helloFact(helloNow.current.m, Date.now())));
   }).current;
   useEffect(() => {
     let away: number | null = typeof document !== "undefined" && document.hidden ? Date.now() : null;
@@ -435,7 +437,7 @@ function Island() {
         <span className="island-step island-step-measure" ref={measure} aria-hidden="true">{S.home.steps.map((word) => <span key={word} className="island-step-word">{word}</span>)}</span>
         {/* M68: the word at rest, laid out but never shown, so the right wing is asked for as wide as it needs. */}
         <span className="island-rest-word island-step-measure" ref={restMeasure} aria-hidden="true">{rest?.word ?? ""}</span>
-        <IslandPanel ref={panelRef} m={m} line={line} shown={panelShown} brief={briefRef.current} unseen={unseen} review={review && !hushed} reviewKey={reviewKey} hello={helloRef.current} kept={kept} onKeep={keep} />
+        <IslandPanel ref={panelRef} m={m} line={line} shown={panelShown} brief={briefRef.current} unseen={unseen} review={review && !hushed} reviewKey={reviewKey} hello={helloRef.current} kept={kept} onKeep={keep} lineKind={lineKind} />
       </span>
     </main>
   );

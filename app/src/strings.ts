@@ -587,7 +587,7 @@ export const S = {
     "island.haptics": "A light tap on the trackpad when you open the notch, and when a fix is proven. Off unless you turn it on.",
     "island.wings": "Small wings beside the notch show the lights and one short count. Off, the usual, the notch looks like the hardware.",
     "island.hello": "A short hello in the notch when you start, wake your Mac or come back after an hour. Off unless you turn it on.",
-    "you.name": "Used only by the hello in the notch. Empty says Hi there.",
+    "you.name": "The notch says Hey and the first word of it. Empty says Hey there.",
     "you.buildsWith": "Picks which tip you see first. Kept on this Mac, never sent.",
     "island.pointOpens": "What opens when you point at the notch: a small panel first, or Home right away.",
     "island.openForQuestions": "The notch opens on its own for your OK. Things that can't be undone open Home.",
@@ -637,7 +637,7 @@ export const S = {
     "updates.daily": "Looks once a day. Nothing installs until you say so.",
     // M89
     "updates.quiet": "An update found installs after 5 quiet minutes, never during a job, a call or while the light is on.",
-    "runway.mark": "The notch shows how much of the Claude limit is used, when Claude says.",
+    "runway.mark": "Now in Home shows how much of the Claude limit is used, when Claude says.",
     "runway.warnAt": "Before a big job, a warning when the Claude limit is this close, with Save for after the reset.",
     "talk.accuracy": "Best understands more words. It is a one time download of 574 MB, kept on this Mac.",
   } as Record<string, string>,
@@ -687,7 +687,7 @@ export const S = {
   } as Record<string, Record<string, string>>,
   // The Groups on each page and the topics in More options (settingsPages.ts), by their anchors.
   setGroupTitles: {
-    "account.plan": "Plan and billing", "account.spending": "Spending", "account.you": "You",
+    "account.plan": "Plan and billing", "account.spending": "Spending",
     "look.home": "Home", "look.details": "Details",
     "more.look.extras": "Light and gloss",
     "general.setup": "Finish setting up", "general.start": "Starting", "general.notch": "Notch and Home", "general.tools": "Tools",
@@ -713,7 +713,7 @@ export const S = {
     "keys.talking": "Your voice is turned into words on this Mac. Nothing you say is kept.",
     // M74: the notch's settings in one place, said plainly.
     "general.notch": `The notch is where ${PRODUCT} shows what it is doing. Point at it for a small panel; click it for Home.`,
-    "more.general.notch": "What the notch shows at rest and while working, how fast it opens and closes, and which screen it uses.",
+    "more.general.notch": "What the notch calls you, what it shows at rest and while working, how fast it opens and closes, and which screen it uses.",
     "privacy.claude": "Everything else stays on this Mac.",
   } as Record<string, string>,
   // The parts of Settings that are not settings, as search finds them (the spec, 3.7).
@@ -2390,7 +2390,7 @@ export const S = {
     "showme.listen": { label: "Show me key listens at once", help: `On, the Show me key starts listening when you press it, with the light on first. Press it again when you are done. ${PRODUCT} then looks at your screen and points at the answer. Off, the key only opens the question box. It also opens the box when voice is off or the microphone is not ready yet.`, also: ["voice", "talk", "ask", "question", "microphone", "show me", "key", "hotkey", "listen"] },
     "talk.maxHold": { label: "Longest hold to talk", help: `${PRODUCT} stops listening after this long, even if you are still holding the keys.`, also: ["microphone", "mic", "listen", "dictation", "limit"], options: { "30": "30 seconds", "60": "1 minute", "120": "2 minutes" } },
     // M89 (usage runway, quiet updates, better speech)
-    "runway.mark": { label: "Show how much of the Claude limit is used", help: `When Claude says how much of its limit is used, the notch's panel shows a small ring with the percent and the reset time. ${PRODUCT} shows only what Claude itself reports. With an API key Claude reports no limit, so the ring shows only when Claude turns a request away.`, also: ["usage", "limit", "rate limit", "runway", "plan", "reset", "notch", "quota", "weekly limit"] },
+    "runway.mark": { label: "Show how much of the Claude limit is used", help: `When Claude says how much of its limit is used, Now in Home shows a ring labelled Claude usage, under the status strip. It shows the reset time too. ${PRODUCT} shows only what Claude itself reports. With an API key Claude reports no limit, so the ring shows only when Claude turns a request away.`, also: ["usage", "limit", "rate limit", "runway", "plan", "reset", "notch", "quota", "weekly limit"] },
     "runway.warnAt": { label: "Warn before a big job near the Claude limit", help: `Before Hand ${PRODUCT} the job or Rescue starts, a warning shows when the Claude limit is this full, or Claude just turned a request away. You can start anyway, or save the job for after the reset and start it later with one tap. Off: no warning.`, also: ["usage", "limit", "runway", "reset", "save for later", "rescue", "hand the job", "quota"], options: { off: "Off", "70": "At 70% used", "80": "At 80% used", "90": "At 90% used" } },
     "updates.quiet": { label: "Install updates while away", help: `An update the check found installs by itself after 5 minutes with no typing or mouse, and only when nothing runs. Never during a job, a call, a screen look, or while ${PRODUCT} listens or speaks. ${PRODUCT} restarts, and a note after says it was updated. Off: an update installs only when you press Install.`, also: ["update", "install", "quietly", "automatic", "restart", "idle", "away"] },
     "talk.accuracy": { label: "Speech accuracy", help: `How ${PRODUCT} turns your voice into words, on this Mac. Standard uses the 148 MB model you already have. Best downloads a larger model once (574 MB) and checks it before use. It gets more words right, and takes about a second longer. Your voice never leaves this Mac either way. Switching back to Standard deletes the larger model.`, also: ["speech", "voice", "dictation", "whisper", "model", "accuracy", "transcription", "download"], options: { standard: "Standard (148 MB)", best: "Best (574 MB, downloads once)" } },
@@ -2405,7 +2405,7 @@ export const S = {
     "notch.peekSide": { label: "Side", help: `Which side of the notch the character peeks from. On a display without a notch, it peeks from the side of the small pill in the menu bar.`, also: ["left", "right", "peek", "notch", "side"], options: { left: "Left", right: "Right" } },
     "notch.peekHideAfter": { label: "Hide after", help: `How long the character stays out after the last thing that happened: work ending, a question answered, a result. It gets sleepy near the end, then hides.`, also: ["hide", "idle", "quiet", "sleep", "peek", "notch", "minutes"], options: { "1": "After 1 minute", "2": "After 2 minutes", "5": "After 5 minutes", "10": "After 10 minutes" } },
     "island.peekOnHover": { label: "Open by pointing at the notch", help: "Rest the pointer on the notch and it opens. Off, the notch opens only when you click it.", also: ["Show status on hover", "Show status when I point at the notch", "hover", "peek", "status", "pointer"] },
-    "island.pointOpens": { label: "Pointing at the notch opens", help: `A small panel first, the usual: one thing worth knowing and a few buttons, such as Ask and Check my project. Each button opens Home at the right place. Home right away opens all of ${PRODUCT} instead. A click on the notch always opens Home.`, also: ["hover", "point", "peek", "status", "notch", "open Home", "status line", "panel", "quick actions", "small panel"], options: { home: "Home right away", status: "A small panel first" } },
+    "island.pointOpens": { label: "Pointing at the notch opens", help: `A small panel first, the usual: a hello, one line when something matters, and one button that fits, such as Check my project. It opens Home at the right place. Home right away opens all of ${PRODUCT} instead. A click on the notch always opens Home.`, also: ["hover", "point", "peek", "status", "notch", "open Home", "status line", "panel", "quick actions", "small panel"], options: { home: "Home right away", status: "A small panel first" } },
     "island.openDelay": { label: "Open the notch after pointing at it for", help: "How long the pointer rests on the notch before it opens. A short time can open it when you only pass over it on the way along the menu bar.", also: ["hover", "delay", "wait", "slow"] },
     "island.closeDelay": { label: "Close it after moving away for", help: "How long the status stays open after the pointer leaves the notch, so a small slip does not close it.", also: ["hover", "delay", "wait"] },
     "island.haptics": { label: "Tap the trackpad when the notch opens or a fix is proven", help: "A light tap on the trackpad when the notch opens because you clicked or pointed at it, and once when your fix is proven. Only on a Mac with a Force Touch trackpad, and only while your finger is on it. Never for anything else that opens by itself.", also: ["haptic", "haptics", "vibrate", "feedback", "tap", "trackpad", "feel"] },
@@ -2418,9 +2418,9 @@ export const S = {
     "home.escStops": { label: "Esc clears the screen", help: "While I point at something or walk you through steps, Esc clears it and stops me talking. The rest of the time Esc stays with your other apps.", also: ["Esc stops what I show on screen", "escape", "esc", "stop", "cancel", "take back", "control"] },
     "island.wings": { label: "Show wings at rest", help: "Small black wings beside the notch, even when nothing runs. The left one shows the character's lights. The right one shows one short count, such as 3 changes, or a tick after a proof, and nothing when there is nothing. Off, the usual, the notch looks like the hardware. While something runs it shows only one small mark.", also: ["wings", "notch", "presence", "lights", "count", "tick", "rest", "idle", "hardware", "always"] },
     "island.hello": { label: "Say hello in the notch", help: "Off unless you turn it on. On, a short hello shows when you start the app, wake your Mac or come back after more than an hour. The notch widens for about 3 seconds with one line, such as Hey Sam, and one fact if there is one. Only on a Mac with a notch, at most once an hour, and never with a sound. Never while a call app such as Zoom is in front. It checks only which app is in front, so turn on Hide from screen sharing to keep it out of a share.", also: ["hello", "greeting", "hi", "notch", "welcome", "wake", "start", "name"] },
-    "you.name": { label: "Your name", help: "Used only by the hello in the notch, such as Hey Sam, when Say hello in the notch is on. Only what you type here is used. Empty, it says Hi there.", also: ["your name", "name", "call me", "hello", "greeting", "profile", "me", "you"], placeholder: "Your name" },
+    "you.name": { label: "Your name", help: "When you point at the notch it greets you with the first word, such as Hey Sam. The hello in the notch uses it too. Only what you type here is used, and it stays on this Mac. Empty, it says Hey there.", also: ["your name", "name", "call me", "hello", "greeting", "profile", "me", "you"], placeholder: "Your name" },
     "you.buildsWith": { label: "The AI you build with", help: "Your answer to the first run's question. It only picks which tip you see first. It is kept on this Mac and never sent anywhere. Not set forgets it.", also: ["lovable", "bolt", "replit", "cursor", "claude code", "ai tool", "builder", "tip", "first run"], options: { unset: "Not set", lovable: "Lovable", bolt: "Bolt", replit: "Replit", cursor: "Cursor", claudeCode: "Claude Code", other: "Something else" } },
-    "island.showStep": { label: "Show the step on the notch", help: "Only with Show wings at rest on. While a job works, the notch shows its step, such as Fixing, and a thin line of the four steps. Off, it shows only its marks. The small panel always shows the step.", also: ["progress", "step", "notch", "working", "live", "line"] },
+    "island.showStep": { label: "Show the step on the notch", help: "Only with Show wings at rest on. While a job works, the notch shows its step, such as Fixing, and a thin line of the four steps. Off, it shows only its marks. Home's work card always shows the step.", also: ["progress", "step", "notch", "working", "live", "line"] },
     "island.showWork": { label: "Drop work from the notch as it moves on", help: "When a fix is proven, or fails, its card drops from the notch for a few seconds, then tucks back. Off, the notch only shows its marks.", also: ["Show results under the notch", "live", "progress", "cards", "jobs", "activity", "notch"] },
     "island.openForQuestions": { label: "Open for questions", help: "When the AI needs your OK, the notch opens by itself so you can answer there. Things that cannot be undone, and changes to your project's Git history, still open Home so you can look first. Off, the notch only shows a mark.", also: ["Open the notch for questions", "approve", "allow", "ask", "question", "notch", "pop up"] },
     "home.goToNeeds": { label: "When something needs me", help: "Go to it opens the tab where it is waiting. Only mark the tab keeps you where you are. It puts a dot on that tab and a mark on the notch, or on the character when the notch is off. With Say answers out loud on, it also says what is waiting.", also: ["tab", "jump", "switch", "interrupt", "say it"], options: { goToIt: "Go to it", markTab: "Only mark the tab" } },
@@ -2457,8 +2457,8 @@ export const S = {
     "sound.on": { label: "Play sounds", help: "Soft water sounds when a drop points, when you click right, when work is done, and when something needs you. They are made on your Mac and are off unless you turn them on. They stay silent during a call if you chose that.", also: ["Sounds", "sound", "audio", "noise", "chime", "beep", "volume"] },
     "sound.volume": { label: "How loud", help: "How loud the sounds are.", also: ["volume", "loud", "quiet", "sound"], options: { soft: "Soft", usual: "Usual", loud: "Loud" } },
     "panel.showHello": { label: "Say hello in the notch", help: "With nothing running, the panel under the notch says hello in big words. Off, it shows only the button and the quick actions.", also: ["notch", "panel", "hello", "greeting"] },
-    "panel.showWork": { label: "List work in the notch panel", help: "The panel under the notch shows a card for each piece of work going on. Off, the work shows only in Home.", also: ["Show work in the notch", "notch", "panel", "jobs", "work", "cards"] },
-    "panel.showButtons": { label: "Show quick actions in the notch", help: "The small buttons at the foot of the notch's panel: Check my project, Check before going live, Settings and Home.", also: ["notch", "panel", "buttons", "pills", "quick"] },
+    "panel.showWork": { label: "List work in the notch panel", help: "Pointing at the notch shows the job at work by its name, with Stop. When the panel opens by itself, it shows a question to answer or a result. Off, work shows only in Home.", also: ["Show work in the notch", "notch", "panel", "jobs", "work", "cards"] },
+    "panel.showButtons": { label: "Show an action in the notch", help: "The button under the hello that fits the moment, such as Check my project or Review changes. Off, it is Open Home. Stop always shows while a job works.", also: ["notch", "panel", "buttons", "pills", "quick"] },
     "panel.size": { label: "Notch panel size", help: "Compact makes the panel under the notch smaller, with smaller words.", also: ["notch", "panel", "size", "compact", "small"], options: { usual: "Usual", compact: "Compact" } },
     "point.style": { label: "Pointer", help: "Water: a ring of water at the place. Ring: a plain ring in the ring colour.", also: ["pointer", "drop", "ring", "water", "show me how", "style"], options: { water: "Water", ring: "Ring" } },
     "point.fly": { label: "Fly to the place first", help: "On, a drop leaves the character and flies to the place before the ring shows. Off, the ring shows at the place at once.", also: ["fly", "drop", "flight", "pointer", "show me how"] },
@@ -3954,5 +3954,39 @@ export const S = {
   m90: {
     look: { hello: "says hello", watching: "is watching the work", waiting: "says something is waiting on you", proud: "is proud: the checks passed", worried: "is worried: a check failed", sleepy: "is getting sleepy", rest: "is resting" } as Record<"hello" | "watching" | "waiting" | "proud" | "worried" | "sleepy" | "rest", string>,
     name: (doing: string) => `${PRODUCT} ${doing}. Point at it as you would the notch, click it to open Home.`,
+  },
+  // M93 (the founder, 14 Nov 2026: "it's too much for just a notch. It just needs to be like 'Hey Rishabh' and some CTA"):
+  // the hover panel is a greeting, at most one short line when it matters, one action and Open Home (notchMinimal.ts).
+  m93: {
+    hey: (name: string) => `Hey ${name}`,
+    heyThere: "Hey there",
+    // The one short line, only when it matters. Nothing when all is quiet.
+    line: {
+      off: `${PRODUCT} is not running`,
+      notReady: `${PRODUCT} is getting ready`,
+      questions: (n: number) => (n === 1 ? "1 question is waiting for you" : `${n} questions are waiting for you`),
+      // The M93 review: the same words as the notch's own line and its setting (S.guard.waitingWhy).
+      claude: "Claude is waiting for you",
+      changes: (n: number) => (n === 1 ? "1 change to review" : `${n} changes to review`),
+      failed: "A check failed",
+    },
+    // The one action.
+    act: {
+      stop: "Stop",
+      seeWhy: "See why",
+      answer: "Answer",
+      claude: "See what Claude asks",
+      pick: "Pick a project",
+      review: "Review changes",
+      fix: "Fix it",
+      check: "Check my project",
+      ask: "Ask",
+      home: "Open Home",
+    } as Record<"stop" | "seeWhy" | "answer" | "claude" | "pick" | "review" | "fix" | "check" | "ask" | "home", string>,
+    openHome: "Open Home",
+    // What VoiceOver hears for the whole panel: the greeting, the line and what the action does.
+    say: (greet: string, line: string | null) => (line ? `${greet}. ${line}.` : `${greet}.`),
+    // M93: the usage ring moves from the hover panel to Now in Home.
+    runwayLabel: "Claude usage",
   },
 } as const;

@@ -110,6 +110,7 @@ import { StatusStrip } from "./statusStrip.tsx";
 import { homeFacts, type NotchFactId } from "./notchQuick.ts";
 import { sideTools, todayLine } from "./notchPeek.ts";
 import { TodayLine } from "./todayLine.tsx";
+import { NowRunway } from "./runwayRing.tsx";
 import { anyConnected } from "./aiTools.ts";
 import { SettingsView, lastPage } from "./settingsPage.tsx";
 import { shapeAsk } from "./settingsFit.ts";
@@ -2731,6 +2732,8 @@ export function Card() {
           {stopCan(m) && !jobShown && mode !== "question" && <div className="hero-main ui-lead-acts"><Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void stopNow()}><Icon name="stop" size={14} />{S.stop}</Button></div>}
       </Lead>
       {stripFacts.length > 0 && <StatusStrip facts={stripFacts} open={stripOpen} places={{ job: S.notch.open, check: S.home.places.did, caught: S.home.places.did, changes: S.notch.quick.review, tools: S.home.places.settings }} />}
+      {/* M93: the usage ring, moved here from the notch's hover panel (runwayRing.tsx), on Now whenever Claude has said how full the limit is. */}
+      {home.tab === "now" && !setup && <NowRunway m={m} />}
       {setup && home.tab === "now" && <SetupList rows={setup} blocker={blocker} onAct={setupAct} />}
       {/* M82: while no AI tool is connected in this project, one row opens Your AI tools (aiTools.nowRow). */}
       {!setup && project && home.tab === "now" && setting("aiTools.nowRow") !== false && <AiToolsNowRow project={project} shown={atRest} onOpen={() => { setSetPlace("fixing.tools"); pickTab("settings"); }} />}

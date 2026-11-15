@@ -45,12 +45,11 @@ export const QUICK_TOOL: Record<QuickId, ToolId | null> = { pick: null, ask: "as
 export type PanelLayout = "quick" | "job" | "question" | "result";
 /** The layout for what the panel shows (islandPanel.ts panelView): a question and a result keep today's cards. */
 export const panelLayout = (v: PanelView): PanelLayout => (v.kind === "questions" ? "question" : v.kind === "job" ? "job" : v.kind === "result" ? "result" : "quick");
-/** The height of the two layouts with all four rows (island.rs PANEL_MIN to PANEL_MAX; notchPeek.ts peekHeight). M84: the
- *  rows are the head, the AI tools, a card and the foot, and each row it lists says something, so no room is ever kept for
- *  an empty row (the M83 facts row kept 22 points even when empty, and read as a blank gap). Without a project or an engine
- *  to ask, the tools row is left out and the panel is that much shorter (notchPeek.ts peekRows). The quick and job layouts
- *  are the same height, so nothing moves as a job starts. The question and the result keep their measured card heights. */
-export const LAYOUT_H = { quick: 222, job: 222 } as const;
+/** The height of the quick and job layouts (island.rs PANEL_MIN to PANEL_MAX), the same, so nothing moves as a job starts. */
+// M93 (the founder, 14 Nov 2026: "it's too much for just a notch"): two rows, the greeting and the one action
+// (notchMinimal.ts HOVER_H, which m93Hover.test.ts pins to the same number; written out here so the two modules never load
+// each other in a circle).
+export const LAYOUT_H = { quick: 106, job: 106 } as const;
 
 const nameOf = (project: string): string => project.split("/").filter(Boolean).at(-1) ?? "";
 const projectOf = (m: Model): string => m.task?.project ?? m.folder ?? "";

@@ -59,10 +59,11 @@ describe("the replay in the notch", () => {
     ]);
     expect(m.review?.result?.replay).toBeTruthy();
     await renderPage(<IslandPanel m={m} line="" shown />);
-    const card = document.querySelector('.ip-card[data-kind="review"]')!;
-    expect(card).toBeTruthy();
-    expect(card.querySelector(".rp")).toBeNull();
-    expect(card.querySelector(".ui-mtile, [data-c]")).toBeTruthy();
+    // M93 (changed on purpose, the minimal hover): the latest review's card left the notch for Home; the panel draws no
+    // replay at all, only the greeting, the line (the changes waiting) and its one action with its colour tile.
+    expect(document.querySelector('.ip-card[data-kind="review"]')).toBeNull();
+    expect(document.querySelector(".island-panel .rp")).toBeNull();
+    expect(document.querySelector(".island-panel .ip-cta .ui-mtile, .island-panel .ip-cta [data-c]")).toBeTruthy();
   });
   test("with replay.show off, the card keeps its tile", async () => {
     const m = run([

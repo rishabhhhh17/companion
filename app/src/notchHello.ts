@@ -92,6 +92,24 @@ export function lastHelloFrom(v: string | null): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
+/** At most this many letters of the name are shown; a longer one ends in an ellipsis (the panel's head stays one line). */
+export const NAME_SHOWN_MAX = 16;
+// Control characters, soft hyphens, zero width and direction marks, line and paragraph separators, and the byte order mark:
+// never drawn, and a direction mark could turn the words around it. Each splits the name where it was.
+const HIDDEN = new RegExp("[\\u0000-\\u001f\\u007f-\\u009f\\u00ad\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u206f\\ufeff]", "g");
+// Stray punctuation or symbols at either end ("Sam," or a quoted name). Letters, marks and numbers of any script stay.
+const EDGES = /^[^\p{L}\p{M}\p{N}]+|[^\p{L}\p{M}\p{N}]+$/gu;
+
+/** The first word of what the person typed, cleaned and cut to NAME_SHOWN_MAX, or "" (then the greeting is Hey there or
+ *  Hi there). The hover (notchMinimal.ts) and the hello (island.tsx) both greet with it. */
+export function firstName(v: unknown): string {
+  if (typeof v !== "string") return "";
+  const word = v.replace(HIDDEN, " ").trim().split(/\s+/)[0] ?? "";
+  const clean = word.replace(EDGES, "");
+  const chars = Array.from(clean);
+  return chars.length > NAME_SHOWN_MAX ? `${chars.slice(0, NAME_SHOWN_MAX - 1).join("")}…` : clean;
+}
+
 /** The name the person typed, as one short line. Anything that is not text is no name. */
 export function cleanName(v: unknown): string {
   if (typeof v !== "string") return "";

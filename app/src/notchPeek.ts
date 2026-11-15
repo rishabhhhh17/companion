@@ -1,4 +1,5 @@
-// M84, the notch and Home, minimal but detailed (docs/milestones/M84-design-pass.md). Plain decisions, tested in
+// M84, the notch and Home, minimal but detailed (docs/milestones/M84-design-pass.md). M93 moved the hover panel to
+// notchMinimal.ts (a greeting and one action); what follows is the M84 logic Home still uses. Plain decisions, tested in
 // m84Peek.test.ts; islandPanel.tsx, homeSide.tsx and todayLine.tsx only draw them. (peek.ts is the character peeking past the screen edge, M26.)
 //
 // The hover panel is made of rows, and each row it lists has something in it, from the first hover after launch (the
@@ -20,7 +21,6 @@ import { homeStatus } from "./homeHero.ts";
 import { taskName } from "./itemLook.ts";
 import { MEANING_COLOUR, type Colour } from "./meaning.ts";
 import type { IconName } from "./icons.tsx";
-import type { PanelLayout } from "./notchQuick.ts";
 import { QUICK_LOOK, whenWords } from "./notchQuick.ts";
 import { looksLikeCopy } from "./practice.ts";
 import { S } from "./strings.ts";
@@ -153,19 +153,9 @@ export function nextPeek(m: Model, now: number): NextPeek {
 }
 
 // ---------- the rows and the height ----------
-
-export type PeekRow = "head" | "tools" | "card" | "foot";
-/** Each row's height in points, the gap between rows and the panel's padding (style.css .island-panel: 8 on top, 14 under). */
-export const PEEK_ROW_H: Record<PeekRow, number> = { head: 44, tools: 44, card: 52, foot: 30 };
-export const PEEK_GAP = 10;
-export const PEEK_PAD = { top: 8, bottom: 14 } as const;
-/** The rows the quick and job layouts show: the tools row only when there is something to ask about. */
-export function peekRows(m: Model, _layout: Extract<PanelLayout, "quick" | "job">): PeekRow[] {
-  return askable(m) ? ["head", "tools", "card", "foot"] : ["head", "card", "foot"];
-}
-/** The panel's height for its rows: no room is ever kept for a row that is not there. */
-export const peekHeight = (rows: readonly PeekRow[]): number =>
-  PEEK_PAD.top + PEEK_PAD.bottom + rows.reduce((h, r) => h + PEEK_ROW_H[r], 0) + Math.max(0, rows.length - 1) * PEEK_GAP;
+// M93 (the founder, 14 Nov 2026: "it's too much for just a notch"): the hover panel is two rows now, the greeting and one
+// action (notchMinimal.ts, HOVER_H). The M84 rows and their heights left with it. toolsRow and todayLine stay for Home
+// (its side list and Now's timeline); latestReview and nextPeek stay as tested logic, no longer drawn in the notch.
 
 // ---------- Now's calm timeline of today ----------
 

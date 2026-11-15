@@ -522,9 +522,12 @@ describe("the bare notch (M46)", () => {
     expect(css).not.toContain("island-sun-in");
     expect(page).not.toContain("island-unseen");
     expect(page).toContain("const shapeW = shape.w;");
-    // M70: in the small panel, new results are its one fact when there is nothing more useful to say.
+    // M70: in the small panel, new results are its one fact when there is nothing more useful to say. M93 (changed on
+    // purpose, the minimal hover): they are its one short line then, last of the lines that matter (notchMinimal.ts).
     const panel = readFileSync(new URL("./islandPanel.tsx", import.meta.url), "utf8");
-    expect(panel).toContain("const fact = fact0 === S.notch.ready && unseen > 0 ? S.panel.unseen(unseen) : fact0;");
+    // The M93 review (changed on purpose): the island's line also says what it is about (noteKind), never read by its words.
+    expect(panel).toContain('const hline = hoverLine(m, now, { note, noteKind: note ? lineKind : null, job: view.kind === "job" ? view.job.title : null, reviewKey, unseen });');
+    expect(readFileSync(new URL("./notchMinimal.ts", import.meta.url), "utf8")).toContain('if ((o.unseen ?? 0) > 0) return line(S.panel.unseen(o.unseen!), "ready");');
     expect(S.panel.newCount(3)).toBe("3 new");
     expect(S.panel.newCount(12)).toBe("9+ new");
   });
@@ -537,8 +540,10 @@ describe("the bare notch (M46)", () => {
     expect(main).toContain('app.emit_to("island", "review-ready", json!({ "on": on, "key": key }))');
     const panel = readFileSync(new URL("./islandPanel.tsx", import.meta.url), "utf8");
     // M70: the small panel's one fact says the changes ("my-shop: 3 changes to review", notchQuick.ts), and a key written in
-    // them comes first, as quietly.
-    expect(panel).toContain("const fact0 = reviewKey ? S.panel.reviewKey : view.kind === \"job\" ? view.job.title : quickFact(m, now, note);");
+    // them comes first, as quietly. M93 (changed on purpose): the one short line says it (notchMinimal.ts hoverLine).
+    // The M93 review (changed on purpose): the island's line also says what it is about (noteKind), never read by its words.
+    expect(panel).toContain('const hline = hoverLine(m, now, { note, noteKind: note ? lineKind : null, job: view.kind === "job" ? view.job.title : null, reviewKey, unseen });');
+    expect(readFileSync(new URL("./notchMinimal.ts", import.meta.url), "utf8")).toContain('if (o.reviewKey && n > 0) return line(S.panel.reviewKey, "failing");');
     // Never in a panel that opened by itself, never the wings, never a sound: it does not ask for the island to open.
     expect(page).not.toMatch(/review[^\n]*island_alert|island_alert[^\n]*review/);
     expect(S.panel.reviewReady).toBe("Changes ready to review");

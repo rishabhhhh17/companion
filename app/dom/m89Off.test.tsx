@@ -1,7 +1,8 @@
 // M89 with its switches off (a file of its own: the settings are read once per page): Install updates while away off means
 // the shell's quiet moment installs nothing, and Show how much of the Claude limit is used off means no ring in the notch.
 import { describe, expect, test } from "bun:test";
-import { IslandPanel } from "../src/islandPanel.tsx";
+// M93 (changed on purpose): the ring moved from the notch's hover panel to Now (runwayRing.tsx NowRunway).
+import { NowRunway } from "../src/runwayRing.tsx";
 import { initial, reduce, type Model } from "../src/model.ts";
 import { _resetForTests, startSettings } from "../src/settingsStore.ts";
 import { PROJECT, act, app, emit, ev, renderHome, renderPage, screen, settle } from "./render.tsx";
@@ -23,9 +24,9 @@ describe("M89 switched off", () => {
   test("runway.mark off: no ring, even with a reading", async () => {
     app.reset();
     document.body.innerHTML = "";
-    const r = await renderPage(<IslandPanel m={run([{ type: "auth.status", method: "api_key", source: "keychain" }, { type: "ui.folderShown", project: PROJECT }, near])} line="" shown />, { settings: { "updates.quiet": false, "runway.mark": false } });
+    const r = await renderPage(<NowRunway m={run([{ type: "auth.status", method: "api_key", source: "keychain" }, { type: "ui.folderShown", project: PROJECT }, near])} />, { settings: { "updates.quiet": false, "runway.mark": false } });
     await reread();
-    expect(r.container.querySelector(".island-panel")).not.toBeNull();
+    expect(r.container.querySelector(".now-runway")).toBeNull();
     expect(screen.queryByRole("img", { name: /Claude limit/ })).toBeNull();
   });
 });

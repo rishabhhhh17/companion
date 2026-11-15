@@ -303,6 +303,14 @@ export function islandLine(m: Model, o: { update?: string | null; group?: string
   // With Show the working group on the island (groups.islandName) and a group at work, its name starts the line (F20 item 5).
   return line && o.group && m.runnerUp ? cut(S.groups.islandGroup(o.group, line)) : line;
 }
+/** What the island's line is about, when a reader needs to know without reading its words (the M93 review: the hover
+ *  matched the line on its text). "claudeWaiting": the line says the person's own Claude waits for them. Else null. */
+export type IslandLineKind = "claudeWaiting";
+export function islandLineKind(m: Model, o: { update?: string | null; now?: number } = {}): IslandLineKind | null {
+  const n = need(m);
+  if (!n || !n.key.startsWith("claudeWaiting:")) return null;
+  return islandLineBase(m, o) === cut(S.islandNeedsYou(n.why)) ? "claudeWaiting" : null;
+}
 /** M77: how long the notch says a copy was saved before Claude's command. */
 export const SAVED_LINE_MS = 10_000;
 /** M85 review: how long Now's notice for an ask in the person's own tool stays (they answer it in their tool). */

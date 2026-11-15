@@ -116,8 +116,10 @@ describe("the facts row (M83)", () => {
     }
     // M84 changed this on purpose: the facts row left the panel (Home's strip keeps the facts); every press in the panel
     // goes through the one helper that only opens Home.
+    // M93 (changed on purpose, the minimal hover): the panel's one action and Open Home go through island_go; only Stop acts.
     const panel = read("./islandPanel.tsx");
-    expect(panel).toContain('const go = (g: Go) => { if (ready()) void invoke("island_go", g).catch(() => {}); };');
+    expect(panel).toContain('void invoke("island_go", action.go).catch(() => {});');
+    expect(panel).toContain('if (ready()) void invoke("island_go", {}).catch(() => {});');
   });
 });
 
@@ -156,10 +158,12 @@ describe("the new size, pinned on both sides (M83)", () => {
   });
 
   // M84 changed this on purpose (the founder, 13 Nov: the facts row kept 22 points even when empty and read as a blank gap):
-  // the panel is now four rows that each say something (notchPeek.ts peekRows), 222 points tall with all four, and the
+  // the panel was then four rows that each said something, 222 points tall with all four, and the
   // empty facts slot is gone. m84Peek.test.ts holds the new rows and heights.
+  // M93 changed it again on purpose (the founder, 14 Nov: "it's too much for just a notch"): two rows, 106 points
+  // (notchMinimal.ts HOVER_H; m93Hover.test.ts holds the rows).
   test("the quick and job layouts are one fixed height, inside the shell's limits", () => {
-    expect({ ...LAYOUT_H }).toEqual({ quick: 222, job: 222 });
+    expect({ ...LAYOUT_H } as Record<string, number>).toEqual({ quick: 106, job: 106 });
     const rs = read("../src-tauri/src/island.rs");
     const max = Number(/pub const PANEL_MAX: f64 = ([\d.]+);/.exec(rs)![1]);
     expect(LAYOUT_H.quick).toBeLessThanOrEqual(max);

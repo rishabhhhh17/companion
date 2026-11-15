@@ -2,7 +2,8 @@
 // ring is amber at 72% and Run it asks first; at 90 the ring is grey at 85% and Run it starts at once. A file of its own:
 // the settings are read once per page (settingsStore.ts), so each test reads them again as a page opened with that choice.
 import { describe, expect, test } from "bun:test";
-import { IslandPanel } from "../src/islandPanel.tsx";
+// M93 (changed on purpose): the ring moved from the notch's hover panel to Now (runwayRing.tsx NowRunway).
+import { NowRunway } from "../src/runwayRing.tsx";
 import { initial, reduce, type Model } from "../src/model.ts";
 import { _resetForTests, startSettings } from "../src/settingsStore.ts";
 import { S } from "../src/strings.ts";
@@ -18,7 +19,7 @@ const PROMPT = "Add a contact form to the home page.";
 async function ring(pct: number, warnAt: string) {
   app.reset();
   document.body.innerHTML = "";
-  await renderPage(<IslandPanel m={run([week(pct)], atRest())} line="" shown />, { settings: { "runway.warnAt": warnAt } });
+  await renderPage(<NowRunway m={run([week(pct)], atRest())} />, { settings: { "runway.warnAt": warnAt } });
   await reread();
   return screen.getByRole("img", { name: new RegExp(`The Claude week limit is ${pct}% used`) }).getAttribute("data-level");
 }

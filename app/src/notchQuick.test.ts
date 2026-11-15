@@ -11,6 +11,7 @@ import { openness } from "./islandSpring.ts";
 import { receiptVerdict } from "./model.ts";
 import { arrivalFrom } from "./home.ts";
 import { restWings } from "./notchHello.ts";
+import { hoverLine } from "./notchMinimal.ts";
 import { S } from "./strings.ts";
 import { fromOf, geomFrom, shapeRects } from "./homeShape.ts";
 import { shellSource } from "../dom/sourceText.ts";
@@ -124,12 +125,14 @@ describe("the quick actions (M70: chosen from state, fixed slots, at most three)
     expect(rs).toContain('Some("review") => Some(serde_json::json!({ "do": "review" })),');
     expect(rs).toContain('Some("ask") => Some(serde_json::json!({ "place": "ask" })),');
     const view = read("./islandPanel.tsx");
-    // Every press in the small panel goes to island_go, which opens Home without the keyboard (main.rs).
-    expect(view).toContain('invoke("island_go", quickGo(id))');
-    expect(view).toContain('invoke("island_go", { then: GEAR_DO })');
+    // Every press in the small panel goes to island_go, which opens Home without the keyboard (main.rs). M93 (changed on
+    // purpose, the minimal hover): one action (notchMinimal.ts hoverAction, whose arrivals m93Hover.test.ts checks) and
+    // Open Home; the gear left the panel (Settings is in Home). Only Stop sends a command, as before.
+    expect(view).toContain('void invoke("island_go", action.go).catch(() => {});');
     expect(view).toContain('invoke("island_go", {})');
-    const quick = view.slice(view.indexOf('className="ip-quick"'), view.indexOf("</nav>"));
-    expect(quick).not.toContain("send_command");
+    const press = view.slice(view.indexOf("const act = () => {"), view.indexOf("return (", view.indexOf("const act = () => {")));
+    expect(press.match(/send_command/g)?.length).toBe(1);
+    expect(press).toContain("if (action.go === null) { void invoke(\"send_command\", { cmd: stopAgent() })");
     const main = shellSource();
     const go = main.slice(main.indexOf("fn island_go("), main.indexOf("fn island_go(") + 600);
     expect(go).toContain('open_card_then(&app, "notch_panel", false,');
@@ -163,11 +166,14 @@ describe("the layout and its fixed heights (M70: no jumps)", () => {
     // notch will be changed"): four rows that each say something (the head, the AI tools, a card, the foot), still under
     // the shell's PANEL_MAX (checked above).
     expect(LAYOUT_H.quick).toBeLessThanOrEqual(222);
-    expect(css).toMatch(/\.ip-fact \{[^}]*text-overflow: ellipsis/);
+    // M93 (changed on purpose): the greeting and the one line are cut with an ellipsis, never pushed out of the panel.
+    expect(css).toMatch(/\.ip-greet-big \{[^}]*text-overflow: ellipsis/);
+    expect(css).toMatch(/\.ip-line > span \{[^}]*text-overflow: ellipsis/);
     // The founder: a small greeting first ("hey Rishabh"), from the typed name only, over the fact.
     const panel = read("./islandPanel.tsx");
-    expect(panel).toContain('const greet = quickGreeting(useSetting("you.name"));');
-    expect(panel).toContain('<span className="ip-lead"><span className="ip-greet" title={lines.top}>{lines.top}</span><b className="ip-fact" title={lines.fact}><Dot colour={dot} />{lines.fact}</b></span>');
+    // M93 (changed on purpose): the first word of the typed name (notchMinimal.ts hoverGreeting), never the Mac's (F28).
+    expect(panel).toContain('const greet = hoverGreeting(useSetting("you.name"));');
+    expect(panel).toContain('<b className="ip-greet-big" title={greet}>{greet}</b>');
     // M70 step 4: the panel's one column never grows past it, or a long fact pushed Open out of the panel.
     expect(read("./style.css")).toMatch(/\.island-panel \{[^}]*display: grid; grid-template-columns: minmax\(0, 1fr\);/);
   });
@@ -259,24 +265,26 @@ describe("Home grows on from the small panel as one black shape (M70, homeShape.
 describe("M70 step 4: the small panel says something useful at once, and leaves the way it came", () => {
   const view = read("./islandPanel.tsx"), page = read("./island.tsx");
   test("the head row is the fact with Settings and Open in words; the character only in the opt in hello and (M84) its face in the head", () => {
-    const head = view.slice(view.indexOf('<div className="ip-head">'), view.indexOf("</div>", view.indexOf('<div className="ip-head">')));
-    expect(head).toContain("{lines.fact}");
-    expect(head).toContain("{S.notch.settings}");
-    expect(head).toContain("{S.notch.openShort}");
-    expect(head).toContain("label={S.notch.open}");
+    // M93 (changed on purpose, the founder, 14 Nov: "Hey Rishabh" and some CTA): the head is the face, the greeting and at
+    // most one short line; Settings and Open left it (Open Home is the quiet second action, Settings is in Home).
+    const head = view.slice(view.indexOf('<div className="ip-head"'), view.indexOf("</div>", view.indexOf('<div className="ip-head"')));
+    expect(head).toContain("{greet}");
+    expect(head).toContain("{hline.words}");
+    expect(head).not.toContain("S.notch.settings");
     expect(head).not.toContain("<Icon");
     expect(view).not.toContain("ip-fact\" role=\"status\" title={fact}>{fact}</p>");
     // M84 changed this on purpose (the milestone asks for Flowflow's live face beside the greeting): the opt in hello's
     // Visor, and the face in the head of the quick and job layouts. Nothing else in the panel draws the character.
     expect(view.match(/<FlowMini /g)?.length).toBe(2);
-    expect(view).toContain('{full && <FlowMini className="ip-face" state={m.character} still={!shown} />}');
+    expect(view).toContain('<FlowMini className="ip-face" state={m.character} still={!shown} />');
     expect(view).toContain('<FlowMini className="ip-agent" state="idle" still={!shown} />');
   });
   test("every action looks like a button, each with its colour tile (M71: the mock's raised pills, no blue main one)", () => {
-    expect(view).toContain('kind="secondary" size="sm" className="ip-act"');
-    expect(view).toContain('<Tile colour={look.colour} icon={look.icon} size="btn" />');
+    // M93 (changed on purpose): one action, the same raised pill with its colour tile (Stop with its icon).
+    expect(view).toContain('kind="secondary" size="sm" className="ip-cta"');
+    expect(view).toContain('<Tile colour={action.look.colour} icon={action.look.icon} size="btn" />');
     expect(view).not.toContain('kind={i === 0 ? "secondary" : "quiet"}');
-    expect(view).toContain("{quickLabel(id, m, now)}");
+    expect(view).toContain("{action.label}");
   });
   test("a proven result's second line is its proof, not the verdict said again (a failed one keeps its verdict)", () => {
     const f = finished();
@@ -330,10 +338,11 @@ describe("M70 step 5: the words say what the panel does (a fact and buttons, no 
   test("Settings help never promises a greeting when you point at the notch", () => {
     const help = [S.set["island.pointOpens"].help, S.set["island.hello"].help, S.set["you.name"].help, S.short["you.name"], S.short["island.pointOpens"]];
     for (const h of help) expect(h).not.toMatch(/your greeting|already greets you|call you when you point/i);
-    // The panel: one fact and a few buttons.
-    expect(S.set["island.pointOpens"].help).toMatch(/one thing worth knowing and a few buttons/);
-    // The name is used only by the hello, and Settings says so.
-    expect(S.set["you.name"].help).toMatch(/only by the hello/i);
+    // M93 (changed on purpose, the founder, 14 Nov: "Hey Rishabh" and some CTA): the panel is a hello, one line when
+    // something matters and one button, and the name greets you there too; Settings says both.
+    expect(S.set["island.pointOpens"].help).toMatch(/a hello, one line when something matters, and one button that fits/);
+    expect(S.set["you.name"].help).toMatch(/When you point at the notch it greets you with the first word/);
+    expect(S.set["you.name"].help).toMatch(/stays on this Mac/);
     expect(S.set["island.hello"].help).not.toMatch(/Pointing at the notch already/);
   });
   test("copy nothing reads is gone", () => {
@@ -373,8 +382,11 @@ describe("the fact never loses its words to a long project name", () => {
     expect(factLines("Hi there", "x: y", "")).toEqual({ top: "Hi there", fact: "x: y" });
   });
   test("the panel uses it, and the open shape has an edge from the notch tokens that grows with the shape", () => {
+    // M93 (changed on purpose): the hover's one line never names the project (notchMinimal.ts hoverLine), so a long project
+    // name can never cut it; the line itself ends in an ellipsis (checked above).
     const panel = read("./islandPanel.tsx");
-    expect(panel).toContain("factLines(greet, fact, project)");
+    expect(panel).not.toContain("factLines(");
+    for (const x of [m({ review: review(3) }), m({ history: [row({ proof: "failed", status: "not_done" })] })]) expect(hoverLine(x, NOW)?.words ?? "").not.toContain("my-shop");
     const css = read("./ui/notch.css");
     expect(css).toMatch(/\.island-shape \{[^}]*box-shadow:[^}]*var\(--notch-edge-open\)[^}]*var\(--open\)/);
     expect(read("./ui/tokens.css")).toContain("--notch-edge-open:");

@@ -2,7 +2,7 @@
 
 - **Status:** Founder decision, 14 Nov 2026 (asked and answered in the build chat). Amends F28's update of 4 Nov 2026 (founder, later), which made the notch the bare notch at rest. Not to be reopened without the founder.
 - **Date:** 2026-11-14
-- **Related:** F18 (Home in the notch), F27 (Flowflow is clear glass water), F28 (the notch is bare at rest; its updates of 4 Nov), M70, M83, M84, M90
+- **Related:** F18 (Home in the notch), F27 (Flowflow is clear glass water), F28 (the notch is bare at rest; its updates of 4 Nov), M70, M83, M84, M90, M93
 
 ## Decision
 - **The notch at rest is no longer bare while something goes on.** Flowflow's eyes and the top of its head peek out from the side of the notch and react to what happens. When nothing goes on, it hides, and the notch is the bare notch again.
@@ -21,6 +21,13 @@
 - It draws Flowflow's own water (the Draw live renderer, `app/src/flowflow/`) or, with Draw live off, the existing pictures (glance, peek, worry, sleep), whatever character is picked for Home and the edge: the founder's decision names Flowflow's eyes. No new art.
 - General's main level already holds its ten settings (the settings spec, 3.4), so the three rows sit first in More options' Notch group ("What the notch shows at rest and while working"), right after what pointing at the notch opens.
 - A connected tool counts as working when its guard hook sees it run a command (a new engine event, `hook.busy`, the project only); its done hook ends it, or 90 seconds with nothing new.
+
+## Update, 14 Nov 2026 (founder, later): the hover is minimal (M93)
+- **The founder, on the real app, with a shot of the M84 hover panel:** "I don't like this, it's too much for just a notch. It just needs to be like 'Hey Rishabh' and some CTA." This reverses M84's "more in the hover" direction.
+- **Decision.** Pointing at the notch, or at the peeking character, opens two rows: Flowflow's live face beside "Hey" and the person's first name ("Hey there" with none), at most one short line only when it matters, then one action that fits the moment and a quiet Open Home. Nothing when all is quiet besides the hello and the action. A job running shows Stop; the engine stopped says so with its one action. The AI tools, the latest review, the usage ring, the key hint, Settings and the practice offer live in Home.
+- **The name stays typed only.** F28 says the name is one the person types, never the Mac account name. The founder's words do not change that, so the hover uses the first word of Your name (`you.name`), which moved to General, More options, Notch. Reading the Mac account name would need the founder's own yes to amend F28.
+- **Unchanged:** a question or a fresh result that opens the panel by itself keeps its cards; the peek, its hide rules and its settings; every press opens Home through `island_go`, except Stop.
+- Built in `docs/milestones/M93-minimal-hover.md`.
 
 ## Revisit only if
 People on real Macs find it distracting at work, or read it as a glitch; then the usual may change, the switch stays.

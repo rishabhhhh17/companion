@@ -1,0 +1,124 @@
+// M93, a minimal notch hover: a greeting and one action (docs/milestones/M93-minimal-hover.md). The founder, 14 Nov 2026,
+// with a shot of the M84 hover panel: "I don't like this, it's too much for just a notch. It just needs to be like 'Hey
+// Rishabh' and some CTA." Plain decisions, tested in m93Hover.test.ts; islandPanel.tsx only draws them.
+//
+// The hover panel is two rows: Flowflow's live face beside "Hey <first name>" (or "Hey there") with at most one short line
+// under it, only when it matters; then ONE primary action that fits the moment and at most one quiet Open Home. Everything
+// else the M84 panel showed (the AI tools, the latest review, the usage ring, the key to press, Settings, the practice offer)
+// lives in Home. Every press only opens Home at a place (island_go), except Stop, which stops (as before).
+//
+// The name is only what the person typed (you.name, on this Mac only): the Mac account's name is never read (F28).
+import type { Model } from "./model.ts";
+import { homeStatus } from "./homeHero.ts";
+import { factColour, QUICK_LOOK, QUICK_TOOL } from "./notchQuick.ts";
+import { MEANING_COLOUR, type Colour, type FactKind } from "./meaning.ts";
+import type { ToolId } from "./groups.ts";
+import type { IconName } from "./icons.tsx";
+import type { Go } from "./notchPeek.ts";
+import type { IslandLineKind } from "./home.ts";
+import { S } from "./strings.ts";
+import { firstName, NAME_SHOWN_MAX } from "./notchHello.ts";
+
+// ---------- the greeting ----------
+
+// The first word of the name and its cut live in notchHello.ts, so the hello and this greeting say the same name (the M93
+// review: the hello said the whole typed name).
+export { firstName, NAME_SHOWN_MAX };
+/** "Hey Rishabh", or "Hey there" when no name was typed. */
+export const hoverGreeting = (typed: unknown): string => { const n = firstName(typed); return n ? S.m93.hey(n) : S.m93.heyThere; };
+
+// ---------- the one short line ----------
+
+const projectOf = (m: Model): string => m.task?.project ?? m.folder ?? "";
+const nameOf = (project: string): string => project.split("/").filter(Boolean).at(-1) ?? "";
+const samePlace = (a: string, b: string): boolean => a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
+const claudeWaitsHere = (m: Model): boolean => { const p = projectOf(m); return !!p && !!m.claudeWaiting && samePlace(m.claudeWaiting.project, p); };
+const reviewWaits = (m: Model): number => { const rv = m.review; return rv && rv.stage !== "reviewed" && rv.count > 0 ? rv.count : 0; };
+
+export type HoverLine = { words: string; colour: Colour };
+export type LineInput = {
+  /** A line the island has to say (listening, an update, the engine's own line; islandPanel.ts panelNote). */
+  note?: string;
+  /** What that line is about (home.ts islandLineKind), so it is never matched on its words. */
+  noteKind?: IslandLineKind | null;
+  /** The job at work, by its name. */
+  job?: string | null;
+  /** The changes waiting carry the instant key warning (M57). */
+  reviewKey?: boolean;
+  /** Results finished while Home was closed (M46). */
+  unseen?: number;
+};
+const line = (words: string, k: FactKind): HoverLine => ({ words, colour: factColour(k) });
+
+/** At most one short line, only when it matters, the most urgent first: the engine stopped, a line the island has to say,
+ *  Claude not set up yet, the job at work, questions waiting, Claude Code waiting on you in this project, a key in the
+ *  changes, changes to review, a check that failed, new results. Null when all is quiet: the greeting stands alone. */
+export function hoverLine(m: Model, now: number, o: LineInput = {}): HoverLine | null {
+  const L = S.m93.line;
+  if (!m.runnerUp) return line(L.off, "off");
+  // The island's own line that Claude waits for you is said in the panel's words, in the waiting colour.
+  if (o.note && o.noteKind === "claudeWaiting" && claudeWaitsHere(m)) return line(L.claude, "waiting");
+  if (o.note) return line(o.note, "note");
+  if (m.connected === "none") return line(L.notReady, "notConnected");
+  if (o.job) return line(o.job, "working");
+  if (m.approvals.length > 0) return line(L.questions(m.approvals.length), "questions");
+  if (claudeWaitsHere(m)) return line(L.claude, "waiting");
+  const project = projectOf(m);
+  if (!nameOf(project)) return null;
+  const n = reviewWaits(m);
+  if (o.reviewKey && n > 0) return line(S.panel.reviewKey, "failing");
+  if (n > 0) return line(L.changes(n), "changes");
+  if (homeStatus(m, project, now).kind === "failing") return line(L.failed, "failing");
+  if ((o.unseen ?? 0) > 0) return line(S.panel.unseen(o.unseen!), "ready");
+  return null;
+}
+
+// ---------- the one action ----------
+
+export type HoverActionId = keyof typeof S.m93.act;
+export type HoverAction = { id: HoverActionId; label: string; look: { colour: Colour; icon: IconName };
+  /** Where island_go opens Home; null only for Stop, which sends the stop command itself. */
+  go: Go | null };
+export type ActionInput = { layout: "quick" | "job"; on?: (t: ToolId) => boolean; /** panel.showButtons */ buttons?: boolean };
+
+const ACT: Record<HoverActionId, { go: Go | null; look: { colour: Colour; icon: IconName }; tool: ToolId | null }> = {
+  stop: { go: null, look: { colour: MEANING_COLOUR.stopped, icon: "stop" }, tool: null },
+  seeWhy: { go: {}, look: { colour: MEANING_COLOUR.problem, icon: "alert" }, tool: null },
+  answer: { go: {}, look: { colour: MEANING_COLOUR.question, icon: "wait" }, tool: null },
+  claude: { go: {}, look: { colour: MEANING_COLOUR.question, icon: "wait" }, tool: null },
+  pick: { go: {}, look: QUICK_LOOK.pick, tool: QUICK_TOOL.pick },
+  review: { go: { then: { do: "review" } }, look: QUICK_LOOK.review, tool: QUICK_TOOL.review },
+  fix: { go: { then: { do: "find" } }, look: { colour: MEANING_COLOUR.problem, icon: "wrench" }, tool: QUICK_TOOL.check },
+  check: { go: { then: { do: "find" } }, look: QUICK_LOOK.check, tool: QUICK_TOOL.check },
+  ask: { go: { then: { place: "ask" } }, look: QUICK_LOOK.ask, tool: QUICK_TOOL.ask },
+  home: { go: {}, look: { colour: "grey", icon: "now" }, tool: null },
+};
+const make = (id: HoverActionId): HoverAction => ({ id, label: S.m93.act[id], look: ACT[id].look, go: ACT[id].go });
+
+/** The ONE primary action for the moment (the choice M84's nextPeek made, plus Fix it and Stop): Stop while a job runs (the
+ *  safety action, always there); See why with the engine stopped; Answer for a question; See what Claude asks while Claude
+ *  Code waits on you here; Pick a project; Review changes; Fix it after a failed check; Check my project when not checked
+ *  or changed since; else Ask. An action whose tool is turned off, or with the panel's buttons off, is Open Home instead. */
+export function hoverAction(m: Model, now: number, o: ActionInput): HoverAction {
+  if (o.layout === "job") return make("stop");
+  if (!m.runnerUp) return make("seeWhy");
+  if (m.connected === "none") return make("home");
+  if (m.approvals.length > 0) return make("answer");
+  if (claudeWaitsHere(m)) return make("claude");
+  const project = projectOf(m);
+  const id: HoverActionId = !nameOf(project) ? "pick"
+    : reviewWaits(m) > 0 ? "review"
+    : (() => { const k = homeStatus(m, project, now).kind; return k === "failing" ? "fix" : k === "unchecked" || k === "changed" ? "check" : "ask"; })();
+  if (o.buttons === false) return make("home");
+  const tool = ACT[id].tool, on = o.on ?? (() => true);
+  return tool === null || on(tool) ? make(id) : make("home");
+}
+/** The quiet Open Home beside the action, unless the action already is Open Home. */
+export const hoverSecondary = (a: HoverAction): boolean => a.id !== "home";
+
+// ---------- the height ----------
+
+/** Two rows: the head (face, greeting, line) and the action row, with the panel's padding and one gap. */
+export const HOVER_ROW_H = { head: 44, act: 30 } as const;
+export const HOVER_PAD = { top: 8, bottom: 14 } as const;
+export const HOVER_H = HOVER_PAD.top + HOVER_PAD.bottom + HOVER_ROW_H.head + HOVER_ROW_H.act + 10;

@@ -89,24 +89,28 @@ describe("the hover panel shows only what is live (F28, 4.3)", () => {
   });
   test("the panel draws each: Stop on a job, a mini receipt with Keep, Undo and See proof on a result, and no key button", () => {
     const view = read("./islandPanel.tsx");
-    expect(view).toContain('onClick={() => void invoke("send_command", { cmd: stopAgent() }).catch(() => {})}><Icon name="stop" size={12} />{S.stop}</Button>');
+    // M93 (changed on purpose, the minimal hover): Stop is the hover's one action while a job runs, drawn with its icon,
+    // and the only press that acts by itself.
+    expect(view).toContain('if (action.go === null) { void invoke("send_command", { cmd: stopAgent() }).catch(() => {}); return; }');
+    expect(view).toContain('{action.id === "stop" ? <Icon name="stop" size={12} />');
     // M69 (the YC benchmark spec 3.13): a mini receipt, not a toast. The character as the verdict says it, the fix, how it
     // was proven, the after picture, then Keep, Undo and See proof, with no key hints (the notch never takes the keyboard).
     // M70 step 4: no character in the panel (the founder: Squibby is not there always); a small tick or dot says the verdict.
-    const cards = view.slice(view.indexOf("const list = "), view.indexOf('<p className="ip-status"'));
+    const cards = view.slice(view.indexOf("const list = "), view.indexOf("// Every press but Stop opens Home"));
     expect(cards).not.toContain("FlowMini");
     expect(view).toContain('<span className="ip-dot" data-tone={view.job.tone} aria-hidden="true">');
     expect(view).toContain("<span className=\"ip-text\"><b>{view.mini.title || view.job.title}</b><span>{view.mini.line}</span></span>");
     expect(view).toContain('{view.mini.thumb && <img className="ip-thumb" src={view.mini.thumb} alt={S.fixRun.thumb} />}');
     expect(view).toContain('{view.mini.keep && <Button kind="primary" size="sm" tabIndex={tab} label={S.fixRun.keepLabel} onClick={click(view.job.key, () => onKeep?.(view.job.key))}>{S.fixRun.keep}</Button>}');
-    const mini = view.slice(view.indexOf('view.kind === "result" ?'), view.indexOf('<p className="ip-status"'));
+    const mini = view.slice(view.indexOf('view.kind === "result" ?'), view.indexOf("// Every press but Stop opens Home"));
     for (const hint of ["⌘", "↵", "keyHint", "kbd"]) expect(mini, hint).not.toContain(hint);
     expect(view).toContain("{view.canUndo && <Button size=\"sm\" tabIndex={tab} onClick={click(view.job.key,");
     expect(view).toContain('<Button kind="quiet" size="sm" tabIndex={tab} onClick={click(view.job.key, () => void invoke("open_card_cmd").catch(() => {}))}>{S.home.seeProof}</Button>');
     // M69 (F29): no Add your key. One main button in the panel: Keep on a proven result.
     expect(view).not.toContain("S.home.addKey");
     expect(view.match(/kind="primary"/g)?.length).toBe(1);
-    expect(view).toContain('<p className="ip-status" role="status">{view.line || S.home.notchNothing}</p>');
+    // M93 (changed on purpose): the plain line view is gone from the panel; the greeting and its one short line say it.
+    expect(view).not.toContain('<p className="ip-status"');
   });
   test("M70: one short greeting row with the gear and Open, a few buttons that only open Home; the old launcher stays gone", () => {
     const view = read("./islandPanel.tsx");
@@ -117,7 +121,10 @@ describe("the hover panel shows only what is live (F28, 4.3)", () => {
     // with the gear and Open; the quick actions follow panel.showButtons (hidden, on). The old big hello and its chips stay gone.
     // M70: a small greeting over the one fact, only on hover (the founder: "a small text" first, and "hey Rishabh"; the
     // bubble they removed was the hello at rest), with Settings and Open in words.
-    expect(view).toContain('<span className="ip-lead"><span className="ip-greet" title={lines.top}>{lines.top}</span><b className="ip-fact" title={lines.fact}><Dot colour={dot} />{lines.fact}</b></span>');
+    // M93 (changed on purpose, the founder, 14 Nov: "It just needs to be like 'Hey Rishabh' and some CTA"): the greeting
+    // leads, with at most one short line under it; Settings and Open left the head (Open Home is the quiet second action).
+    expect(view).toContain('<b className="ip-greet-big" title={greet}>{greet}</b>');
+    expect(view).toContain('{hline && <span className="ip-line" title={hline.words}><Dot colour={hline.colour} /><span>{hline.words}</span></span>}');
     expect(view).toContain('const showButtons = useSetting("panel.showButtons") !== false;');
     for (const gone of ["greeting(", "ip-hi", "ip-go", "ip-pill", "ip-row", "S.panel.go", "S.look.chipFind", "S.look.chipSafe", "first_name", "panel.showHello"]) expect(view, gone).not.toContain(gone);
     const css = read("./style.css").replace(/\/\*[\s\S]*?\*\//g, "");

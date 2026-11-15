@@ -3,7 +3,8 @@
 // update that installs while the person is away only when the page agrees nothing runs, with the note after the restart.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { IslandPanel } from "../src/islandPanel.tsx";
+// M93 (changed on purpose): the ring moved from the notch's hover panel to Now (runwayRing.tsx NowRunway).
+import { NowRunway } from "../src/runwayRing.tsx";
 import { initial, reduce, type Model } from "../src/model.ts";
 import { S } from "../src/strings.ts";
 import { LIMIT_HIT_MS, resetWords } from "../src/runway.ts";
@@ -203,19 +204,19 @@ describe("updates that install while the person is away", () => {
   });
 });
 
-describe("the runway's ring in the notch's panel", () => {
+describe("the runway's ring, on Now since M93 (it was in the notch's panel)", () => {
   const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, ev(e) as never), from);
   const atRest = () => run([{ type: "auth.status", method: "api_key", source: "keychain" }, { type: "ui.folderShown", project: PROJECT }]);
-  test("the share used, said in words, beside Settings", async () => {
+  test("the share used, said in words, on Now", async () => {
     app.reset();
-    await renderPage(<IslandPanel m={run([near], atRest())} line="" shown />);
+    await renderPage(<NowRunway m={run([near], atRest())} />);
     const ring = screen.getByRole("img", { name: /The Claude 5 hour limit is 91% used/ });
     expect(ring.getAttribute("data-level")).toBe("near");
     expect(ring.textContent).toBe(`${S.m91.over("5 hour")}${S.m91.used(91)}`);
   });
   test("nothing reported: no ring (switched off is in m89Off.test.tsx: the settings are read once per page)", async () => {
     app.reset();
-    await renderPage(<IslandPanel m={atRest()} line="" shown />);
+    await renderPage(<NowRunway m={atRest()} />);
     expect(screen.queryByRole("img", { name: /Claude limit/ })).toBeNull();
   });
 });

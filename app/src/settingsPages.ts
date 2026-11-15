@@ -29,11 +29,11 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "account.plan", items: [f("plan")] },
       // M74: the warning before the limit, and the most one task may spend (it stops there; Carry on goes on), beside it.
       { id: "account.spending", items: ["spend.dailyLimit", "spend.warnAt", "spend.pauseAt", "budget.task"] },
-      // M68: what to call you, only for the hello in the notch (you.name).
-      { id: "account.you", items: ["you.name"] },
     ],
     more: [
-      { id: "more.account.spending", items: ["budget.plan", "budget.rescue", "budget.research", "model.work", "model.rescue", "model.quick", "runway.warnAt"] },
+      // The M93 review: the Claude usage ring (runway.mark) moved from the notch to Now in Home, so its switch sits beside
+      // the warning that reads the same usage (runway.warnAt), no longer under General's Notch.
+      { id: "more.account.spending", items: ["budget.plan", "budget.rescue", "budget.research", "model.work", "model.rescue", "model.quick", "runway.mark", "runway.warnAt"] },
       // M69 (F29): Squibby pays and picks the model, so nobody needs a key. Your own key stays only as a developer tool, here.
       { id: "more.account.developer", items: [f("key")] },
       // M58 (feature 9): the first run's optional answer, which AI you build with. It only picks a tip; Not set forgets it.
@@ -50,10 +50,12 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "general.tools", items: ["guide.on", "secondLook.on", "files.on", "watch.on"] },
     ],
     more: [
+      // M93 (the founder, 14 Nov 2026: "Hey Rishabh"): what the notch's greeting calls you, first, under General as asked
+      // (moved from Account's You group). In More options because General's main level already holds its ten (the spec, 3.4).
       // What pointing at the notch opens (2 Nov 2026): Home, the usual, or the status line; beside how long it waits.
       // M90 (F32): the notch at rest, beside it: the character peeking out, its side and how long it stays out. In More
       // options because General's main level already holds its ten (the spec, 3.4).
-      { id: "more.general.notch", items: ["island.pointOpens", "notch.peek", "notch.peekSide", "notch.peekHideAfter", "island.showWork", "island.wings", "island.showStep", "island.hello", "island.openDelay", "island.closeDelay", "island.followDelay", "island.haptics", "panel.showWork", "panel.size", "notch.waitingMinutes", "runway.mark"] },
+      { id: "more.general.notch", items: ["island.pointOpens", "notch.peek", "notch.peekSide", "notch.peekHideAfter", "you.name", "island.showWork", "island.wings", "island.showStep", "island.hello", "island.openDelay", "island.closeDelay", "island.followDelay", "island.haptics", "panel.showWork", "panel.size", "notch.waitingMinutes"] },
       // M74: quiet hours for the notch's review dot and lines (Home still shows everything).
       { id: "more.general.quiet", items: ["quiet.on", "quiet.from", "quiet.to"] },
       { id: "more.general.home", items: ["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", "history.thisWeek", f("usedOften")] },

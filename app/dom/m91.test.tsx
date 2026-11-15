@@ -2,7 +2,8 @@
 // room left, the week named, the share used and the reset in its label. And a 5 hour window at 85% turns amber, so Run it
 // asks first at the usual 80% mark.
 import { describe, expect, test } from "bun:test";
-import { IslandPanel } from "../src/islandPanel.tsx";
+// M93 (changed on purpose): the ring moved from the notch's hover panel to Now (runwayRing.tsx NowRunway).
+import { NowRunway } from "../src/runwayRing.tsx";
 import { initial, reduce, type Model } from "../src/model.ts";
 import { S } from "../src/strings.ts";
 import { app, ev, press, renderHome, renderPage, runner, screen, type, PROJECT } from "./render.tsx";
@@ -16,7 +17,7 @@ const atRest = () => run([{ type: "auth.status", method: "api_key", source: "key
 describe("the ring with the real plan reading", () => {
   test("room left: grey, the week named, the share and the reset said", async () => {
     app.reset();
-    await renderPage(<IslandPanel m={run([real], atRest())} line="" shown />);
+    await renderPage(<NowRunway m={run([real], atRest())} />);
     const ring = screen.getByRole("img", { name: /^The Claude week limit is 46% used\. It resets / });
     expect(ring.getAttribute("data-level")).toBe("ok");
     expect(ring.textContent).toBe(`${S.m91.over("week")}${S.m91.used(46)}`);
@@ -24,7 +25,7 @@ describe("the ring with the real plan reading", () => {
   });
   test("the 5 hour window at 85% while the plan still says allowed: amber", async () => {
     app.reset();
-    await renderPage(<IslandPanel m={run([{ ...real, usedPct: 85, window: "five_hour", resetsAt: FIVE_RESET }], atRest())} line="" shown />);
+    await renderPage(<NowRunway m={run([{ ...real, usedPct: 85, window: "five_hour", resetsAt: FIVE_RESET }], atRest())} />);
     const ring = screen.getByRole("img", { name: /The Claude 5 hour limit is 85% used/ });
     expect(ring.getAttribute("data-level")).toBe("near");
   });

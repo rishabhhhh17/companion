@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A calmer notch: a hello and one button: 15 Nov 2026
+
+- **Pointing at the notch shows much less.** "Hey Sam" (your name from Settings) beside the character, one short line only when something matters, and one button that fits the moment, with Open Home beside it. For example: "2 changes to review" and Review changes, "A check failed" and Fix it, "Claude is waiting for you" and See what Claude asks, or just Check my project when nothing is new. While a job runs, the button is Stop. If Squibby is not running, it says so, with See why.
+- **Nothing was taken away, it moved to Home.** Your AI tools, the last review and its Undo, the practice project, Settings and the key to press were already in Home. How full your Claude limit is now shows on Now in Home too, labelled Claude usage; its switch sits under Account, More options, beside Warn me before a big job.
+- **Your name.** The notch and its hello both use the first word of the name you typed. Left empty, the notch says Hey there. It never reads your Mac's account name. Change it in Settings, General, More options, Notch (it used to be under Account).
+- The panel is half as tall as before, still never takes your keyboard, and every button still only opens Home, except Stop.
+
 ## Ready to sign, and a kit for testing on real accounts: 14 Nov 2026
 
 - **Signing is one step away.** The day the Apple developer account arrives, three names and one command make the signed, notarized release: `app/scripts/sign-release.sh`. It never reads a password or a key file. To find your certificate it lists certificate names in your Keychain (never keys), and Apple's notary login stays in your Keychain under a name you pick, used only by Apple's own notary tool. Neither ever shows us a password. After signing it checks the signature, that Apple's Gatekeeper accepts the app as notarized, and that the ticket is attached.

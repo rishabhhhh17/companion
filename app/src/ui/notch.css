@@ -9,40 +9,14 @@
 .island-panel .ip-hello-line { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; column-gap: var(--space-2); color: var(--notch-fg); font: 500 var(--t-small) / var(--lh-small) var(--font); }
 .island-panel .ip-hello-line b { color: var(--notch-ink); font-weight: 600; }
 .island-panel .ip-hello-line span { color: var(--notch-fg-2); }
-/* M70, a practical notch (notchQuick.ts): the small panel that opens when the pointer rests on the notch. Two rows (step 4):
-   a small greeting over the one fact, with Settings and Open in words, then up to three buttons, or the running job with Stop. Fixed heights for
-   the quick and job layouts (LAYOUT_H), so a fact changing never moves anything. Colours only from the notch tokens in
-   ui/tokens.css; motion only the panel's own fade (style.css) and the M66 press and hover tokens. */
-/* M84: four rows that each say something (notchPeek.ts peekRows and PEEK_ROW_H): the head 44, the AI tools 44, a card 52 and
-   the foot 30, 10 apart. Without a project or an engine to ask, the tools row is left out (data-rows 3), never kept empty. */
-.island-panel[data-layout="quick"], .island-panel[data-layout="job"] { height: 222px; grid-template-rows: 44px 44px 52px 30px; align-content: start; gap: 10px; }
-.island-panel[data-rows="3"] { height: 168px; grid-template-rows: 44px 52px 30px; }
-.island-panel .ip-head { position: relative; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 24px; }
-.island-panel .ip-lead { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
-.island-panel .ip-greet { color: var(--notch-fg-2); font: 500 var(--t-caption) / 1.25 var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.island-panel .ip-fact { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--notch-ink); font: 600 var(--t-small) / var(--lh-small) var(--font); }
-.island-panel .ip-tools { display: flex; align-items: center; gap: 2px; flex: none; }
-/* Settings and Open: quiet words, a soft fill under the pointer, the press on the M66 tokens. */
-.island-panel button.ip-word { display: inline-flex; align-items: center; height: 24px; padding: 0 var(--space-2); border-radius: 7px; color: var(--notch-fg-2); font: 500 var(--t-small) / 1 var(--font); white-space: nowrap; transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
-.island-panel button.ip-word:hover { color: var(--notch-ink); background: var(--notch-card-hover); }
-/* M89: the usage runway's ring beside Settings (islandPanel.tsx RunwayRing): grey while there is room, amber when the limit is
-   close or reached (it needs the person's choice before a big job). Drawn with the panel's own words' size; never moves. */
-.island-panel .ip-runway { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 var(--space-2) 0 var(--space-1); color: var(--notch-fg-2); font: 500 var(--t-small) / 1 var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.island-panel .ip-runway svg { flex: none; transform: rotate(-90deg); }
-.island-panel .ip-runway circle { fill: none; stroke-width: 2.25; }
-.island-panel .ip-runway .ip-runway-track { stroke: var(--notch-edge-strong); }
-.island-panel .ip-runway .ip-runway-fill { stroke: currentColor; stroke-linecap: round; }
-.island-panel .ip-runway[data-level="near"], .island-panel .ip-runway[data-level="out"] { color: var(--amber); }
-/* The M91 review: the window over the share used, two small lines like the panel's own head, so the headline keeps its room. */
-.island-panel .ip-runway-text { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
-.island-panel .ip-runway-text small { color: var(--notch-fg-2); font: 500 var(--t-caption) / 1.15 var(--font); }
-.island-panel button.ip-word:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
-.island-panel .ip-quick { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-.island-panel .ip-quick > button { flex: none; white-space: nowrap; }
-.island-panel[data-layout="job"] .ip-live { padding: 0; }
-.island-panel[data-layout="job"] .ip-live .ip-text > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.island-panel .ip-steps { margin-top: 6px; max-width: 160px; }
-.island-panel:not([data-shown]) .ip-head, .island-panel:not([data-shown]) .ip-quick { pointer-events: none; }
+/* M70, a practical notch, and M93, a minimal hover (notchMinimal.ts; docs/milestones/M93-minimal-hover.md). The founder, 14
+   Nov 2026: "it's too much for just a notch. It just needs to be like 'Hey Rishabh' and some CTA." Two rows: Flowflow's
+   face beside the greeting, with at most one short line under it, then the one action and a quiet Open Home. A fixed
+   height for the quick and job layouts (LAYOUT_H), so a line coming or going never moves anything. Colours only from
+   ui/tokens.css; motion only the panel's own fade (style.css) and the hover and press tokens. */
+.island-panel[data-layout="quick"], .island-panel[data-layout="job"] { height: 106px; grid-template-rows: 44px 30px; align-content: start; gap: 10px; }
+.island-panel .ip-head { position: relative; display: flex; align-items: center; gap: var(--space-3); min-height: 24px; min-width: 0; }
+.island-panel .ip-lead { display: flex; flex-direction: column; justify-content: center; min-width: 0; flex: 1 1 auto; }
 /* Under the fact row, the mini receipt lines up with the fact and Settings, as the job does. */
 .island-panel .ip-head ~ .ip-result { padding-inline: 0; }
 /* The state of a question or a result, without a character (M70 step 4): a small amber dot for a question, a green tick
@@ -61,69 +35,26 @@
    openness (--open), so the bare notch at rest has none. A file dragged over keeps its own ring. */
 .island:not([data-drop="over"]) .island-shape { box-shadow: inset 1px 0 0 color-mix(in srgb, var(--notch-edge-open) calc(var(--open) * 100%), transparent), inset -1px 0 0 color-mix(in srgb, var(--notch-edge-open) calc(var(--open) * 100%), transparent), inset 0 -1px 0 color-mix(in srgb, var(--notch-edge-open) calc(var(--open) * 100%), transparent); }
 
-/* ---------- M71, black with colour: the hover panel in the same parts as Home, small (docs/design/2026-11-05-black-with-colour)
-   The greeting and the project on one quiet line, the one fact with its meaning's dot, and up to three buttons, each a
-   raised pill with its colour tile. No gradient, no glow; the colours are the tokens' (ui/tokens.css [data-c]). */
-.island-panel .ip-greet { color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); }
-.island-panel .ip-fact { display: flex; align-items: center; gap: var(--space-2); color: var(--fg); font: var(--w-bold) var(--t-answer) / var(--lh-answer) var(--font); }
-.island-panel .ip-fact .ui-mdot { flex: none; }
-.island-panel .ip-quick { gap: var(--space-2); }
-.island-panel .ip-quick > .btn.ip-act { gap: var(--pill-gap); min-height: var(--h-place); padding: 0 var(--space-3) 0 var(--space-2); border: 0; border-radius: var(--r-btn); background: var(--surface-2); box-shadow: none; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); }
-.island-panel .ip-quick > .btn.ip-act:hover:not(:disabled) { background: var(--surface-3); }
-
-/* ---------- M84, the notch, minimal but detailed (notchPeek.ts; docs/milestones/M84-design-pass.md) ----------
-   One structure, the M71 black look: quiet raised cards on the notch's black, a dot or tile in its meaning's colour, the
-   type scale and spacing tokens, motion only on the hover and press tokens and the one progress loop. */
+/* ---------- M71, black with colour, and M93: the hover in the same parts as Home, small ----------
+   The greeting in the answer size, the one line with its meaning's dot, the one action as a raised pill with its colour
+   tile, and Open Home as quiet words. No gradient, no glow; the colours are the tokens' (ui/tokens.css [data-c]). */
+.island-panel .ip-greet-big { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font: var(--w-bold) var(--t-answer) / var(--lh-answer) var(--font); }
+.island-panel .ip-line { display: flex; align-items: center; gap: var(--space-2); min-width: 0; color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); }
+.island-panel .ip-line > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.island-panel .ip-line .ui-mdot { flex: none; }
 /* Flowflow's live face beside the greeting, in the state it is in (FlowMini). */
 .island-panel .ip-face { flex: none; display: block; width: var(--peek-face); height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
 .island-panel .ip-face.ff-mini { height: var(--peek-face); }
-/* The thin progress line under the head while a job works: the four steps as a share of the width (the work card's own
-   run line, fix.css), drawn by transform, breathing softly while it runs. */
-.island-panel .ip-progress.run-line { position: absolute; left: 0; right: 0; bottom: -6px; height: var(--peek-line); border-radius: var(--r-pill); background: var(--edge); }
-.island-panel .ip-progress.run-line::after { content: ""; position: absolute; inset: 0; border-radius: var(--r-pill); background: var(--c-blue); transform-origin: left center; transform: scaleX(var(--run)); transition: transform var(--dur-3) var(--ease-out); animation: ip-wait var(--loop-progress) var(--ease-loop) infinite; }
-/* The AI tools: one small card per tool (its mark, its name, what it is doing now), at most three, then a count. */
-.island-panel .ip-ai { display: flex; align-items: stretch; gap: var(--space-2); min-width: 0; height: 44px; }
-.island-panel .ip-ai .ip-ai-card { display: flex; align-items: center; gap: var(--space-2); flex: 1 1 0; min-width: 0; max-width: 176px; padding: 0 var(--space-3) 0 var(--space-2); border-radius: var(--r-btn); background: var(--surface-2); color: var(--fg); text-align: left; transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
-.island-panel .ip-ai button.ip-ai-card:hover { background: var(--surface-3); }
-.island-panel .ip-ai button.ip-ai-card:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
-.island-panel .ip-ai[data-kind="connect"] .ip-ai-card, .island-panel .ip-ai[data-kind="looking"] .ip-ai-card, .island-panel .ip-ai[data-kind="unknown"] .ip-ai-card { max-width: none; }
-.island-panel .ip-ai-card .ic { flex: none; margin-left: auto; color: var(--fg-3); }
-/* A tool's mark is a tile (ui/parts.css .ui-mtile, its colour from data-c): grey, or orange while it waits on you. */
-.island-panel .ip-mark { width: var(--peek-mark); height: var(--peek-mark); border-radius: var(--r-tile-md); font: var(--w-bold) var(--t-caption) / 1 var(--font); letter-spacing: .02em; }
-.island-panel .ip-mark[data-wait] { animation: ip-wait var(--loop-live) var(--ease-loop) infinite; }
-@keyframes ip-wait { 50% { opacity: .45; } }
-.island-panel .ip-ai-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-.island-panel .ip-ai-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); color: var(--fg); }
-.island-panel .ip-ai-text > span { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-2); font: 500 var(--t-caption) / var(--lh-caption) var(--font); }
-.island-panel .ip-ai-card[data-state="waiting"] .ip-ai-text > span { color: var(--c-orange-text); }
-.island-panel .ip-ai-text .ui-mdot { flex: none; }
-.island-panel .ip-ai .ip-ai-more { flex: none; align-self: center; height: 24px; padding: 0 var(--space-2); border-radius: var(--r-pill); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / 1 var(--font); transition: background-color var(--dur-hover) var(--ease-out); }
-.island-panel .ip-ai .ip-ai-more:hover { background: var(--surface-2); color: var(--fg); }
-/* The card: the latest review (its proof and Undo), or the next useful thing (a whole button). */
-.island-panel[data-layout] .ip-card { display: flex; align-items: center; gap: var(--space-3); min-width: 0; height: 52px; padding: 0 var(--space-3); border-radius: var(--r-btn); background: var(--surface-1); box-shadow: inset 0 0 0 var(--hair) var(--hair-c, var(--line)); color: var(--fg); text-align: left; }
-.island-panel[data-layout] button.ip-card { transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
-.island-panel[data-layout] button.ip-card:hover { background: var(--surface-2); }
-.island-panel[data-layout] button.ip-card:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
-.island-panel .ip-card > .ic { flex: none; color: var(--fg-3); }
-.island-panel .ip-card-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
-.island-panel .ip-card-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); }
-.island-panel .ip-card-cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-2); font: 500 var(--t-caption) / var(--lh-caption) var(--font); }
-.island-panel .ip-card-proof { flex: none; display: inline-flex; align-items: center; gap: 5px; color: var(--fg-2); font: var(--w-strong) var(--t-caption) / 1 var(--font); white-space: nowrap; }
-.island-panel .ip-card-proof[data-proof="passed"] { color: var(--c-green-text); }
-.island-panel .ip-card-proof[data-proof="failed"] { color: var(--c-red-text); }
-.island-panel .ip-card-act { flex: none; }
-/* While a job works the card row is its step, its time and Stop, in the same card. */
-.island-panel[data-layout="job"] .ip-live { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); height: 52px; padding: 0 var(--space-3); border-radius: var(--r-btn); background: var(--surface-1); box-shadow: inset 0 0 0 var(--hair) var(--line); }
-/* The foot: the quick actions, and the key to press on the right. */
-.island-panel .ip-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 0; height: 30px; }
-.island-panel .ip-key { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--fg-3); font: 500 var(--t-caption) / 1 var(--font); white-space: nowrap; }
-.island-panel .ip-key .ui-keys { gap: 2px; }
-.island-panel .ip-key .ui-key { min-width: 18px; min-height: 18px; padding: 0 4px; font-size: var(--t-caption); line-height: 1; }
-/* With three quick actions the key hint is left out (islandPanel.tsx): never the keys alone (M84 review). */
-.island-panel:not([data-shown]) .ip-ai, .island-panel:not([data-shown]) .ip-card, .island-panel:not([data-shown]) .ip-foot { pointer-events: none; }
-/* Arriving: the rows come in one after another, a few points up and in, on the panel's own fade (motion tokens). */
-.island-panel[data-shown][data-layout] > :is(.ip-ai, .ip-card, .ip-live, .ip-foot) { animation: ip-rise var(--dur-2) var(--ease-out) both; }
-.island-panel[data-shown][data-layout] > .ip-ai { animation-delay: var(--seq-peek-row); }
-.island-panel[data-shown][data-layout] > :is(.ip-card, .ip-live) { animation-delay: calc(var(--seq-peek-row) * 2); }
-.island-panel[data-shown][data-layout] > .ip-foot { animation-delay: calc(var(--seq-peek-row) * 3); }
+/* The action row: the one action, then Open Home as quiet words. Lined up under the greeting, past the face. */
+.island-panel .ip-act-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; height: 30px; padding-left: calc(var(--peek-face) + var(--space-3)); }
+.island-panel .ip-act-row > .btn.ip-cta { flex: none; gap: var(--pill-gap); min-height: var(--h-place); padding: 0 var(--space-3) 0 var(--space-2); border: 0; border-radius: var(--r-btn); background: var(--surface-2); box-shadow: none; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); white-space: nowrap; }
+.island-panel .ip-act-row > .btn.ip-cta:hover:not(:disabled) { background: var(--surface-3); }
+/* The M93 review: Open Home sits at the row's right edge, so the two rows span the panel instead of leaving its right half
+   empty. The panel's width stays the founder's call (M93 doc). */
+.island-panel button.ip-home { margin-left: auto; display: inline-flex; align-items: center; height: 24px; padding: 0 var(--space-2); border-radius: 7px; color: var(--fg-2); font: 500 var(--t-small) / 1 var(--font); white-space: nowrap; transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
+.island-panel button.ip-home:hover { color: var(--fg); background: var(--surface-2); }
+.island-panel button.ip-home:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+.island-panel:not([data-shown]) .ip-head, .island-panel:not([data-shown]) .ip-act-row { pointer-events: none; }
+/* Arriving: the action row comes in a moment after the greeting, a few points up and in, on the panel's own fade. */
+.island-panel[data-shown][data-layout] > .ip-act-row { animation: ip-rise var(--dur-2) var(--ease-out) var(--seq-peek-row) both; }
 @keyframes ip-rise { from { opacity: 0; translate: 0 4px; } }

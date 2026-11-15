@@ -36,6 +36,9 @@ The executive review found the product trying to be many products at once (F16 s
 - **Lively is the usual now, not Still.** The founder: "I don't see the water ring following me." With Still as the usual the ring showed only while listening, so a person who had never opened Settings never saw it. Still and Gentle stay as the quiet choices, and the rest of F28 (side tools off, status first) is unchanged. A word the setting does not know still reads as Still.
 - **Going into the edge** (`character.dockWhen`). Let go near an edge, it used to snap in with a spring. Now it goes in only when pushed hard into the edge, thrown at it, or kept near it about two seconds, and it goes in with a plain ease and no bounce. Playing near an edge leaves it where it is let go. The old way stays as a choice ("Any let go"). Numbers are in `docking.rs` (`HARD_PRESS`, `FLICK_SPEED`, `REST_MS`); [verify] the feel on a real Mac.
 
+## Note, 14 Nov 2026 (M93)
+- The hover panel became minimal (F32's update of 14 Nov 2026): a hello with the first word of the typed name, at most one short line and one action. The name is still only what the person types; the Mac account name is still never read.
+
 ## Revisit only if
 Real users on real Macs show that a switched off group is what they came for, or that Still reads as broken.
 
