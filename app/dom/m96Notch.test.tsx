@@ -11,8 +11,11 @@ const chatShown = () => document.querySelector("main.home")!.hasAttribute("data-
 
 const opened = (o: Record<string, unknown> = {}) => emit("opened", { keyboard: false, instant: false, chat: true, ...o });
 const field = () => document.querySelector<HTMLTextAreaElement>(".notch-chat textarea");
+// The task ran earlier today: about an hour ago, but never before midnight, so the test holds at any time of day.
+const sinceMidnight = Date.now() - new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+const ago = (ms: number) => new Date(Date.now() - Math.min(ms, sinceMidnight / 2)).toISOString();
 const done = { type: "tasks.list", project: PROJECT, tasks: [
-  { id: 1, label: "fix the email check", status: "done", usd: 0.02, startedAt: new Date(Date.now() - 3_600_000).toISOString(), endedAt: new Date(Date.now() - 3_500_000).toISOString(), checkpoint: "cp_1", changed: 2, proof: "passed" },
+  { id: 1, label: "fix the email check", status: "done", usd: 0.02, startedAt: ago(3_600_000), endedAt: ago(3_500_000), checkpoint: "cp_1", changed: 2, proof: "passed" },
 ] };
 
 describe("the small chat in Home", () => {
