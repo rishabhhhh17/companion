@@ -943,6 +943,27 @@ mod tests {
         }
     }
     #[test]
+    fn m102_every_reason_in_the_shared_review_carries_a_proof_of_known_fields_only() {
+        // M102: the shared fixture (read by the runner's suite and the pages too). The shell passes review events through as
+        // they are; here it only checks the shape it may log or forward: a known sort, known fields, no code text.
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let e: Value = serde_json::from_str(events.lines().find(|l| l.contains("\"id\":\"m102e1\"")).unwrap()).unwrap();
+        let reasons = e["reasons"].as_array().unwrap();
+        assert_eq!(reasons.len(), 7);
+        let sorts = ["rule", "line", "check", "osv", "house_rule", "setting", "run"];
+        let fields = ["by", "file", "line", "check", "exit", "outcome", "id", "rule", "count", "max"];
+        for r in reasons {
+            let p = r["proof"].as_object().unwrap();
+            assert!(sorts.contains(&p["by"].as_str().unwrap()), "{r}");
+            for k in p.keys() { assert!(fields.contains(&k.as_str()), "{k}"); }
+            if let Some(l) = p.get("line") { assert!(l.as_u64().unwrap() >= 1); }
+        }
+        assert_eq!(reasons[0]["proof"]["exit"].as_i64(), Some(1));
+        assert_eq!(reasons[3]["proof"]["id"].as_str(), Some("GHSA-aaaa-bbbb-cccc"));
+        assert_eq!(reasons[5]["kind"].as_str(), Some("model_concern"));
+        assert_eq!(reasons[5]["proof"]["by"].as_str(), Some("line"));
+    }
+    #[test]
     fn m79_the_weekly_summary_passes_only_for_the_chosen_project_and_its_events_and_the_package_findings_read() {
         // M79: the shared fixtures (read by the runner's suite and the pages too).
         let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");

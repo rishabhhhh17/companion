@@ -123,7 +123,8 @@ describe("the rating", () => {
     expect(rate(base({ secretFiles: [".env"], touches: ["secrets"] })).rating).toBe("worth_a_look");
     expect(rate(base({ changes: [ch("src/old.ts", "deleted")] })).rating).toBe("worth_a_look");
     expect(rate(base({ count: 400, capped: true })).rating).toBe("worth_a_look");
-    expect(rate(base({ concern: true })).rating).toBe("worth_a_look");
+    // M102: the model's worry counts only with a place that code found inside a changed place (m102-why.test.ts).
+    expect(rate(base({ concern: true, concernAt: { file: "src/a.ts", line: 1 } })).rating).toBe("worth_a_look");
   });
   test("stop: a key in the code, a removed file still used, checks that fail, payments or sign in with failing checks", () => {
     const k = rate(base({ secrets: [{ file: "src/api.ts", line: 4 }], touches: ["secrets"] }));

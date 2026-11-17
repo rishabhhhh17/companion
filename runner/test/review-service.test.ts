@@ -316,7 +316,8 @@ describe("the rules on a real batch", () => {
     expect(t.of("review.result")[0]).toMatchObject({ lane: "cheap" });
   });
   test("the model's worry raises safe to worth a look", async () => {
-    const t = setup({ words: JSON.stringify({ summary: "The list now loads twice.", notes: [], concern: true, concernSay: "The list may load twice." }) });
+    // M102: the worry names the changed line (src/App.tsx line 1); without a place it is only a note (m102-why.test.ts).
+    const t = setup({ words: JSON.stringify({ summary: "The list now loads twice.", notes: [], concern: true, concernSay: "The list may load twice.", concernFile: "src/App.tsx", concernLine: 1 }) });
     await started(t);
     t.change({ "src/App.tsx": "export const title = 'Twice';\n" });
     await t.until(() => t.of("review.batch").length === 1);

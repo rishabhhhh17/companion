@@ -4,7 +4,8 @@
 // short parts: what is wrong, what it means for you, how to fix it, and when it may be fine on purpose (left out for a Must
 // fix that never is). No number score anywhere. Fixed sentences per kind live in strings.ts. Tested in findingShape.test.ts;
 // reviewCard.tsx and shipPanels.tsx draw it.
-import type { ReviewReasonKind } from "../../protocol/index.ts";
+import type { ReviewProof, ReviewReasonKind } from "../../protocol/index.ts";
+import { onlySaysFailed, proofLine } from "./proofLine.ts";
 import { fixedSince, keyWarned, type ReviewCard } from "./review.ts";
 import { S } from "./strings.ts";
 
@@ -23,12 +24,16 @@ const RANK: Record<Level, number> = { must: 0, should: 1, look: 2 };
 const warned = (r: ReviewCard): boolean => keyWarned(r);
 export const levelRank = (k: ReviewReasonKind): number => RANK[FINDING_LEVEL[k]];
 
-/** detail: the review's own sentence for this finding (its file, line or table; secrets already hidden). */
-export type Parts = { wrong: string; means: string; how: string; fine?: string; detail?: string };
-export function findingParts(kind: ReviewReasonKind, say: string): Parts {
+/** detail: the review's own sentence for this finding (its file, line or table; secrets already hidden). why (M102): the
+ *  one line that says why Squibby is sure, when the engine sent its proof. */
+export type Parts = { wrong: string; means: string; how: string; fine?: string; detail?: string; why?: string };
+export function findingParts(kind: ReviewReasonKind, say: string, proof?: ReviewProof): Parts {
   const head = S.homeNow.reviewHead[kind];
   const fine = S.finding.fineFor[kind];
-  return { wrong: head[0], means: S.finding.meansFor[kind] ?? head[1], how: S.finding.howFor[kind], ...(fine ? { fine } : {}), ...(say ? { detail: say } : {}) };
+  const why = proof ? proofLine({ kind, proof, say }) : null;
+  // M102 review: a failing check's words that only say it failed are left out; its proof line names it, with the exit code.
+  const detail = say && !(proof?.by === "check" && proof.check && onlySaysFailed(say)) ? say : "";
+  return { wrong: head[0], means: S.finding.meansFor[kind] ?? head[1], how: S.finding.howFor[kind], ...(fine ? { fine } : {}), ...(detail ? { detail } : {}), ...(why ? { why } : {}) };
 }
 
 /** checks_unchecked: the project's checks did not run on the change, or could not tell (never a reason the engine sends). */
@@ -42,7 +47,7 @@ export function shapeFindings(r: ReviewCard | null | undefined): Shaped[] {
   if (warned(r)) return r.keys!.map((k, i) => ({ i, kind: "secret_in_code" as const, level: "must" as const, file: k.file, line: k.line, parts: findingParts("secret_in_code", S.review.keyAt(k.file, k.line)), fixed: false }));
   const res = r.result;
   if (!res || r.stage !== "reviewed") return [];
-  const out: Shaped[] = res.reasons.map((x, i) => ({ i, kind: x.kind, level: FINDING_LEVEL[x.kind], ...(x.file ? { file: x.file } : {}), ...(x.line ? { line: x.line } : {}), parts: findingParts(x.kind, x.say), fixed: fixedSince(r, i) }));
+  const out: Shaped[] = res.reasons.map((x, i) => ({ i, kind: x.kind, level: FINDING_LEVEL[x.kind], ...(x.file ? { file: x.file } : {}), ...(x.line ? { line: x.line } : {}), parts: findingParts(x.kind, x.say, x.proof), fixed: fixedSince(r, i) }));
   if (res.checks === "failed" && !res.reasons.some((x) => x.kind === "checks_failed" || x.kind === "risky_with_failing_checks")) out.push({ i: -1, kind: "checks_failed", level: "must", parts: findingParts("checks_failed", res.checksNote ?? ""), fixed: false });
   if (res.checks === "not_run" || res.checks === "unknown") {
     const [wrong, means, how] = res.checks === "not_run" ? S.finding.unchecked : S.finding.uncheckedUnknown;

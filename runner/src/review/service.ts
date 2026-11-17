@@ -41,7 +41,7 @@ import { NO_PROJECT } from "../walk.ts";
 import { ChangeBatcher, ignoredPath, type WatchFn } from "./batcher.ts";
 import { excerpt } from "./excerpt.ts";
 import { applyStrictness, houseRuleReasons, keysInPage, lineHash, MIGRATION, openDataItems, recheckFiles, recheckHolds, ruleFilesOf, type Recheck, type RuleFile } from "./look.ts";
-import { importersOf, maxFilesOf, needsStrongModel, rate, stopTouchesOf, secretsInCode, touchesOf, type AddedLine, type Checks, type FileChange, type FileLines, type Reason, type StillUsed } from "./rate.ts";
+import { concernPlace, importersOf, maxFilesOf, needsStrongModel, rate, stopTouchesOf, secretsInCode, touchFiles, TOUCHES, withProofs, type AddedLine, type Checks, type FileChange, type FileLines, type Reason, type StillUsed } from "./rate.ts";
 import { fixPrompt, sendBackText, type ReviewWords } from "./sendback.ts";
 import { parseWords, plainSummary, wordsRequest, type Words } from "./words.ts";
 import { SANDBOXED_WORDS } from "../proof/box.ts";
@@ -1007,7 +1007,9 @@ export class ReviewService {
       const found: Reason[] = [...weakened, ...page.page, ...open.map((x) => x.reason), ...house, ...pk.reasons];
       const deleted = b.files.filter((f) => f.kind === "deleted").map((f) => f.file);
       const stillUsed = deleted.length ? importersOf(deleted, liveCode(b.project)) : [];
-      const touches = touchesOf(b.files, lines, b.secretFiles);
+      // M102: the first file that made each touch, for the proof line of a change to a risky area.
+      const touchAt = touchFiles(b.files, lines, b.secretFiles);
+      const touches = TOUCHES.filter((t) => touchAt.has(t));
       if (abort.signal.aborted) throw new Error("stopped");
 
       // The project's own checks, only when asked (or automatic), never beside the engine's other work in the project.
@@ -1049,7 +1051,7 @@ export class ReviewService {
       else {
         lane = model === this.deps.strong && strong ? "strong" : "cheap";
         ruleNotes = ruleFilesOf(b.project);
-        const req = wordsRequest({ files: b.files, count: b.count, touches, reasons: rated.reasons, diff: diffForExplain(withoutKeys(hunks), DIFF_CHARS), checks: checks === "not_run" ? "not run" : checks, notes: ruleNotes });
+        const req = wordsRequest({ files: b.files, count: b.count, touches, reasons: rated.reasons, diff: diffForExplain(withoutKeys(hunks), DIFF_CHARS, true), checks: checks === "not_run" ? "not run" : checks, notes: ruleNotes });
         // The call has its own stop switch: Stop ends it, and so does waiting too long, so no Claude process is left
         // running. Whatever it cost is booked when it answers (F29), even after the review stopped waiting for it.
         const call = new AbortController();
@@ -1075,16 +1077,23 @@ export class ReviewService {
       // the summary of what the change did is read, never the notes, which are the review's own advice ("run the project's
       // checks again to confirm they pass" was read as a claim in the 10 Nov real run).
       const claimed = words ? claimedPassedReason([words.summary], checks) : null;
-      if (words?.concern || claimed) rated = rate({ ...input, ...(claimed ? { found: [...found, claimed] } : {}), ...(words?.concern ? { concern: true, concernSay: words.concernSay } : {}) });
+      // M102: the model's worry may raise the rating only when the file and line it names is inside a changed place of this
+      // batch (code checks, the model's word is not enough). Otherwise its sentence is kept as an ordinary note, first.
+      const concernAt = words?.concern ? concernPlace({ file: words.concernFile, line: words.concernLine }, hunks) : null;
+      const concernNote = words?.concern && !concernAt && words.concernSay ? [words.concernSay] : [];
+      if (concernAt || claimed) rated = rate({ ...input, ...(claimed ? { found: [...found, claimed] } : {}), ...(concernAt ? { concern: true, concernSay: words!.concernSay, concernAt } : {}) });
       rated = withOpenPages(rated, privateOpen);
       // M77: a key in code in a project with a git remote says what pushing means (read only: .git/config is never written).
       const pushRisk = rated.reasons.some((r) => r.kind === "secret_in_code" || r.kind === "key_in_page") && hasGitRemote(b.project);
       rated = { ...rated, reasons: withPushRisk(rated.reasons, pushRisk) };
+      // M102: every reason with its proof, in data the card puts into one line (the rule and file:line, the failing check and
+      // its exit code, the OSV id, the house rule).
+      rated = { ...rated, reasons: withProofs(rated.reasons, { checks, runs: checkRuns, touches, touchAt: Object.fromEntries(touchAt), removed: deleted, secretFiles: b.secretFiles, count: b.count, max: this.maxFiles() }) };
       // M57 feature 7: how strict. Smaller reasons may be left out (Quiet, or a kind the person said not to flag here);
       // a Fix this first, a key, a settings or key file and open data never are.
       const shown = applyStrictness(rated, this.deps.setting("review.strictness") as ReviewStrictness, reviewSilenced(this.silencedLines(b.project)));
       const summary = words?.summary ?? plainSummary(b.files, b.count);
-      const notes = [...(words?.notes ?? []).map((n) => clip(redact(n), 200)), ...pk.notes];
+      const notes = [...[...concernNote, ...(words?.notes ?? [])].map((n) => clip(redact(n), 200)), ...pk.notes];
       const review: ReviewWords = { rating: shown.rating, reasons: shown.reasons, touches, files: b.files, count: b.count, summary, notes, ...(pushRisk ? { pushRisk: true } : {}) };
       // M77: what the changes did not tell you, from this review's own data (no model call).
       const untold = untoldOf(b.files, deltas, checks);

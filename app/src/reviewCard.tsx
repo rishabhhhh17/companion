@@ -27,7 +27,7 @@ import { ProofChip, Said } from "./ui/parts.tsx";
 import { reviewHead, type ReviewHead } from "./reviewHead.ts";
 import { CodePoint } from "./codePoint.tsx";
 import { keepWords, readinessOf, shapeFindings, type Shaped } from "./findingShape.ts";
-import { FindingList, LeadParts, ReadinessLine } from "./findingList.tsx";
+import { FindingList, LeadParts, ReadinessLine, SureLine } from "./findingList.tsx";
 
 export const REVIEW_ID = "home-review";
 const FIX_ID = "home-review-fix";
@@ -205,6 +205,9 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
         {/* M69 step 3: the place, as the engine named it, with the line and the lines either side of it (masked by the engine
             and again by review.ts: a key keeps only its prefix). Without lines, the file and the line number only. */}
         {head.pointed && !undoDone && <CodePoint file={head.pointed.file} line={head.pointed.line} lines={head.pointed.lines} tone={head.tone} />}
+        {/* M102: why Squibby is sure, in one line: the rule and file:line, the failing check and its exit code, the OSV id or
+            the house rule. */}
+        {head.sure && !undoDone && <SureLine text={head.sure} className="line muted rv-sure" />}
         {/* m67 bug 14: a key warning before any review says when the changes were made, as the plain card does. */}
         {!res && r.away && <div className="line muted">{S.review.away[r.away]}</div>}
         {/* M72 (item 2): what the change did, in the review's own summary, said once under the evidence. */}

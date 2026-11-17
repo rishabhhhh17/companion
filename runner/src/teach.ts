@@ -127,9 +127,12 @@ export const HIDDEN_LINE = "[a line with a key or password, hidden]";
 export function hideSecretRuns(hunks: Hunk[], isSecret?: (line: string) => boolean): Hunk[] {
   return hunks.map((h) => {
     const n = h.context.length;
-    const was = secretLines([...h.context, ...h.before], isSecret), now = secretLines([...h.context, ...h.after], isSecret);
+    // M102: the line standing where lines were only taken away (next) is judged with the lines above it, as it now reads.
+    const tail = h.next !== undefined ? [h.next] : [];
+    const was = secretLines([...h.context, ...h.before], isSecret), now = secretLines([...h.context, ...h.after, ...tail], isSecret);
     const hide = (l: string, secret: boolean) => (secret ? HIDDEN_LINE : l);
-    return { ...h, context: h.context.map((l, i) => hide(l, was[i] || now[i])), before: h.before.map((l, i) => hide(l, was[n + i])), after: h.after.map((l, i) => hide(l, now[n + i])) };
+    const next = h.next !== undefined ? { next: hide(h.next, now[n + h.after.length]) } : {};
+    return { ...h, context: h.context.map((l, i) => hide(l, was[i] || now[i])), before: h.before.map((l, i) => hide(l, was[n + i])), after: h.after.map((l, i) => hide(l, now[n + i])), ...next };
   });
 }
 
@@ -137,15 +140,21 @@ const LINE_MAX = 200;
 /** The change in a plain form for Explain: per file, where each place is, then lines taken away (-) and added (+). Every
  *  line that holds part of a secret is hidden first, judged with the lines around it (hideSecretRuns), then every secret
  *  looking value left is hidden over the whole text (a key can span lines), then lines and the whole are cut. */
-export function diffForExplain(hunks: Hunk[], maxChars = 6000): string {
+export function diffForExplain(hunks: Hunk[], maxChars = 6000, numbered = false): string {
   const rows: string[] = [];
   let file = "";
+  // M102: numbered, each line that is in the file now carries its line number there (a taken away line has none), so the
+  // review's model can name the line its worry is about and code can check it falls inside a changed place.
+  const n = (k: number) => String(k).padStart(3, " ");
   for (const h of hideSecretRuns(hunks)) {
     if (h.file !== file) { file = h.file; rows.push(`--- ${h.file}`); }
     rows.push(`@@ line ${h.afterAt}`);
-    for (const c of h.context) rows.push(`  ${c}`);
-    for (const l of h.before) rows.push(`- ${l}`);
-    for (const l of h.after) rows.push(`+ ${l}`);
+    h.context.forEach((c, i) => rows.push(numbered ? ` ${n(h.afterAt - h.context.length + i)}  ${c}` : `  ${c}`));
+    for (const l of h.before) rows.push(numbered ? `-     ${l}` : `- ${l}`);
+    h.after.forEach((l, i) => rows.push(numbered ? `+${n(h.afterAt + i)}  ${l}` : `+ ${l}`));
+    // M102 review: lines only taken away have no number of their own, so the line now standing where they were is shown
+    // with its number, and a worry about the removal can point at it (rate.ts concernPlace).
+    if (numbered && !h.after.length && h.next !== undefined) rows.push(` ${n(h.afterAt)}  ${h.next}`);
   }
   const hidden = redact(rows.join("\n")).split("\n").map((r) => clip(r.replace(/\r$/, ""), LINE_MAX));
   const out: string[] = [];

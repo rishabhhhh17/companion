@@ -63,7 +63,7 @@
 .code-point { container-type: inline-size; margin: var(--space-4) 0 0; overflow: clip; border: var(--hair) solid var(--line); border-radius: var(--r-control); background: var(--surface-1); }
 .cp-head { display: flex; align-items: baseline; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-bottom: var(--hair) solid var(--line); background: var(--sunken); color: var(--fg-2); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font-code); }
 .code-point:not(:has(.cp-lines)) .cp-head { border-bottom: 0; }
-.cp-file { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font: inherit; }
+.cp-file { flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; font: inherit; }
 .cp-where { flex: none; color: var(--fg); font: inherit; }
 .cp-arrow { flex: none; color: var(--bad); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); }
 .code-point[data-tone="look"] .cp-arrow { color: var(--amber); }
@@ -79,6 +79,9 @@
 @container (max-width: 460px) {
   .cp-line .cp-arrow { display: none; }
   .cp-arrow[data-at="head"] { display: inline; }
+  /* M102 review: narrow, the file name gets the whole first row; the line and the pointing words sit on the row under it. */
+  .cp-head { flex-wrap: wrap; row-gap: 0; }
+  .cp-file { flex-basis: 100%; }
 }
 .home .rv-checks-line { margin: 0 0 var(--space-2); color: var(--fg-2); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font); }
 .home .rv-lead > .rv-all { justify-self: start; margin-top: var(--space-1); }
@@ -108,6 +111,15 @@
 .finding-parts dt { color: var(--fg-2); }
 .finding-parts dd { margin: 0; }
 @media (max-width: 420px) { .finding-parts { grid-template-columns: 1fr; } }
+/* M102: why Squibby is sure, one quiet line with its label in weight (never colour alone), set apart from the parts above. */
+.rv-sure, .finding-sure { display: block; margin: var(--space-2) 0 0; font-size: var(--t-small); overflow-wrap: anywhere; }
+.finding-sure { margin-top: 0; }
+/* M102 review: the finding's own words and its why sit one even step apart, with or without the words. */
+.review-reasons li > .line { margin: 0; }
+/* M102 review: one label treatment for the lines stacked on the lead card (Why I'm sure, What changed), and a step between
+   them so they read as two facts. */
+.rv-sure b, .finding-sure b, .rv-summary b { color: inherit; font-weight: var(--w-strong); }
+.rv-sure + .rv-summary { margin-top: var(--space-1); }
 /* M58 UI 6: the check before going live ends on one main button once every gate passed. */
 .ship-finish { display: grid; gap: var(--space-1); margin-top: var(--space-2); }
 

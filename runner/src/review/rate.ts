@@ -4,7 +4,7 @@
 // secret, and no line of the person's code, is ever put into a reason.
 import { isEnvFile } from "../secretfiles.ts";
 import { clip, hasKeyShape, redactOutput } from "../redact.ts";
-import { REVIEW_RATINGS, REVIEW_REASONS, REVIEW_TOUCHES, type ReviewChecks, type ReviewFile, type ReviewRating, type ReviewReason, type ReviewReasonKind, type ReviewTouch } from "../../../protocol/index.ts";
+import { REVIEW_RATINGS, REVIEW_REASONS, REVIEW_TOUCHES, type ReviewChecks, type ReviewFile, type ReviewProof, type ReviewRating, type ReviewReason, type ReviewReasonKind, type ReviewTouch } from "../../../protocol/index.ts";
 
 export type FileChange = ReviewFile;
 /** The lines a change took away and added in one file (from teach.ts hunks), still as written: in memory only. */
@@ -38,28 +38,36 @@ const DEP_PATH = /(^|\/)(package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm
 const DEP_LINE = /^\s*"(@[a-z0-9._-]+\/)?[a-z0-9._-]+"\s*:\s*"(\^|~|>=?|<=?|=)?\s*(\d[^"\s]*|\*|latest|next|canary|beta|(workspace|file|link|npm|github|https?):[^"\s]*|git\+[^"\s]*)"/i;
 const LOOK_FILE = /\.(css|scss|sass|less|styl|pcss|png|jpe?g|gif|webp|avif|svg|ico|bmp|woff2?|ttf|otf|eot)$|(^|\/)tailwind\.config\.[cm]?[jt]s$|(^|\/)postcss\.config\.[cm]?js$/i;
 
+/** M102: the first file (in the batch's order) that made each touch, for the proof line. A settings or key file is named
+ *  only by the name the batch already says. */
+export function touchFiles(changes: FileChange[], lines: FileLines[], secretFiles: string[] = []): Map<Touch, string | undefined> {
+  const got = new Map<Touch, string | undefined>();
+  const add = (t: Touch, f?: string) => { if (!got.has(t)) got.set(t, f); };
+  const linesOf = new Map(lines.map((l) => [l.file, [...l.added, ...l.removed]]));
+  for (const c of changes) {
+    const f = c.file, text = linesOf.get(f) ?? [];
+    if (isEnvFile(f)) { add("secrets", f); continue; }
+    if (SIGN_IN_PATH.test(f) || text.some((l) => SIGN_IN_LINE.test(l))) add("sign_in", f);
+    if (PAY_PATH.test(f) || text.some((l) => PAY_LINE.test(l))) add("payments", f);
+    if (DATA_PATH.test(f) || text.some((l) => DATA_LINE.test(l))) add("data", f);
+    if (DEP_PATH.test(f)) add("dependencies", f);
+    if (/(^|\/)package\.json$/i.test(f)) {
+      if (text.some((l) => DEP_LINE.test(l))) add("dependencies", f);
+      if (text.some((l) => !DEP_LINE.test(l) && /\S/.test(l))) add("settings", f);
+      if (!text.length) add("settings", f);
+    }
+    if (SETTINGS_PATH.test(f)) add("settings", f);
+  }
+  if (secretFiles.length) add("secrets", secretFiles[0]);
+  if (!got.size && changes.length > 0 && changes.every((c) => LOOK_FILE.test(c.file))) add("look_only");
+  return got;
+}
+
 /** What one batch touches, in the order of TOUCHES, each at most once. secretFiles: settings or key files that changed
  *  (names only; their contents are never read). The look only is said only when nothing else is touched and every file
  *  is a style, a picture or a font. */
 export function touchesOf(changes: FileChange[], lines: FileLines[], secretFiles: string[] = []): Touch[] {
-  const got = new Set<Touch>();
-  const linesOf = new Map(lines.map((l) => [l.file, [...l.added, ...l.removed]]));
-  for (const c of changes) {
-    const f = c.file, text = linesOf.get(f) ?? [];
-    if (isEnvFile(f)) { got.add("secrets"); continue; }
-    if (SIGN_IN_PATH.test(f) || text.some((l) => SIGN_IN_LINE.test(l))) got.add("sign_in");
-    if (PAY_PATH.test(f) || text.some((l) => PAY_LINE.test(l))) got.add("payments");
-    if (DATA_PATH.test(f) || text.some((l) => DATA_LINE.test(l))) got.add("data");
-    if (DEP_PATH.test(f)) got.add("dependencies");
-    if (/(^|\/)package\.json$/i.test(f)) {
-      if (text.some((l) => DEP_LINE.test(l))) got.add("dependencies");
-      if (text.some((l) => !DEP_LINE.test(l) && /\S/.test(l))) got.add("settings");
-      if (!text.length) got.add("settings");
-    }
-    if (SETTINGS_PATH.test(f)) got.add("settings");
-  }
-  if (secretFiles.length) got.add("secrets");
-  if (!got.size && changes.length > 0 && changes.every((c) => LOOK_FILE.test(c.file))) got.add("look_only");
+  const got = touchFiles(changes, lines, secretFiles);
   return TOUCHES.filter((t) => got.has(t));
 }
 
@@ -156,8 +164,9 @@ export function importersOf(deleted: string[], files: Record<string, string>): S
 export type RateInput = {
   changes: FileChange[]; touches: Touch[]; secrets: { file: string; line: number }[]; stillUsed: StillUsed[]; secretFiles: string[];
   checks: Checks; checksNote?: string; count: number; capped: boolean;
-  /** The model's own worry about the change (words only), which may raise safe to worth a look. */
-  concern?: boolean; concernSay?: string;
+  /** The model's own worry about the change, which may raise safe to worth a look only with concernAt (M102): the file and
+   *  line it names, that concernPlace found inside a changed place of this batch. Without it the worry raises nothing. */
+  concern?: boolean; concernSay?: string; concernAt?: { file: string; line: number };
   /** M57: reasons other rules found (look.ts: open data, keys that reach the page, house rules). Those of a Fix this first
    *  kind come after the key and before the rest; the others are worth a look. */
   found?: Reason[];
@@ -213,10 +222,64 @@ export function rate(i: RateInput): { rating: Rating; reasons: Reason[] } {
   if (removed) look.push({ kind: "files_removed", say: `${plural(removed, "file was", "files were")} removed.` });
   if (i.capped || i.count > (i.maxFiles ?? MAX_BATCH_FILES)) look.push({ kind: "too_many", say: `${plural(i.count, "file", "files")} changed at once, more than can be looked at one by one.` });
   for (const f of i.found ?? []) if (!FOUND_STOP.has(f.kind)) look.push(f);
-  if (i.concern) look.push({ kind: "model_concern", say: i.concernSay ? clip(i.concernSay, 200) : "Something in the change may not do what was meant." });
+  if (i.concern && i.concernAt) {
+    const { file, line } = i.concernAt;
+    look.push({ kind: "model_concern", file, line, say: i.concernSay ? clip(i.concernSay, 200) : "Something in the change may not do what was meant.", proof: { by: "line", file, line } });
+  }
   const rating: Rating = stop.length ? "stop" : look.length ? "worth_a_look" : "safe";
   return { rating, reasons: [...stop, ...look] };
 }
 
 /** T10: the cheap lane writes the words, the stronger model only for a stop or a change to sign in or payments. */
 export const needsStrongModel = (rating: Rating, touches: Touch[]): boolean => rating === "stop" || touches.includes("sign_in") || touches.includes("payments");
+
+// ---------- M102: why the engine is sure ----------
+
+/** A changed place, as teach.ts taskHunks gives it: where its added lines start in the file now, and how many there are. */
+export type ChangedPlace = { file: string; afterAt: number; after: readonly unknown[]; next?: unknown };
+/** The model's worry's place, when code finds it inside a changed place of this batch: a line it added, or the line now
+ *  standing where lines were only taken away. Null with no file, no whole line number, or a place the change did not
+ *  touch (a line around a change is not part of it). A leading ./ is the same file. */
+export function concernPlace(c: { file?: unknown; line?: unknown }, places: readonly ChangedPlace[]): { file: string; line: number } | null {
+  if (typeof c.file !== "string" || !Number.isInteger(c.line) || (c.line as number) < 1) return null;
+  const file = c.file.trim().replace(/^(\.\/)+/, ""), line = c.line as number;
+  if (!file) return null;
+  // Lines only taken away: the line now standing where they were (teach.ts gives it as next), or, when they ended the
+  // file, the file's last line (afterAt is then one past it). A file emptied whole has no line to point at.
+  const inside = places.some((h) => h.file === file && (h.after.length ? line >= h.afterAt && line < h.afterAt + h.after.length : line === (h.next !== undefined ? h.afterAt : h.afterAt - 1)));
+  return inside ? { file, line } : null;
+}
+
+export type ProofContext = {
+  checks: Checks; runs?: readonly { label: string; rung?: string; status: string; exit?: number }[];
+  touches?: readonly Touch[]; touchAt?: Partial<Record<Touch, string | undefined>>;
+  removed?: readonly string[]; secretFiles?: readonly string[]; count: number; max: number;
+};
+/** Every reason with its proof (M102): one already given (a model's worry, an OSV id, a house rule) is kept; the rest are
+ *  filled from the reason's own place and this review's facts. A model's worry is never given one here: it has one only
+ *  when its place was found (rate above), and without one it is never a reason. */
+export function withProofs<R extends Reason>(reasons: R[], c: ProofContext): R[] {
+  const failed = (c.runs ?? []).find((r) => r.status === "failed");
+  const check: ReviewProof = { by: "check", ...(failed ? { check: clip(failed.label, 40), ...(Number.isInteger(failed.exit) ? { exit: failed.exit } : {}) } : {}) };
+  const firstRisky = (c.touches ?? []).filter((t) => RISKY.includes(t)).map((t) => c.touchAt?.[t]).find((f): f is string => !!f);
+  const at = (file?: string, line?: number): ReviewProof => ({ by: "rule", ...(file ? { file } : {}), ...(file && line ? { line } : {}) });
+  const proofOf = (r: R): ReviewProof | undefined => {
+    switch (r.kind) {
+      case "model_concern": return undefined;
+      case "checks_failed": case "risky_with_failing_checks": return check;
+      case "claimed_passed": return { by: "check", outcome: c.checks === "failed" ? "failed" : "not_run" };
+      case "chosen_stop": return { by: "setting" };
+      case "too_many": return { by: "setting", count: c.count, max: c.max };
+      case "open_private_page": return { by: "run" };
+      case "touches_risky": return at(r.file ?? firstRisky, r.line);
+      case "files_removed": return at(r.file ?? c.removed?.[0], r.line);
+      case "secret_file_changed": return at(r.file ?? c.secretFiles?.[0], r.line);
+      default: return at(r.file, r.line);
+    }
+  };
+  return reasons.map((r) => {
+    if (r.proof) return r;
+    const proof = proofOf(r);
+    return proof ? { ...r, proof } : r;
+  });
+}

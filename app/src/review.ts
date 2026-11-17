@@ -5,7 +5,7 @@
 // (later), with their own review if one ran, and take its place once it is closed. Nothing here
 // starts work: Review them, Fix it and Looks fine are the person's presses (card.tsx sends them), and Fix it asks first.
 import { replayOf, type ReplayView } from "./replay.ts";
-import { REVIEW_AWAY, REVIEW_CHECKS, REVIEW_CLOSED_HOW, REVIEW_LANES, REVIEW_RATINGS, REVIEW_REASONS, REVIEW_SILENCE_LINES, REVIEW_TOUCHES, type Command, type CodeLine, type ReviewChecks, type ReviewFile, type ReviewKeyPlace, type ReviewRating, type ReviewReason, type ReviewReasonKind, type ReviewTouch, type ReviewUntold } from "../../protocol/index.ts";
+import { proofOk, REVIEW_AWAY, REVIEW_CHECKS, REVIEW_CLOSED_HOW, REVIEW_LANES, REVIEW_RATINGS, REVIEW_REASONS, REVIEW_SILENCE_LINES, REVIEW_TOUCHES, type Command, type CodeLine, type ReviewChecks, type ReviewFile, type ReviewKeyPlace, type ReviewProof, type ReviewRating, type ReviewReason, type ReviewReasonKind, type ReviewTouch, type ReviewUntold } from "../../protocol/index.ts";
 import { addMemory } from "./commands.ts";
 import { untoldOf } from "./safetyNet.ts";
 import { hasKeyShape, redact } from "../../runner/src/redact.ts";
@@ -82,7 +82,9 @@ function reasonsOf(v: unknown): ReviewReason[] | null {
     if (!r || typeof r !== "object" || !(REVIEW_REASONS as readonly string[]).includes(r.kind as string) || typeof r.say !== "string" || !r.say) return null;
     const line = typeof r.line === "number" && Number.isInteger(r.line) && r.line >= 1 ? r.line : undefined;
     const lines = codeLinesOf(r.lines);
-    out.push({ kind: r.kind as ReviewReason["kind"], say: r.say.slice(0, MAX_TEXT), ...(typeof r.file === "string" && r.file ? { file: r.file.slice(0, 1000) } : {}), ...(line ? { line } : {}), ...(lines ? { lines } : {}) });
+    // M102: the proof, only of its known shape (protocol proofOk); a house rule's words masked again. Anything else is left out.
+    const proof = r.proof && proofOk(r.proof) ? { ...(r.proof as ReviewProof), ...(typeof (r.proof as ReviewProof).rule === "string" ? { rule: redact((r.proof as ReviewProof).rule!) } : {}) } : undefined;
+    out.push({ kind: r.kind as ReviewReason["kind"], say: r.say.slice(0, MAX_TEXT), ...(typeof r.file === "string" && r.file ? { file: r.file.slice(0, 1000) } : {}), ...(line ? { line } : {}), ...(lines ? { lines } : {}), ...(proof ? { proof } : {}) });
   }
   return out.slice(0, MAX_REASONS);
 }

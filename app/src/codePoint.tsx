@@ -2,7 +2,8 @@
 // The file in a sunken header (with a short note on the right, such as "line 12" when no code came), then the pointed line
 // with the line before and after it, each with its number in the gutter, in the system mono. The pointed line has a bar at
 // its left edge on the tone's tint and "Squibby is pointing here" after it; where the card is narrow, that label moves into
-// the header instead of wrapping under the code (ui/homeNow.css, a container query). The code is the engine's own, already
+// the header instead of wrapping under the code (ui/homeNow.css, a container query), on its own row under the file name.
+// The file name breaks only after a "/" (M102 review: "src/pay/tax." and "ts" on two lines was the first thing seen). The code is the engine's own, already
 // masked (runner/src/review/excerpt.ts, review.ts codeLinesOf): a key shows only its known prefix and "…".
 import type { CodeLine } from "../../protocol/index.ts";
 import { S } from "./strings.ts";
@@ -13,7 +14,7 @@ export function CodePoint({ file, line, lines, tone = "stop", pointing = S.homeN
   return (
     <div className="code-point" data-tone={tone} role="group" aria-label={S.review.at(file, line)}>
       <div className="cp-head">
-        <code className="cp-file">{file}</code>
+        <code className="cp-file" title={file}>{file.split("/").flatMap((part, i, all) => (i < all.length - 1 ? [`${part}/`, <wbr key={i} />] : [part]))}</code>
         {!shown && <code className="cp-where">{S.homeNow.lineNo(line)}</code>}
         <span className="cp-arrow" data-at="head">{label}</span>
       </div>

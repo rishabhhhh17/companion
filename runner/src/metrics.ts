@@ -3,7 +3,7 @@
 // person can look at the numbers, copy them to send by hand, and erase them. Nothing is sent anywhere by Companion.
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { Command, Event } from "../../protocol/index.ts";
+import { REVIEW_REASONS, type Command, type Event } from "../../protocol/index.ts";
 import { LIMIT_REACHED, LIMIT_REACHED_NO_PROJECT } from "./spending.ts";
 
 const LIMIT_WORDS = new Set([LIMIT_REACHED, LIMIT_REACHED_NO_PROJECT]);
@@ -21,7 +21,14 @@ export const NOTES = [
   "review_batch", "review_run", "review_safe", "review_worth_a_look", "review_stop", "review_fix", "review_send_back", "review_looks_fine",
   "where_opened", "daily_limit",
 ] as const;
-type Name = typeof NOTES[number];
+/** M102: Fix it and Looks fine counted per reason kind of the card they closed (each kind once per card), so a kind people
+ *  mostly wave off can be made quieter later. A fixed list made from the protocol's reason kinds; only the engine counts
+ *  them, from the review it saw (a page cannot name one). */
+export const KIND_NOTES = REVIEW_REASONS.flatMap((k) => [`review_fix_kind:${k}`, `review_looks_fine_kind:${k}`] as const);
+type Name = typeof NOTES[number] | typeof KIND_NOTES[number];
+const ALL: readonly Name[] = [...NOTES, ...KIND_NOTES];
+// The kinds of the reviews seen lately, by batch, in memory only (never written): enough for the cards still open.
+const KEEP_KINDS = 64;
 const KEEP_DAYS = 120;
 
 type Days = Record<string, Partial<Record<Name, number>>>;
@@ -37,6 +44,7 @@ const dayOf = (t: Date) => `${t.getFullYear()}-${String(t.getMonth() + 1).padSta
 export class Metrics {
   private enabled = false;
   private days: Days = {};
+  private kindsOf = new Map<string, string[]>();
   constructor(private file: string, private now: () => Date = () => new Date()) {
     try {
       const j = JSON.parse(readFileSync(file, "utf8"));
@@ -44,7 +52,7 @@ export class Metrics {
       for (const [d, row] of Object.entries(j?.days ?? {})) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || typeof row !== "object" || !row) continue;
         const clean: Partial<Record<Name, number>> = {};
-        for (const n of NOTES) { const v = (row as Record<string, unknown>)[n]; if (typeof v === "number" && Number.isFinite(v) && v > 0) clean[n] = Math.floor(v); }
+        for (const n of ALL) { const v = (row as Record<string, unknown>)[n]; if (typeof v === "number" && Number.isFinite(v) && v > 0) clean[n] = Math.floor(v); }
         this.days[d] = clean;
       }
     } catch { /* no file, or a damaged one: empty and off */ }
@@ -89,6 +97,7 @@ export class Metrics {
         if (x.ok !== true) return;
         this.bump("review_run");
         if (x.rating === "safe") this.bump("review_safe"); else if (x.rating === "worth_a_look") this.bump("review_worth_a_look"); else if (x.rating === "stop") this.bump("review_stop");
+        this.remember(x.batch, x.reasons);
         if (atLimit(x.note)) this.bump("daily_limit");
         return;
       }
@@ -99,10 +108,22 @@ export class Metrics {
   observeCommand(c: Command) {
     try {
       if (c.type === "walk.start") this.bump("walk_started");
-      else if (c.type === "review.fix") this.bump("review_fix");
+      else if (c.type === "review.fix") { this.bump("review_fix"); this.byKind("review_fix_kind", c.batch); }
       // Copy for my AI is counted by its own note when it is pressed, so a card closed after it is not counted twice.
-      else if (c.type === "review.dismiss" && c.how === "looksFine") this.bump("review_looks_fine");
+      else if (c.type === "review.dismiss" && c.how === "looksFine") { this.bump("review_looks_fine"); this.byKind("review_looks_fine_kind", c.batch); }
     } catch { /* never in the way */ }
+  }
+  /** M102: a review's reason kinds, each once, only kinds the protocol knows. Kept in memory, the oldest going first. */
+  private remember(batch: unknown, reasons: unknown) {
+    if (typeof batch !== "string" || !Array.isArray(reasons)) return;
+    const kinds = [...new Set(reasons.map((r) => (r as { kind?: unknown })?.kind).filter((k): k is string => typeof k === "string" && (REVIEW_REASONS as readonly string[]).includes(k)))];
+    this.kindsOf.delete(batch);
+    this.kindsOf.set(batch, kinds);
+    while (this.kindsOf.size > KEEP_KINDS) this.kindsOf.delete(this.kindsOf.keys().next().value!);
+  }
+  private byKind(prefix: "review_fix_kind" | "review_looks_fine_kind", batch: unknown) {
+    if (typeof batch !== "string") return;
+    for (const k of this.kindsOf.get(batch) ?? []) this.bump(`${prefix}:${k}` as Name);
   }
 
   /** Erases every count. If counting is on it stays on (the setting is kept), so a restart does not quietly turn it off. */

@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Every warning shows why: 17 Nov 2026
+
+- **Each warning says why Squibby is sure, in one line.** Under "Fix this first" or "Worth a look" you now see, for example, "Why I'm sure: Build did not pass (error code 1)", "the check for keys in code found it at src/pay.ts:2", "OSV.dev lists GHSA-… for the package at package.json:7" or "your house rule … covers src/pay/tax.ts". It is on the card itself, on each smaller finding below it, and in Why does this matter?. A line already shown in the code box is called "the line shown above", and an id or a rule already in the finding's own words is not said twice.
+- **A guess can no longer raise an alarm on its own.** The written review may say it is worried, but that only turns a review into Worth a look when it points at a line this change actually touched, and Squibby checks that the line is part of the change. That is said as "Where it is", never "Why I'm sure": it is still a guess, so try it to be sure. A worry about code that was taken away, such as a removed check, can point at the line now standing where it was. A worry that points nowhere stays as an ordinary note, word for word, and the review keeps its rating.
+- **Nothing is slower.** No new call to Claude and nothing new sent anywhere: the proof is what the review already found.
+- **Your numbers count Fix it and Looks fine by kind of warning,** if you turned counting on. Counts only, kept on this Mac, so a kind of warning people keep waving away can be made quieter later.
+
 ## Squibby's own look: life from elsewhere: 17 Nov 2026
 
 - **Fixed: the notch showed two panels at once.** With the tall Home, opening the notch could show the small chat and, under it, Home's own ask box cut off by the edge. Now only the chat shows, and nothing under it can scroll into view.

@@ -3,6 +3,7 @@ import { keyLooksRight } from "./onboarding.ts";
 import { S, PRODUCT } from "./strings.ts";
 import { canPick, chordLabel, hasKeys, JOBS, KEY_DEFAULTS, keyHint, keysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import type { Spending } from "./model.ts";
+import { REVIEW_REASONS } from "../../protocol/index.ts";
 import { setting } from "./settingsStore.ts";
 
 // receiptPictures: how many receipt pictures are kept now (wipe.rs), so lowering "Pictures to keep" can say first how many go.
@@ -66,8 +67,14 @@ export function numbersLines(s: NumbersSummary): string[] {
     `Reviews that said Looks safe: ${t("review_safe")}, Worth a look: ${t("review_worth_a_look")}, Fix this first: ${t("review_stop")}`,
     `After a review: Fix it ${t("review_fix")}, Copy for my AI ${t("review_send_back")}, Looks fine ${t("review_looks_fine")}`,
     `Where you left off shown: ${t("where_opened")}, daily limit reached: ${t("daily_limit")}`,
+    // M102: Fix it and Looks fine by the kind of warning they closed, only when there is any.
+    ...kindLine(S.proof.fixIt, "review_fix_kind", t), ...kindLine(S.proof.looksFine, "review_looks_fine_kind", t),
     `Times you corrected a guess: ${s.rates.softRingCorrections ?? 0}`,
   ];
+}
+function kindLine(what: string, prefix: string, t: (k: string) => number): string[] {
+  const list = REVIEW_REASONS.map((k) => ({ k, n: t(`${prefix}:${k}`) })).filter((x) => x.n > 0).map((x) => `${S.proof.kindName[x.k] ?? x.k} ${x.n}`);
+  return list.length ? [S.proof.byKind(what, list.join(", "))] : [];
 }
 
 /** The shipped lesson that walks a person through allowing this permission (see lessons/). */

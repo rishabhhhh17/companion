@@ -147,8 +147,9 @@ describe("the OSV.dev look up", () => {
     const d = tmp(), net = osv({ batch: answer, vulns: VULNS });
     const r = packageReasons(await new OsvClient({ cacheFile: join(d, "osv.json"), fetch: net.f }).check([LODASH, FLASK]));
     expect(r).toEqual([
-      { kind: "package_critical", file: "requirements.txt", line: 2, say: "flask 2.0.1: This package has a known serious problem: GHSA-crit-0001, fixed in 2.2.5." },
-      { kind: "package_high", file: "package.json", line: 5, say: "lodash 4.17.20: This package has a known serious problem: GHSA-35jh-r3h4-6jhm, fixed in 4.17.21." },
+      // M102: each carries its OSV id as the proof line's data.
+      { kind: "package_critical", file: "requirements.txt", line: 2, say: "flask 2.0.1: This package has a known serious problem: GHSA-crit-0001, fixed in 2.2.5.", proof: { by: "osv", id: "GHSA-crit-0001", file: "requirements.txt", line: 2 } },
+      { kind: "package_high", file: "package.json", line: 5, say: "lodash 4.17.20: This package has a known serious problem: GHSA-35jh-r3h4-6jhm, fixed in 4.17.21.", proof: { by: "osv", id: "GHSA-35jh-r3h4-6jhm", file: "package.json", line: 5 } },
     ]);
     for (const k of ["package_critical", "package_high"]) expect((REVIEW_REASONS as readonly string[]).includes(k)).toBe(true);
     expect(STOP_KINDS.has("package_critical")).toBe(true);

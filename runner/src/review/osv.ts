@@ -9,6 +9,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { writeAtomic } from "../atomic.ts";
 import { pkgKey, type Pkg } from "./packages.ts";
+import type { ReviewProof } from "../../../protocol/index.ts";
 
 export const OSV_HOST = "https://api.osv.dev";
 export const CACHE_MS = 24 * 3600_000;
@@ -26,9 +27,12 @@ export type PackageLookup = { check(pkgs: Pkg[], signal?: AbortSignal): Promise<
 
 /** One known serious problem as a review reason, in the fixed finding shape's words. Critical is Must fix
  *  (package_critical), high is Should fix (package_high). */
-export function packageReason(p: Problem): { kind: "package_critical" | "package_high"; file: string; line?: number; say: string } {
+export function packageReason(p: Problem): { kind: "package_critical" | "package_high"; file: string; line?: number; say: string; proof: ReviewProof } {
   const fix = p.fixed ? `fixed in ${p.fixed}` : "with no fixed version listed yet";
-  return { kind: p.severity === "critical" ? "package_critical" : "package_high", file: p.pkg.file, ...(p.pkg.line ? { line: p.pkg.line } : {}), say: `${p.pkg.name} ${p.pkg.version}: This package has a known serious problem: ${p.id}, ${fix}.` };
+  const line = p.pkg.line ? { line: p.pkg.line } : {};
+  // M102: the proof is the OSV id itself (an id OSV.dev gave, kept only when it has an id's shape).
+  const id = /^[A-Za-z0-9._:-]{1,80}$/.test(p.id) ? { id: p.id } : {};
+  return { kind: p.severity === "critical" ? "package_critical" : "package_high", file: p.pkg.file, ...line, say: `${p.pkg.name} ${p.pkg.version}: This package has a known serious problem: ${p.id}, ${fix}.`, proof: { by: "osv", ...id, file: p.pkg.file, ...line } };
 }
 /** The reasons, critical first, one per package and problem, at most 10. */
 export function packageReasons(l: Lookup): ReturnType<typeof packageReason>[] {

@@ -7,6 +7,7 @@
 import type { CodeLine, ReviewReason } from "../../protocol/index.ts";
 import { fixedSince, keyWarned, type ReviewCard } from "./review.ts";
 import { levelRank, readinessOf } from "./findingShape.ts";
+import { proofLine } from "./proofLine.ts";
 import { S } from "./strings.ts";
 
 /** lines (M69): the pointed line and the lines either side of it, masked by the engine and again by review.ts. */
@@ -21,6 +22,8 @@ export type ReviewHead = {
   /** What Why does this matter? says first (M69 step 3): a fixed sentence for the kind, else the why again. */
   whyMore: string;
   pointed: Pointed | null;
+  /** M102: why Squibby is sure of the lead finding, in one line ("" when the engine sent no proof). */
+  sure: string;
   reassure: string;
   others: Finding[];
   /** How many things wait (the count on Now in the side list). */
@@ -51,7 +54,7 @@ export function reviewHead(r: ReviewCard | null | undefined): ReviewHead | null 
     const [headline, why] = words(keyKind(pointed), "");
     const others: Finding[] = keys.slice(1).map((k, i) => ({ id: `key:${i}`, tag: "then", title: S.homeNow.reviewHead.secret_in_code[0], line: S.review.keyAt(k.file, k.line), at: place(k.file, k.line), act: "look" }));
     const n = keys.length;
-    return { tone: "stop", tag: tagOf("stop", 1, n), headline, why, whyMore: S.homeNow.whyMore[keyKind(pointed)] ?? why, pointed, reassure: S.homeNow.reassureLook, others, count: n };
+    return { tone: "stop", tag: tagOf("stop", 1, n), headline, why, whyMore: S.homeNow.whyMore[keyKind(pointed)] ?? why, pointed, sure: "", reassure: S.homeNow.reassureLook, others, count: n };
   }
   const res = r.result;
   if (!res || r.stage !== "reviewed" || res.rating === "safe") return null;
@@ -61,13 +64,16 @@ export function reviewHead(r: ReviewCard | null | undefined): ReviewHead | null 
   const lead: ReviewReason | undefined = order[0]?.x;
   const pointed = lead ? place(lead.file, lead.line, lead.lines) : null;
   const [headline, why] = lead ? words(lead.kind === "secret_in_code" ? keyKind(pointed) : lead.kind, lead.say) : [S.review.rating[res.rating], S.review.ratingLine[res.rating]];
-  const others: Finding[] = order.slice(1).map(({ x, i }) => ({ id: `reason:${i}`, tag: "then", title: x.say, line: x.file ? S.review.at(x.file, x.line) : "", at: place(x.file, x.line), act: "look" }));
+  // M102: each other finding's line is why Squibby is sure of it (its place is in that line), else its place as before. Its
+  // title is its own words, so the line leaves out an id or a rule they already hold. The lead's headline is fixed words,
+  // so its line keeps them, and leaves out only the place the code box shows.
+  const others: Finding[] = order.slice(1).map(({ x, i }) => ({ id: `reason:${i}`, tag: "then", title: x.say, line: proofLine(x) ?? (x.file ? S.review.at(x.file, x.line) : ""), at: place(x.file, x.line), act: "look" }));
   const named = res.reasons.map((x) => x.file).filter((f): f is string => !!f);
   const kind = lead ? (lead.kind === "secret_in_code" ? keyKind(pointed) : lead.kind) : "";
   // M72 (the walkthrough, item 2): the tag counts what the readiness line counts (checks that did not run are a thing to
   // check too), so "1 of 2" never sits beside "Check these 3 things".
   const things = Math.max(1, res.reasons.length, readinessOf(r).n);
-  return { tone, tag: tagOf(tone, 1, things), headline, why, whyMore: S.homeNow.whyMore[kind] ?? why, pointed,
+  return { tone, tag: tagOf(tone, 1, things), headline, why, whyMore: S.homeNow.whyMore[kind] ?? why, pointed, sure: lead ? proofLine({ kind: lead.kind, proof: lead.proof }, { shown: pointed }) ?? "" : "",
     reassure: r.fix === "sent" ? "" : S.homeNow.reassure, others: withFine(others, r, named, res.checksNote), count: Math.max(1, res.reasons.length) };
 }
 

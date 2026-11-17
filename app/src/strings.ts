@@ -1860,6 +1860,48 @@ export const S = {
       failed: "That did not finish. Try again.",
     } as Record<string, string>,
   },
+  // M102, every warning shows why: the one line under each finding that says why it is sure (proofLine.ts). Each kind's
+  // fixed rule by its plain name; the place is file:line.
+  proof: {
+    label: "Why I'm sure",
+    ruleName: {
+      weakened_check: "the check for weakened tests", claimed_passed: "the check for claimed passes", secret_in_code: "the check for keys in code",
+      removed_still_used: "the check for removed files still in use", checks_failed: "your project's checks", risky_with_failing_checks: "your project's checks",
+      secret_file_changed: "the check for settings and key files", touches_risky: "the check for risky areas", files_removed: "the check for removed files",
+      too_many: "the size limit", model_concern: "the written review", open_table: "the check for open tables", signed_in_open: "the check for open tables",
+      key_in_page: "the check for keys sent to the page", house_rule: "your house rule", house_rule_ask: "your house rule", chosen_stop: "your setting",
+      open_private_page: "the run check", package_critical: "the check for known package problems", package_high: "the check for known package problems",
+    } as Record<string, string>,
+    rule: (name: string, at?: string) => (at ? `${name} found it at ${at}.` : `${name} found it.`),
+    // M102 review: a model's worry is a guess, so it never says sure. Only where it is, what code checked, and to try it.
+    lineLabel: "Where it is",
+    line: (at: string) => `the written review points at ${at}, and ${PRODUCT} checked this change touched that line. Try it to be sure.`,
+    // On the lead, under the code box that already shows the file and line, the place is not said again.
+    lineShown: `the written review points at the line shown above, and ${PRODUCT} checked this change touched it. Try it to be sure.`,
+    ruleShown: (name: string) => `${name} found it on the line shown above.`,
+    osvShown: (id: string) => `OSV.dev lists ${id} for the package on the line shown above.`,
+    // The short forms, when the finding's own words already hold the id or the rule.
+    osvShort: (at?: string) => (at ? `listed by OSV.dev, at ${at}.` : "listed by OSV.dev."),
+    houseRuleShort: (file?: string) => (file ? `your house rule, at ${file}.` : "your house rule."),
+    check: (label: string, exit?: number) => (exit === undefined ? `${label} did not pass.` : `${label} did not pass (error code ${exit}).`),
+    checks: "your project's own checks did not pass.",
+    claimed: { failed: "the checks failed on this change.", not_run: "the checks did not run on this change." } as Record<"failed" | "not_run", string>,
+    osv: (id: string, at?: string) => `OSV.dev lists ${id} for the package${at ? ` at ${at}` : ""}.`,
+    houseRule: (rule: string, file?: string) => (file ? `your house rule "${rule}" covers ${file}.` : `your house rule "${rule}" covers it.`),
+    chosen: "you asked to stop for changes there, in Settings.",
+    tooMany: (count: number, max: number) => `${count} files changed, more than the ${max} that can be read one by one.`,
+    run: `the page opened without a sign in when ${PRODUCT} ran your project.`,
+    // M102: the per kind counts in the beta numbers (counts only, never words or files).
+    kindName: {
+      weakened_check: "weakened tests", claimed_passed: "claimed passes", secret_in_code: "keys in code", removed_still_used: "removed files still used",
+      checks_failed: "failing checks", risky_with_failing_checks: "risky changes with failing checks", secret_file_changed: "settings files", touches_risky: "risky areas",
+      files_removed: "removed files", too_many: "big batches", model_concern: "written worries", open_table: "open tables", signed_in_open: "tables open to every account",
+      key_in_page: "keys in the page", house_rule: "house rules", house_rule_ask: "house rules to ask about", chosen_stop: "your chosen stops",
+      open_private_page: "pages open without a sign in", package_critical: "critical package problems", package_high: "serious package problems",
+    } as Record<string, string>,
+    byKind: (what: string, list: string) => `${what}, by kind of warning: ${list}`,
+    fixIt: "Fix it", looksFine: "Looks fine",
+  },
   finding: {
     ready: { ready: "Ready", check: (n: number) => (n === 1 ? "Check this 1 thing" : `Check these ${n} things`), notSafe: "Not safe yet" },
     readyLine: { ready: "Nothing was found, and the checks passed.", check: "Nothing blocks it. Look at these before you go on.", notSafe: "Fix these before you share or ship this." } as Record<"ready" | "check" | "notSafe", string>,

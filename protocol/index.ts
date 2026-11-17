@@ -342,7 +342,16 @@ export type ReviewFile = { file: string; kind: "added" | "modified" | "deleted" 
 /** M69: the pointed line with the lines either side of it, masked by the engine (runner/src/review/excerpt.ts): a key keeps
  *  only its known prefix and "…", never any of its secret part. At most three lines. */
 export type CodeLine = { n: number; text: string };
-export type ReviewReason = { kind: ReviewReasonKind; say: string; file?: string; line?: number; lines?: CodeLine[] };
+/** M102: why the engine is sure of a reason, in data the pages put into one line (strings.ts). rule: a fixed rule of the
+ *  engine matched at file (and line). line: a model's worry whose file and line code found inside a changed place of this
+ *  batch. check: the project's own checks (the failing one's label and exit code, or outcome for a claimed pass). osv: a
+ *  known problem's OSV.dev id. house_rule: the project's own rule (its text, secrets hidden). setting: the person's own
+ *  setting (a chosen stop, or the batch size limit with count and max). run: a page the check opened without a sign in.
+ *  Never a line of the person's code or a value. */
+export const REVIEW_PROOF_BY = ["rule", "line", "check", "osv", "house_rule", "setting", "run"] as const;
+export type ReviewProofBy = (typeof REVIEW_PROOF_BY)[number];
+export type ReviewProof = { by: ReviewProofBy; file?: string; line?: number; check?: string; exit?: number; outcome?: "failed" | "not_run"; id?: string; rule?: string; count?: number; max?: number };
+export type ReviewReason = { kind: ReviewReasonKind; say: string; file?: string; line?: number; lines?: CodeLine[]; proof?: ReviewProof };
 export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?: string; proof?: boolean };
 /** M57 feature 1: how the card was closed, for its row in History. looksFine: Looks fine. sentBack: Copy for my AI was
  *  pressed on this card before it was closed. Absent: closed with no review (Skip this one). */
@@ -840,10 +849,23 @@ const codeLinesOk = (x: unknown): boolean => x === undefined || (Array.isArray(x
   const o = l as Record<string, unknown> | null;
   return !!o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).every((n) => n === "n" || n === "text") && Number.isInteger(o.n) && (o.n as number) >= 1 && typeof o.text === "string" && Array.from(o.text as string).length <= 200;
 }));
+// M102: a proof has only its known fields, each of its own shape: no free text but a check's label and a house rule's words.
+const PROOF_KEYS = new Set(["by", "file", "line", "check", "exit", "outcome", "id", "rule", "count", "max"]);
+const textOf = (x: unknown, max: number): boolean => typeof x === "string" && x.length > 0 && Array.from(x).length <= max;
+const wholeAtLeast = (x: unknown, min: number): boolean => Number.isInteger(x) && (x as number) >= min;
+export const proofOk = (x: unknown): boolean => {
+  if (x === undefined) return true;
+  const o = x as Record<string, unknown> | null;
+  return !!o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).every((k) => PROOF_KEYS.has(k)) && (REVIEW_PROOF_BY as readonly unknown[]).includes(o.by)
+    && (o.file === undefined || textOf(o.file, 400)) && (o.line === undefined || wholeAtLeast(o.line, 1)) && (o.check === undefined || textOf(o.check, 40))
+    && (o.exit === undefined || Number.isInteger(o.exit)) && (o.outcome === undefined || o.outcome === "failed" || o.outcome === "not_run")
+    && (o.id === undefined || (typeof o.id === "string" && /^[A-Za-z0-9._:-]{1,80}$/.test(o.id))) && (o.rule === undefined || textOf(o.rule, 160))
+    && (o.count === undefined || wholeAtLeast(o.count, 0)) && (o.max === undefined || wholeAtLeast(o.max, 0));
+};
 const isReviewReason = (r: unknown): boolean => {
   const o = r as Record<string, unknown> | null;
   return !!o && typeof o === "object" && !Array.isArray(o) && (REVIEW_REASONS as readonly string[]).includes(o.kind as string) && typeof o.say === "string" && o.say.length > 0
-    && (o.file === undefined || (typeof o.file === "string" && o.file.length > 0)) && (o.line === undefined || (Number.isInteger(o.line) && (o.line as number) >= 1)) && codeLinesOk(o.lines);
+    && (o.file === undefined || (typeof o.file === "string" && o.file.length > 0)) && (o.line === undefined || (Number.isInteger(o.line) && (o.line as number) >= 1)) && codeLinesOk(o.lines) && proofOk(o.proof);
 };
 const filesListOk = (k: string): Check => (m) => (Array.isArray(m[k]) && (m[k] as unknown[]).every(isReviewFile) ? null : `"${k}" must be a list of files, each with file and kind`);
 const textList = (k: string): Check => (m) => (Array.isArray(m[k]) && (m[k] as unknown[]).every((x) => typeof x === "string") ? null : `"${k}" must be a list of text`);

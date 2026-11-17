@@ -107,9 +107,11 @@ export function houseRuleReasons(rules: Rule[], changed: FileChange[]): Reason[]
         if (n >= 5 || !pathMatches(r.pattern, c.file)) continue;
         n++;
         const rule = clip(redact(r.text), 160);
+        // M102: the proof quotes the rule (secrets hidden) and the file it covers.
+        const proof = { by: "house_rule" as const, rule, file: c.file };
         out.push(kind === "never_edit"
-          ? { kind: "house_rule", file: c.file, say: `Your house rule "${rule}" covers ${c.file}, and it changed.` }
-          : { kind: "house_rule_ask", file: c.file, say: `Your house rule "${rule}" covers ${c.file}, and it changed. Check that this change was meant.` });
+          ? { kind: "house_rule", file: c.file, say: `Your house rule "${rule}" covers ${c.file}, and it changed.`, proof }
+          : { kind: "house_rule_ask", file: c.file, say: `Your house rule "${rule}" covers ${c.file}, and it changed. Check that this change was meant.`, proof });
       }
     }
   }

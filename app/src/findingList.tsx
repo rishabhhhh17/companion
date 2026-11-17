@@ -4,6 +4,7 @@
 import type { ReactNode } from "react";
 import { placeSaid } from "./review.ts";
 import type { Level, Readiness, Shaped } from "./findingShape.ts";
+import { PROOF_LABELS } from "./proofLine.ts";
 import { S } from "./strings.ts";
 
 const TONE = { ready: "proven", check: "needs", notSafe: "stop" } as const;
@@ -40,7 +41,9 @@ export function FindingList({ items, id, extra }: { items: Shaped[]; id: string;
               <li key={`${f.kind}:${f.i}:${f.file ?? ""}:${f.line ?? ""}`} data-kind={f.kind} data-level={f.level} data-fixed={f.fixed || undefined}>
                 <span className="finding-wrong">{f.parts.wrong}</span>
                 {f.parts.detail && f.parts.detail !== f.parts.wrong && <span className="line muted">{f.parts.detail}</span>}
-                {f.file && !placeSaid({ say: f.parts.detail ?? "", file: f.file }) && <code className="review-at">{S.review.at(f.file, f.line)}</code>}
+                {f.file && !f.parts.why && !placeSaid({ say: f.parts.detail ?? "", file: f.file }) && <code className="review-at">{S.review.at(f.file, f.line)}</code>}
+                {/* M102: why Squibby is sure (the place is in this line). */}
+                {f.parts.why && !f.fixed && <SureLine text={f.parts.why} className="line muted finding-sure" />}
                 {f.fixed && <span className="line muted review-fixed">{S.review.fixedSince}</span>}
                 {!f.fixed && (
                   <dl className="finding-parts">
@@ -69,4 +72,10 @@ export function LeadParts({ f }: { f: Shaped | undefined }) {
       {f.parts.fine && <><dt>{S.finding.fine}</dt><dd>{f.parts.fine}</dd></>}
     </dl>
   );
+}
+
+/** M102: "Why I'm sure: …" (or "Where it is: …") with its label in weight, so it is found at a glance. */
+export function SureLine({ text, className }: { text: string; className: string }) {
+  const label = PROOF_LABELS.find((l) => text.startsWith(`${l}: `));
+  return <span className={className}>{label ? <><b>{label}:</b> {text.slice(label.length + 2)}</> : text}</span>;
 }
