@@ -4,7 +4,6 @@
 // a11y.test.ts can read every name. Motion is CSS only, so the Mac's Reduce motion and Less motion stop it (style.css).
 import { cloneElement, Component, createRef, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactElement, type ReactNode, type Ref } from "react";
 import { Icon, type IconName } from "../icons.tsx";
-import { currentHabitat } from "../habitat.ts";
 import { chordLabel, keycaps } from "../keys.ts";
 import { takeIfLost } from "../focus.ts";
 import { S } from "../strings.ts";
@@ -16,7 +15,7 @@ import { meterScales, VISOR_BAND, VISOR_BAND_VIEWBOX, VISOR_GLASS, VISOR_GLASS_G
 import { clampTo, commitText, glideClip, leaveThen, swapKeepsOld, menuOpensUp, moveIndex, Presence, stepBy, tabWrap, typeahead, verdictMark, type PresenceState, type Range, type Stepped } from "./partsLogic.ts";
 import { EXIT_MS, VISOR_MS, type ExitKind } from "../motionTokens.ts";
 import { reducedMotion, watchReducedMotion } from "../motion.ts";
-import { colourOf, PLACE_COLOUR, PLACE_ICON, type Colour, type Meaning, type PartColour, type Place } from "../meaning.ts";
+import { colourOf, PLACE_COLOUR, PLACE_ICON, type Colour, type Meaning, type Place } from "../meaning.ts";
 
 export type Option<T extends string = string> = { id: T; label: string };
 
@@ -556,7 +555,7 @@ export function FootLine({ start, end, className }: { start?: ReactNode; end?: R
 /** A page in Settings' sidebar: a drawing and its name; the open page is a filled row (no stripe, no coloured dot). */
 export function SidebarItem({ icon, label, selected, attention, onClick, id, count, colour }: { icon: IconName; label: string; selected: boolean; attention?: boolean; onClick: () => void; id?: string; count?: number;
   /** M71: the item's colour tile (a place's own colour, Settings grey), the Mac's own Settings style; its soft fill when open. */
-  colour?: PartColour }) {
+  colour?: Colour }) {
   return (
     <button id={id} type="button" className="sb-item" data-c={colour} aria-current={selected ? "page" : undefined} onClick={onClick}>
       {colour ? <Tile colour={colour} icon={icon} size="place" /> : <Icon name={icon} size={16} />}<span className="sb-label">{label}</span>
@@ -650,7 +649,7 @@ export function Toast({ text, action, onAction, onDone, ms = action ? TOAST_MS :
 
 /** A small square of one colour with a white mark: an icon (icons.tsx, never an emoji) or a short number. `size`: row (28
  *  points, in a list), place (20, the places) or btn (18, on a small button). A picture: the words beside it say it. */
-export function Tile({ colour, icon, size = "row", children }: { colour: PartColour; icon?: IconName; size?: "row" | "place" | "btn"; children?: ReactNode }) {
+export function Tile({ colour, icon, size = "row", children }: { colour: Colour; icon?: IconName; size?: "row" | "place" | "btn"; children?: ReactNode }) {
   const px = size === "row" ? 16 : size === "place" ? 12 : 11;
   return <span className="ui-mtile" data-c={colour} data-size={size} aria-hidden="true">{children ?? (icon ? <Icon name={icon} size={px} /> : null)}</span>;
 }
@@ -713,12 +712,9 @@ export function ListRow({ colour, icon, mark, title, line, fact, factColour, onO
   );
 }
 
-/** M112: an empty list's mark is the habitat's small art (habitat.ts emptyArt), or a plain dash with none. */
-const emptyIcon = (): IconName => (currentHabitat().emptyArt === "photophores" ? "spores" : "dash");
-
 /** A list with nothing in it yet: what will appear there, and one action. M73: with `example`, one faint row first that
  *  shows exactly what will appear (a picture only, hidden from VoiceOver: the empty row says it in words). */
-export function EmptyRow({ icon = emptyIcon(), title, line, action, example }: { icon?: IconName; title: ReactNode; line?: ReactNode; action?: RowAction | null;
+export function EmptyRow({ icon = "dash", title, line, action, example }: { icon?: IconName; title: ReactNode; line?: ReactNode; action?: RowAction | null;
   example?: { colour: Colour; icon?: IconName; title: string; line?: string; fact?: string } }) {
   return <>
     {example ? <ListRow ghost colour={example.colour} icon={example.icon} title={example.title} line={example.line} fact={example.fact} /> : null}
@@ -749,13 +745,12 @@ export function Lead({ tag, title, line, actions, character, meaning, id, classN
   );
 }
 
-/** One of the places (Now, Learn, History, Memory): its living glyph and its name; the one open is on its soft fill. A
+/** One of the places (Now, Learn, History, Memory): its colour tile and its name; the one open is on its soft fill. A
  *  place that waits has a small dot (said in words for VoiceOver). */
 export function PlaceButton({ place, label, on, waits, waitsWord, onClick, id }: { place: Place; label: string; on: boolean; waits?: boolean; waitsWord?: string; onClick: () => void; id?: string }) {
   return (
     <button type="button" className="ui-place" id={id} data-c={PLACE_COLOUR[place]} aria-pressed={on} onClick={onClick}>
-      {/* M112: the place's living glyph (the habitat's), lit in its own colour when open; never a coloured square. */}
-      <span className="ui-place-glyph" aria-hidden="true"><Icon name={PLACE_ICON[place]} size={16} /></span>
+      <Tile colour={PLACE_COLOUR[place]} icon={PLACE_ICON[place]} size="place" />
       <span>{label}</span>
       {waits ? <><span className="ui-place-dot" aria-hidden="true" /><span className="sr">, {waitsWord}</span></> : null}
     </button>
@@ -800,7 +795,7 @@ export class Swap extends Component<{ k: string; children: ReactElement<{ classN
  *  that place, which slides (the clip moves) and fades its colour to the next place's when you switch. Only the clip and a
  *  colour move; nothing is laid out again. It sits first in the row (its parent is the row's frame). `k` names what can
  *  move the places (the place open, a Stop button showing). Its first place is set without motion. */
-export function PlacesGlide({ k, colour }: { k: string; colour: PartColour | null }) {
+export function PlacesGlide({ k, colour }: { k: string; colour: Colour | null }) {
   const ref = useRef<HTMLSpanElement>(null), placed = useRef(false);
   const [c, setC] = useState<{ t: number; r: number; b: number; l: number; still: boolean } | null>(null);
   useLayoutEffect(() => {
@@ -827,7 +822,7 @@ export function PlacesGlide({ k, colour }: { k: string; colour: PartColour | nul
     };
     measure(true);
     // M112 review: every report is measured, the observer's first too (it carries the size the place's words reached after
-    // the first measure: shots 4a and 4h had the fill on the glyph only), and again once the fonts have loaded.
+    // the first measure, so the fill covered only part of the place), and again once the fonts have loaded.
     const ro = typeof ResizeObserver === "function" ? new ResizeObserver(() => measure(false)) : null;
     ro?.observe(box);
     for (const el of box.querySelectorAll(".ui-place")) ro?.observe(el);

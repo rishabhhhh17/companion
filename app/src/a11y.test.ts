@@ -806,10 +806,6 @@ describe("text, controls and marks meet WCAG AA in Night (Graphite), Paper and D
   for (const [name, theme] of [["Graphite", null], ["Black", "black"]] as const) {
     themes.push([`Instrument, ${name}`, instrument(theme, false)], [`Instrument, ${name}, more contrast`, instrument(theme, true)]);
   }
-  // M112: the character's habitat is on every page's root (habitat.ts, through useLook), and its block comes last in the
-  // cascade, so every theme is measured with it on (habitat.test.ts measures the habitat's own values too).
-  for (const [name, t] of themes) Object.assign(t, decls(':root[data-habitat="flowflow"]', null), decls(":root[data-habitat]", null),
-    decls(":root[data-habitat][data-style][data-tone]", null), ...(/more contrast/.test(name) ? [decls(":root[data-habitat]", more)] : []));
   const one = (sel: string) => css.find((r) => r.sel === sel && !r.media);
   const ISLAND = /island|\.lip|\.mark|\.peekline|\.pillrow/;
   // Disabled words need not be read (WCAG 1.4.3 leaves them out); they are the only place --fg-3 may colour words.

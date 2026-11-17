@@ -101,11 +101,7 @@
 .home .ask-token { max-width: 50%; min-height: var(--h-place); padding: 0 var(--space-3); background: var(--surface-2); color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); }
 .home .ask-token .ask-token-dot { width: var(--dot-m); height: var(--dot-m); background: var(--mc); }
 .home .ask-chip { min-height: var(--h-place); border-color: transparent; background: var(--surface-2); color: var(--fg-2); }
-/* M112 review: the accent ("press this", never working's blue), and only once there are words to send. */
-.home .askwrap .ask:has(textarea:not(:placeholder-shown)) .send:not(:disabled) { border-radius: var(--r-pill); background: var(--acc); color: var(--acc-ink); }
-/* With the box empty, send is the quiet step of black, as in the small chat: the one lit thing is never a press that does
-   nothing (it only says a word is needed). */
-.home .askwrap .ask:has(textarea:placeholder-shown) .send:not(:disabled) { background: var(--surface-2); color: var(--fg-2); }
+.home .askwrap .ask .send:not(:disabled) { background: var(--c-blue); color: var(--c-mark); }
 .home .more > summary { color: var(--fg-2); }
 
 /* ---------- The wide Home: the side list with its colour tiles, the work beside it ---------- */
@@ -263,10 +259,9 @@
 
 /* ---------- M96: the small chat out of the notch (notchChat.tsx; docs/milestones/M96-heyclicky-notch.md) ----------
    The founder approved the mock, 15 Nov 2026. Home's own black shape, 460 by 266 under the notch (island.rs HomeSize::CHAT),
-   the top row, the news as bubbles, and at the foot the mic and the ask field. Everything else in Home stays laid out but
-   hidden until the chat opens out (nothing in it is lost). M112: the look is the character's habitat (tokens.css), never
-   the lavender or the dotted grid: plain black, bubbles as membranes with a hairline of light, the person's bubble in the
-   deep water's own tint, and one glow on the thing to press (send). Colours only from tokens.css. */
+   with a faint dotted grid; the top row, the news as bubbles, and at the foot the mic and the ask field. Everything else in
+   Home stays laid out but hidden until the chat opens out (nothing in it is lost). The lavender only on the person's
+   bubble, the mic and the field's outline (one accent); colours only from tokens.css. */
 .home .notch-chat { display: none; }
 /* The chat is exactly the shape the shell holds (266 under the notch): the top row and the ask bar stay, and the news scrolls
    when there is more of it (or bigger text) than fits. */
@@ -276,20 +271,18 @@
 .home[data-chat] { height: 100%; overflow: clip; }
 .home[data-chat] > .inner { display: block; height: 100%; padding: 0; }
 .home[data-chat] > .inner > :not(.notch-chat) { display: none !important; }
-.home[data-chat] .notch-chat { position: relative; display: flex; flex-direction: column; gap: calc(8rem / 14); height: 100%; box-sizing: border-box; padding: 8px 14px 14px 16px; background-color: var(--notch); }
+.home[data-chat] .notch-chat { position: relative; display: flex; flex-direction: column; gap: calc(8rem / 14); height: 100%; box-sizing: border-box; padding: 8px 14px 14px 16px; background-color: var(--notch); background-image: radial-gradient(var(--chat-grid) 1px, transparent 1.2px); background-size: 14px 14px; }
 .notch-chat .nc-top { display: flex; align-items: center; gap: 9px; min-height: 26px; }
 .notch-chat .nc-face, .notch-chat .nc-face.ff-mini { flex: none; width: 22px; }
 .notch-chat .nc-face .ff-orb, .notch-chat .ff-orb { --orb: 22px; --orb-gap: var(--hair); }
 .notch-chat .nc-hi { min-width: 0; flex: 0 1 auto; overflow-wrap: anywhere; color: var(--chat-fg); font: var(--w-strong) var(--t-body) / var(--lh-body) var(--font); letter-spacing: -.01em; }
 /* The project an ask goes to, quiet beside the hello; whichever of the two is last pushes the buttons to the right. */
-/* Its words wrap inside the row at a bigger text size (never cut by CSS: Home's page never hides overflow, a11y.test.ts);
-   its tooltip and VoiceOver have the whole name. */
 .notch-chat .nc-proj { min-width: 0; flex: 0 1 auto; overflow-wrap: anywhere; color: var(--chat-when); font: var(--t-caption) / var(--lh-caption) var(--font); }
 .notch-chat .nc-hi:not(:has(+ .nc-proj)), .notch-chat .nc-proj { margin-right: auto; }
 .notch-chat .nc-stop { flex: none; display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 11px 0 9px; border: 0; border-radius: 999px; color: var(--chat-fg); background: var(--pill-stop); box-shadow: 0 0 0 1px var(--pill-stop-line) inset; font: var(--w-strong) var(--t-caption) / 1 var(--font); transition: transform var(--dur-release) var(--ease-out); }
 .notch-chat .nc-stop:hover { background: var(--pill-stop-hover); }
 .notch-chat .nc-stop:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
-.notch-chat .nc-ico { flex: none; display: grid; place-items: center; width: 26px; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; background: var(--chat-icon-bg); color: var(--chat-icon-fg); box-shadow: 0 0 0 1px var(--hab-membrane) inset; transition: transform var(--dur-release) var(--ease-out); }
+.notch-chat .nc-ico { flex: none; display: grid; place-items: center; width: 26px; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; background: var(--chat-icon-bg); color: var(--chat-icon-fg); transition: transform var(--dur-release) var(--ease-out); }
 .notch-chat .nc-ico:hover { background: var(--chat-send); color: var(--chat-fg); }
 .notch-chat .nc-ico:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
 .notch-chat .nc-news { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: calc(6rem / 14); overflow-y: auto; }
@@ -301,31 +294,25 @@
 .notch-chat .nc-when { margin: 0 0 2px; align-self: center; color: var(--chat-when); font: var(--t-caption) / var(--lh-caption) var(--font); }
 .notch-chat .nc-when b { color: var(--chat-when-day); font-weight: var(--w-bold); }
 .notch-chat .nc-b { margin: 0; max-width: 300px; padding: 7px 12px; border-radius: 16px; font: var(--t-body) / var(--lh-body) var(--font); overflow-wrap: anywhere; animation: nc-in var(--dur-notch-row) var(--ease-out) both; }
-.notch-chat .nc-them { align-self: flex-start; background: var(--chat-them); color: var(--chat-them-fg); border-bottom-left-radius: 5px; box-shadow: 0 0 0 1px var(--hab-membrane) inset; }
+.notch-chat .nc-them { align-self: flex-start; background: var(--chat-them); color: var(--chat-them-fg); border-bottom-left-radius: 5px; }
 /* A bubble that opens out to its place (the changes to review, Claude Code waiting, a failed check). */
 .notch-chat button.nc-go { border: 0; text-align: start; cursor: pointer; transition: background-color var(--dur-release) var(--ease-out); }
 .notch-chat button.nc-go:hover { background: var(--chat-them-hover); }
-.notch-chat .nc-me { align-self: flex-end; background: var(--hab-me); color: var(--hab-me-ink); border-bottom-right-radius: 5px; box-shadow: 0 0 0 1px var(--hab-rim) inset; }
+.notch-chat .nc-me { align-self: flex-end; background: linear-gradient(180deg, var(--lav-1), var(--lav-2-soft)); color: var(--lav-ink); border-bottom-right-radius: 5px; }
 @keyframes nc-in { from { opacity: 0; transform: translateY(4px); } }
 @media (prefers-reduced-motion: reduce) { .notch-chat .nc-b { animation-name: nc-fade; } }
 @keyframes nc-fade { from { opacity: 0; } }
 .notch-chat .nc-bar { flex: none; display: flex; align-items: center; gap: 8px; }
-.notch-chat .nc-mic { flex: none; display: grid; place-items: center; width: 38px; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; color: var(--hab-accent-text); background: var(--hab-surface-2); box-shadow: 0 0 0 1px var(--hab-rim) inset; transition: transform var(--dur-release) var(--ease-out), background-color var(--dur-hover) var(--ease-out); }
-.notch-chat .nc-mic:hover { background: var(--hab-surface-3); }
+.notch-chat .nc-mic { flex: none; display: grid; place-items: center; width: 38px; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; color: var(--lav-ink); background: linear-gradient(180deg, var(--lav-1), var(--lav-2)); box-shadow: 0 0 14px var(--lav-glow); transition: transform var(--dur-release) var(--ease-out); }
 .notch-chat .nc-mic:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
-.notch-chat .nc-field { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; min-height: 38px; box-sizing: border-box; padding: 5px 5px 5px 14px; border-radius: 19px; background: var(--chat-field); box-shadow: 0 0 0 1px var(--hab-rim) inset; }
-/* The field shows focus, as Home's own ask box does: its rim lights in the habitat's accent with a soft glow; the box's own
-   ring is for forced colours. */
-.notch-chat .nc-field:focus-within { box-shadow: 0 0 0 1.5px var(--acc) inset, 0 0 14px var(--hab-glow-soft); }
+.notch-chat .nc-field { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; min-height: 38px; box-sizing: border-box; padding: 5px 5px 5px 14px; border-radius: 19px; background: var(--chat-field); box-shadow: 0 0 0 1.5px var(--lav-line) inset, 0 0 12px var(--lav-glow-soft); }
+/* The field shows focus, as Home's own ask box does: a stronger lavender edge; the box's own ring is for forced colours. */
+.notch-chat .nc-field:focus-within { box-shadow: 0 0 0 2px var(--lav-1) inset, 0 0 16px var(--lav-glow); }
 .notch-chat .nc-field textarea { flex: 1 1 auto; min-width: 0; max-height: calc(54rem / 14); padding: 0; margin: 0; border: 0; outline: 0; resize: none; overflow-y: auto; background: transparent; box-shadow: none; color: var(--chat-them-fg); caret-color: var(--chat-fg); font: var(--t-body) / var(--lh-body) var(--font); }
 .notch-chat .nc-field textarea:focus-visible { outline: var(--ring) solid transparent; }
 .notch-chat .nc-field textarea::placeholder { color: var(--chat-when); }
-/* Send is the one thing to press here: the habitat's glow. */
-.notch-chat .nc-send { flex: none; display: grid; place-items: center; width: 28px; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; background: var(--acc); color: var(--acc-ink); box-shadow: 0 0 10px var(--hab-glow-soft); }
-/* Lit only when there is something to send: with the field empty it is the quiet dark circle (a press there only says a
-   word is needed), so the one lit thing is never a press that does nothing (M112 review). */
-.notch-chat .nc-field:has(textarea:placeholder-shown) .nc-send:not(:disabled) { background: var(--chat-send); color: var(--chat-fg); box-shadow: none; }
-.notch-chat .nc-send:disabled { color: var(--ink-disabled); background: var(--fill-disabled); box-shadow: none; }
+.notch-chat .nc-send { flex: none; display: grid; place-items: center; width: 28px; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; background: var(--chat-send); color: var(--notch-ink); }
+.notch-chat .nc-send:disabled { color: var(--ink-disabled); background: var(--fill-disabled); }
 .notch-chat button:focus-visible { outline: var(--ring) solid var(--focus); outline-offset: 2px; }
 /* M111: the face in the chat's top row, held so it can be dragged out of the notch while Flowflow is tucked. */
 .notch-chat .nc-face-hold { flex: none; display: grid; place-items: center; touch-action: none; }

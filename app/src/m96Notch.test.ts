@@ -265,31 +265,17 @@ describe("the small chat: the recent news as bubbles", () => {
   });
 });
 
-// Changed on purpose in M112 (the founder, 16 Nov 2026: "the notch feels a lot like HeyClicky... just change up the colors"):
-// the lavender, its gradients and the dotted grid are gone; the notch and the chat read the character's habitat tokens
-// (habitat.test.ts holds every habitat's values and contrast). The same behaviour, states and focus rules as before.
-describe("the look: the habitat's black, one glow, words in strings.ts", () => {
+describe("the look: the black, one lavender blue, words in strings.ts", () => {
   const tokens = read("./ui/tokens.css");
-  test("no lavender, no gradient pill and no dotted grid anywhere; the old lime never shows here", () => {
-    expect(tokens).not.toMatch(/--lav-|--chat-grid/);
-    const sheets = ["./ui/notch.css", "./ui/black.css", "./ui/parts.css", "./ui/home.css", "./style.css"].map(read).join("\n");
-    expect(sheets).not.toMatch(/var\(--lav-|var\(--chat-grid\)/);
+  test("the lavender blue and the dotted grid are named tokens, and the old lime never shows here", () => {
+    for (const t of ["--lav-1: #DFE8FF;", "--lav-2: #A9C1FF;", "--lav-ink: #13213D;", "--chat-them: #2A2B2F;", "--chat-grid:"]) expect(tokens).toContain(t);
     for (const f of ["./ui/notch.css", "./ui/black.css", "./notchChat.tsx", "./islandPanel.tsx"]) expect(read(f)).not.toMatch(/lime/i);
   });
-  test("the pill, the person's bubble, the mic and the field read the habitat's tokens: one accent, never a surface", () => {
-    const sheets = ["./ui/notch.css", "./ui/black.css"].map(read).join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
-    const rule = (sel: string) => sheets.split("}").find((r) => r.split("{")[0]!.trim() === sel) ?? "";
-    // Changed on purpose (M112 review, compared with the best): the pill is the accent filled when nothing waits, like Home's
-    // main button; the dark membrane with the habitat's rim is only for something that waits (amber or red).
-    expect(rule(".island-panel button.nb-pill")).toMatch(/background: var\(--acc\)/);
-    expect(rule(".island-panel button.nb-pill")).toMatch(/color: var\(--acc-ink\)/);
-    expect(rule('.island-panel button.nb-pill[data-c="orange"], .island-panel button.nb-pill[data-c="red"]')).toMatch(/var\(--hab-rim\)/);
-    expect(rule('.island-panel button.nb-pill[data-c="orange"], .island-panel button.nb-pill[data-c="red"]')).toMatch(/background: var\(--hab-surface-2\)/);
-    expect(rule(".notch-chat .nc-me")).toMatch(/var\(--hab-me\).*var\(--hab-me-ink\)/);
-    expect(rule(".notch-chat .nc-mic")).toMatch(/var\(--hab-/);
-    expect(rule(".notch-chat .nc-field")).toMatch(/var\(--hab-rim\)/);
-    // The one thing to press in the chat is send, in the accent.
-    expect(rule(".notch-chat .nc-send")).toMatch(/background: var\(--acc\)/);
+  test("the lavender is only on the pill, the person's bubble, the mic and the field: one accent, never a surface", () => {
+    const sheets = ["./ui/notch.css", "./ui/black.css", "./ui/parts.css", "./ui/home.css", "./style.css"].map(read).join("\n");
+    const rules = sheets.split("}").filter((r) => /var\(--lav-/.test(r)).map((r) => r.split("{")[0]!.trim());
+    expect(rules.length).toBeGreaterThan(0);
+    for (const sel of rules) expect(sel, sel).toMatch(/\.nb-pill|\.nc-me|\.nc-mic|\.nc-field/);
   });
   test("every word is in strings.ts, and none has an em dash", () => {
     for (const f of ["./notchChat.ts", "./notchChat.tsx", "./notchMinimal.ts"]) {
@@ -305,33 +291,5 @@ describe("the look: the habitat's black, one glow, words in strings.ts", () => {
     expect(chat).toContain('<Icon name="expand"');
     expect(chat).not.toMatch(/[⚙⤢↑]/);
     expect(read("./icons.tsx")).toMatch(/^ {2}expand: </m);
-  });
-});
-
-// M112 review: the pill's light says whether something waits. Calm remaps every --c- hue to the accent, so the waiting
-// lights read the meaning tokens Calm never touches; and only the accent's light breathes, never amber or red.
-describe("the pill's light, in every colour setting", () => {
-  const css = read("./ui/notch.css").replace(/\/\*[\s\S]*?\*\//g, "");
-  const rules = css.split("}").map((r) => { const [s, b] = r.split("{"); return { sel: (s ?? "").split("\n").pop()!.trim(), body: b ?? "" }; });
-  const light = (c: string) => {
-    const hits = rules.filter((r) => r.sel.includes("button.nb-pill") && r.sel.includes(`[data-c="${c}"]`) && /--pill-light:/.test(r.body));
-    return hits.map((r) => r.body.match(/--pill-light:\s*([^;]+)/)![1]!.trim());
-  };
-  test("amber to review and red for a risk, from the meaning tokens, never a --c- hue Calm turns into the accent", () => {
-    expect(light("orange")).toEqual(["var(--amber)"]);
-    expect(light("red")).toEqual(["var(--bad)"]);
-    const tokens = read("./ui/tokens.css").replace(/\/\*[\s\S]*?\*\//g, "");
-    for (const m of tokens.matchAll(/\[data-colours="calm"\][^{]*\{([^}]*)\}/g)) expect(m[1]!).not.toMatch(/--(amber|bad|acc):/);
-  });
-  test("no orange or red pill breathes, with or without Reduce Motion", () => {
-    const breathe = rules.filter((r) => /animation:\s*nb-breathe/.test(r.body));
-    expect(breathe.length).toBeGreaterThan(0);
-    for (const r of breathe) {
-      expect(r.sel, r.sel).toContain(':not([data-c="orange"])');
-      expect(r.sel, r.sel).toContain(':not([data-c="red"])');
-    }
-    // The Reduce Motion rule names the same pills, so it switches off exactly what breathes.
-    const off = css.match(/@media \(prefers-reduced-motion: reduce\) \{ ([^{]*nb-pill[^{]*)\{ animation: none; \}/);
-    expect(off?.[1]?.trim()).toBe(breathe[0]!.sel);
   });
 });

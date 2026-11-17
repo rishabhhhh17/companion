@@ -45,7 +45,8 @@ describe("changes waiting: it leans toward the review card", () => {
     expect(changesWait(undefined)).toBe(false);
   });
   test("Home names the card only while it is shown on Now and changes wait; otherwise nothing to lean toward", () => {
-    expect(card).toContain('leanTo={home.tab === "now" && show("review") && reviewOn && changesWait(m.review) ? REVIEW_ID : null}');
+    // Changed on purpose (the founder, 17 Nov 2026: no Flowflow inside the opened Home): Home draws no character.
+    expect(card).not.toContain("leanTo=");
     expect(home).toContain("leanTo={leanTo}");
     // The view leans toward it once laid out, again once it has grown in and when the window resizes, and lets go when
     // nothing waits; the listener it adds is removed again.
@@ -64,7 +65,8 @@ describe("changes waiting: it leans toward the review card", () => {
 describe("typing: its eyes go to the ask box (Gentle and Lively), from that one box, never what is typed (rule 5)", () => {
   const listener = view.slice(view.indexOf("const onInput"), view.indexOf('document.removeEventListener("input", onInput)'));
   test("Home hands it its own ask box, and the view listens only for that box", () => {
-    expect(card).toContain("askId={askId}");
+    // Changed on purpose (the founder, 17 Nov 2026: no Flowflow inside the opened Home): Home draws no character.
+    expect(card).not.toContain("<HomeCharacter");
     expect(card).toContain("<textarea ref={box} id={askId}");
     expect(home).toContain("askId={askId}");
     expect(listener).toContain("if (!box || box.id !== askId) return;");

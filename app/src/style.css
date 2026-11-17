@@ -11,7 +11,6 @@
 .muted { color: var(--fg-2); font-size: var(--t-small); }
 .ic { display: block; flex: none; }
 .ic * { vector-effect: non-scaling-stroke; }
-/* M112: the habitat's one stroke; a living glyph's nucleus filled as it says (tokens.css). */ .ic { stroke-width: var(--hab-glyph-stroke, 1.5); } .ic .hg-n { fill: currentColor; fill-opacity: var(--hab-nucleus-a, 0); } /* Off (habitat.ts glyphs.nucleus): an outline. */ :root[data-glyph-nucleus="off"] .ic .hg-n { fill-opacity: 0; }
 
 /* ------------------------------------------------------------------------------------------------------------------ */
 /* The character. Its page paints nothing (the window is see through too, main.rs), so it floats on the desktop. A simple

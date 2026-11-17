@@ -110,7 +110,8 @@ describe("the key blocker: fixing is not switched on yet (the founder's words, 1
     const card = read("./card.tsx");
     expect(card).not.toMatch(/blocker === "key"\) void invoke\("restart_engine"\)/);
     expect(card).toContain("blockMainFor(blocker, project)");
-    expect(card).toContain("as={blockerPose(blocker)}");
+    // Changed on purpose (the founder, 17 Nov 2026: no Flowflow inside the opened Home): Home draws no character.
+    expect(card).not.toContain("as={blockerPose(blocker)}");
     expect(read("./setupList.tsx")).not.toContain("S.tryAgain");
   });
 });

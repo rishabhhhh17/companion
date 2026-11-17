@@ -110,23 +110,6 @@ describe("the glitch: nothing is cut by a window's edge", () => {
   });
 });
 
-describe("the chat's send is lit only when there is something to send (M112 review)", () => {
-  const rules = parse(BLACK_CSS());
-  test("with the field empty, send is the quiet dark circle, no accent and no glow", () => {
-    const empty = rules.find((r) => r.sel === ".notch-chat .nc-field:has(textarea:placeholder-shown) .nc-send:not(:disabled)");
-    expect(empty, "the empty field's send rule").toBeTruthy();
-    expect(value(empty!, "background")).toBe("var(--chat-send)");
-    expect(value(empty!, "color")).toBe("var(--chat-fg)");
-    expect(value(empty!, "box-shadow")).toBe("none");
-  });
-  test("one rule draws send disabled (while a task works)", () => {
-    const off = rules.filter((r) => r.sel === ".notch-chat .nc-send:disabled");
-    expect(off.length).toBe(1);
-    expect(value(off[0]!, "box-shadow")).toBe("none");
-    expect(value(off[0]!, "background")).toBe("var(--fill-disabled)");
-  });
-});
-
 // M112 review: in shot 4h the "Nothing yet today" row ended in a hard cut where the ask box (sticky at the tall Home's foot,
 // on the page's black) covered it, with nothing to say the work went on under it. The wide Home marks that edge with a
 // hairline while there is more below (a fade there hid a card's Undo and its proof, so nothing fades over the work); the
@@ -143,29 +126,5 @@ describe("no row ends in a hard cut above the ask box", () => {
   });
   test("and nothing fades over the work in either layout (a fade hid buttons)", () => {
     for (const r of rules) if (/\.askwrap::before$/.test(r.sel) && value(r, "content") !== undefined) expect(value(r, "mask-image") ?? "", r.sel).toBe("");
-  });
-});
-
-// M112 review: Home's own send was lit in --c-blue always, which is now working's colour, and lit beside an empty field
-// (shot 4h). Like the chat's, it is the accent ("press this") and only once there are words to send.
-describe("Home's send is the accent, lit only with words in the box", () => {
-  test("the step under way in a job is working's colour, never the accent", () => {
-    const fix = parse(readFileSync(new URL("./ui/fix.css", import.meta.url), "utf8"));
-    const now = fix.find((r) => r.sel === '.run-row[data-state="now"] .run-mark::before')!;
-    expect(value(now, "background")).toBe("var(--water)");
-  });
-  test("black.css lights it with the accent and its ink, keyed on the box having words", () => {
-    const rules = parse(BLACK_CSS());
-    const lit = rules.find((r) => r.sel === ".home .askwrap .ask:has(textarea:not(:placeholder-shown)) .send:not(:disabled)");
-    expect(lit).toBeTruthy();
-    expect(value(lit!, "background")).toBe("var(--acc)");
-    expect(value(lit!, "color")).toBe("var(--acc-ink)");
-    expect(rules.filter((r) => /\.send\b/.test(r.sel) && r.decl.some(([, v]) => /var\(--c-blue\)/.test(v))).map((r) => r.sel)).toEqual([]);
-    // A circle like the chat's, typed or not (look.css squared it once there were words).
-    expect(value(lit!, "border-radius")).toBe("var(--r-pill)");
-    const empty = rules.find((r) => r.sel === ".home .askwrap .ask:has(textarea:placeholder-shown) .send:not(:disabled)");
-    expect(empty, "the empty box's send").toBeTruthy();
-    expect(value(empty!, "background")).toBe("var(--surface-2)");
-    expect(value(empty!, "color")).toBe("var(--fg-2)");
   });
 });

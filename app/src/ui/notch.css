@@ -40,35 +40,14 @@
 .island-panel .ip-face.ff-mini { height: var(--peek-face); }
 .island-panel .nb-face, .island-panel .nb-face.ff-mini { width: 24px; height: 24px; }
 .island-panel .nb-greet { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--chat-fg); font: 500 13.5px / 1.2 var(--font); letter-spacing: -.01em; }
-/* M112 (the founder, 16 Nov 2026: "don't make it feel too much like HeyClicky"): the one pill, never the lavender
-   gradient. M112 review (compared with the best: HeyClicky's pill and CodeRabbit's commit button are plainly buttons): when
-   nothing waits it is the habitat's accent, filled, with dark words, exactly like Home's main button, so the notch and Home
-   share one "press this". Its photophore is a small dark nucleus that breathes (opacity only, once every few seconds) while
-   the habitat says so; never with Reduce Motion. */
-.island-panel button.nb-pill { --pill-light: var(--acc-ink); flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 7px; height: 28px; max-width: 200px; padding: 0 13px 0 11px; border-radius: 999px; overflow: hidden; color: var(--acc-ink); font: 600 12.5px / 1 var(--font); white-space: nowrap; text-overflow: ellipsis; background: var(--acc); box-shadow: inset 0 1px 0 var(--sheen-top), 0 0 14px var(--hab-glow-soft); transition: transform var(--dur-release) var(--ease-out), background-color var(--dur-hover) var(--ease-out); }
-.island-panel button.nb-pill:hover { background: var(--acc-hover); }
+/* The one pill: light lavender blue, navy words, an inner white hairline and a soft blue glow (the approved mock). */
+.island-panel button.nb-pill { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 28px; max-width: 200px; padding: 0 13px; border-radius: 999px; overflow: hidden; color: var(--lav-ink); font: 500 12.5px / 1 var(--font); white-space: nowrap; text-overflow: ellipsis; background: linear-gradient(180deg, var(--lav-1) 0%, var(--lav-2) 100%); box-shadow: 0 0 0 1px var(--lav-hair) inset, 0 0 14px var(--lav-glow); transition: transform var(--dur-release) var(--ease-out); }
+.island-panel button.nb-pill:hover { filter: brightness(var(--pill-hover)); }
 .island-panel button.nb-pill:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
-.island-panel button.nb-pill:not(:has(.nb-dot))::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--pill-light); opacity: .7; }
-/* Something waits (amber to review, red for a risk): a dark membrane with a hairline of the habitat's light, its words in
-   the habitat's light, and its photophore in the waiting meaning's own colour, steady (a waiting light never breathes).
-   These read the meaning tokens, which Calm never remaps. Its light's blur is a token Reduce Transparency sets to none. */
-.island-panel button.nb-pill[data-c="orange"], .island-panel button.nb-pill[data-c="red"] { color: var(--chat-fg); font-weight: 500; background: var(--hab-surface-2); box-shadow: 0 0 0 1px var(--hab-rim) inset; }
-.island-panel button.nb-pill[data-c="orange"]:hover, .island-panel button.nb-pill[data-c="red"]:hover { background: var(--hab-surface-3); }
-.island-panel button.nb-pill[data-c="orange"] { --pill-light: var(--amber); }
-.island-panel button.nb-pill[data-c="red"] { --pill-light: var(--bad); }
-.island-panel button.nb-pill[data-c="orange"]::before, .island-panel button.nb-pill[data-c="red"]::before { opacity: 1; box-shadow: 0 0 var(--hab-light-blur) var(--pill-light); }
-/* The habitat's photophore switch (habitat.ts notch.photophore): with it off, the pill has no light of its own. The waiting
-   dot (.nb-dot) is a meaning, not decoration, so it stays. */
-:root:not([data-notch-photophore="on"]) .island-panel button.nb-pill::before { content: none; }
-:root[data-notch-breathe="on"] .island-panel[data-shown] button.nb-pill:not([data-act="stop"]):not([data-c="orange"]):not([data-c="red"]):not(:has(.nb-dot))::before { animation: nb-breathe var(--dur-breathe) var(--ease-loop) infinite; }
-@keyframes nb-breathe { 50% { opacity: .3; } }
-@media (prefers-reduced-motion: reduce) { :root[data-notch-breathe="on"] .island-panel[data-shown] button.nb-pill:not([data-act="stop"]):not([data-c="orange"]):not([data-c="red"]):not(:has(.nb-dot))::before { animation: none; } }
-/* Stop, the safety action, reads unlike every other pill: a quiet dark pill with a plain hairline, no light and no glow. */
-.island-panel button.nb-pill[data-act="stop"] { color: var(--chat-fg); font-weight: 500; background: var(--pill-stop); box-shadow: 0 0 0 1px var(--pill-stop-line) inset; }
-.island-panel button.nb-pill[data-act="stop"]::before { content: none; }
+/* Stop, the safety action, reads unlike every other pill: a quiet dark pill with a hairline, no lavender and no glow. */
+.island-panel button.nb-pill[data-act="stop"] { color: var(--chat-fg); background: var(--pill-stop); box-shadow: 0 0 0 1px var(--pill-stop-line) inset; }
 .island-panel button.nb-pill[data-act="stop"]:hover { background: var(--pill-stop-hover); }
-/* Something waits for the person (changes, a question): the photophore is the waiting meaning's own light. */
-.island-panel .nb-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--pill-light); box-shadow: 0 0 var(--hab-light-blur) var(--pill-light); }
+.island-panel .nb-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--notch-wait); }
 .island-panel:not([data-shown]) .nb-row { pointer-events: none; }
 /* Arriving: the row comes in with the black, one short move; with Reduce Motion only a fade. */
 .island-panel[data-shown][data-layout] > .nb-row { animation: ip-rise var(--dur-notch-row) var(--ease-out) both; }
@@ -80,7 +59,7 @@
 
 /* ---------- M111: the notch says it will take Flowflow (a drag over it) ---------- */
 /* The pointer's own row grows out of the notch (island.rs take_look) with one line, and the notch's black takes a soft
-   glow of the habitat inside its edge (inset: the window is exactly the shape, and the camera housing has no pixels). */
+   lavender glow inside its edge (inset: the window is exactly the shape, and the camera housing has no pixels). */
 .island[data-take] .island-shape { box-shadow: inset 0 0 0 1px var(--tuck-line), inset 0 -12px 24px -8px var(--tuck-glow); }
 .island-take { position: absolute; top: var(--row); left: 0; right: 0; height: 42px; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--chat-fg); font: 500 13px / 1.2 var(--font); letter-spacing: -.01em; white-space: nowrap; pointer-events: none; animation: ip-rise var(--dur-notch-row) var(--ease-out) both; }
 .island-take .nb-face, .island-take .nb-face.ff-mini { flex: none; width: 24px; height: 24px; }

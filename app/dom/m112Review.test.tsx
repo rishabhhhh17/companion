@@ -29,7 +29,7 @@ afterEach(() => {
 
 const row = () => (
   <div className="places">
-    <PlacesGlide k="now:0" colour="accent" />
+    <PlacesGlide k="now:0" colour="blue" />
     <PlaceButton place="now" label="Now" on onClick={() => {}} />
     <PlaceButton place="learn" label="Learn" on={false} onClick={() => {}} />
   </div>

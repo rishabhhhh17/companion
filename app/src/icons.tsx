@@ -11,7 +11,7 @@ type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer" | "shie
 
 const base = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, focusable: false } as const;
 
-const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "back" | "undo" | "stop" | "wait" | "half" | "dash" | "ring" | "spin" | "sparkle" | "alert" | "eye" | "updown" | "copy" | "star" | "starFilled" | "expand" | "bringOut" | "cell" | "sprout" | "spiral" | "neuron" | "spores" | HomeIcon, ReactElement> = {
+const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "back" | "undo" | "stop" | "wait" | "half" | "dash" | "ring" | "spin" | "sparkle" | "alert" | "eye" | "updown" | "copy" | "star" | "starFilled" | "expand" | "bringOut" | HomeIcon, ReactElement> = {
   // The tabs
   now: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" /></>,
   did: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
@@ -77,15 +77,6 @@ const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "ba
   mono: <><path d="M8 9v6M12 6v12M16 9v6" /></>,
   video: <><rect x="3.5" y="6" width="12" height="12" rx="2" /><path d="M15.5 10.5l5-2.5v8l-5-2.5z" /></>,
   archive: <><path d="M4 8h16M5 8l1-4h12l1 4" /><path d="M5 8v11a1 1 0 001 1h12a1 1 0 001-1V8" /><path d="M10 12h4" /></>,
-  // M112: the habitat's living glyphs (the founder, 16 Nov 2026: the four coloured squares read generic). One stroke style,
-  // drawn like small organisms: Now a cell with its nucleus, Learn a spore that sprouts, History a shell's growth spiral,
-  // Memory a neuron. A nucleus (`hg-n`) is filled as strongly as the habitat says (--hab-nucleus-a, ui/parts.css).
-  cell: <><path d="M12 3.6c4.5 0 8.1 3.4 8.1 8.2 0 4.7-3.6 8.6-8.3 8.6-4.6 0-8.2-3.7-8.2-8.4 0-4.8 3.8-8.4 8.4-8.4z" /><circle className="hg-n" cx="13.4" cy="10.6" r="2.5" /></>,
-  sprout: <><path d="M12 20.6c-2.5 0-4.1-1.5-4.1-3.5 0-2.2 1.9-3.8 4.1-3.8s4.1 1.6 4.1 3.8c0 2-1.6 3.5-4.1 3.5z" /><path d="M12 13.3V9" /><path className="hg-n" d="M12 9c0-2.7 1.9-4.7 4.6-4.8.1 2.7-1.8 4.7-4.6 4.8z" /><path d="M12 11c-.5-1.8-2-3-3.9-3" /></>,
-  spiral: <path d="M12.6 12.3a1.1 1.1 0 1 1-1.5-1.3 2.5 2.5 0 0 1 3.5 2.5 3.9 3.9 0 0 1-4.5 3.7 5.3 5.3 0 0 1-4.5-5.9 6.7 6.7 0 0 1 7.3-5.5 8 8 0 0 1 6.5 7.6" />,
-  neuron: <><circle cx="12" cy="11.6" r="3.3" /><circle className="hg-n" cx="12.6" cy="11" r="1.1" /><path d="M9.5 9.4 6.2 6.6M6.2 6.6 4 7M6.2 6.6 6 4.4M14.6 9.6l3.3-2.9M17.9 6.7l2.1-1.9M17.9 6.7l.6 2.4M12 14.9v4.3M12 19.2l-2.1 1.3M12 19.2l2 1.3" /></>,
-  // M112: the empty state's small art: three photophores drifting (Flowflow's habitat, habitat.ts emptyArt), a mark only.
-  spores: <><circle className="hg-n" cx="7" cy="15" r="2.4" /><circle className="hg-n" cx="15.5" cy="8.5" r="1.7" /><circle className="hg-n" cx="17.5" cy="16.5" r="1.2" /></>,
   // M96: open all of Home, from the small chat (two arrows out, corner to corner).
   expand: <><path d="M14 4h6v6M10 20H4v-6" /><path d="M20 4l-6.5 6.5M4 20l6.5-6.5" /></>,
   // M111: bring the character out of the notch: the notch as a bar at the top, an arrow coming down out of it (the M111

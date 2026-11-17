@@ -246,8 +246,9 @@ describe("it springs open from the notch, and not at all with less motion", () =
     // M55 (the character reacts): it also gets the ask box, and the review card while changes wait (characterReacts.test.ts).
     // M69 step 2: while the review card leads Now the character is drawn in that card instead (one at a time).
     // M98: the error pose only for a real break (homeHero.ts blockerPose), never for fixing not switched on yet.
-    expect(card).toContain('<div className="ch-char">{!cardLeads && <HomeCharacter m={m} as={blockerPose(blocker)} rest={!homeOpen || home.tab !== "now"} askId={askId}');
-    expect(card).toContain('<div className="ch-water"><Waterline under /></div>');
+    // Changed on purpose (the founder, 17 Nov 2026: no Flowflow inside the opened Home): Home draws no character.
+    expect(card).not.toContain("<HomeCharacter");
+    expect(card).not.toContain("<Waterline");
     expect(ch).toContain("const resting = useRest() || !!rest;");
     expect(css).not.toContain(".hero .home-char { display: none; }");
     expect(ch).toContain("liveliness={mode} resting={resting}");
@@ -525,8 +526,8 @@ describe("the recent fixes (4.1)", () => {
 
 describe("Flowflow lives on Home's water again (the founder, 31 Oct), and follows how lively the person chose (M46)", () => {
   test("the pond sits beside the words, and the water's drift stops with Still", () => {
-    expect(card).toContain('<div className="home-pond" data-lively={lively} data-glow={glow} aria-hidden="true">');
-    expect(card).toContain('const lively = livelinessOf(useSetting("character.lively"));');
+    // Changed on purpose (the founder, 17 Nov 2026: no Flowflow inside the opened Home): Home draws no character.
+    expect(card).not.toContain('className="home-pond"');
     // One water for Home's pond and Settings' preview (review, 31 Oct): the same flat sea, and both hold still with Still.
     expect(css).toContain('.home-pond[data-lively="still"] .ch-water .waterline svg, .companion-hero[data-lively="still"] .ch-water .waterline svg { animation: none; }');
     // Home: one line across the whole width (the founder, 31 Oct, as in M41), the sea fading out under it, never a box.

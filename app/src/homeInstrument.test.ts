@@ -112,7 +112,8 @@ describe("Home draws them for every style and the tokens show them only in Instr
     expect(card).not.toContain("<FootLine");
     // M69 step 3: only while the hero does not already say when it was checked (at rest and over a result it does).
     expect(card).toContain("const barLine = barContext({ project, foot: atRest || resHero ? null : foot, about: m.about, tall: !side });");
-    expect(card).toContain("ring={heroRingOf(mode, heroStatus)}");
+    // Changed on purpose (the founder, 17 Nov 2026: no Flowflow inside the opened Home): Home draws no character.
+    expect(card).not.toContain("ring={heroRingOf(mode, heroStatus)}");
     expect(card).toContain('data-foot-says={status.sub && !statusSubShown(status.sub, foot) ? "" : undefined}');
   });
   test("Home's page loads home.css after the wide look", () => {

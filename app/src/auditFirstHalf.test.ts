@@ -187,7 +187,8 @@ describe("(12) Home says what blocks it, with the one way out as the main button
     const m = { ...initial(), folder: P, connected: "none" } as Model;
     expect(homeMode(m, need(m), { blocker: "key" })).toBe("blocked");
     // M98: only a real break takes the error pose (homeHero.ts blockerPose); fixing not switched on is nothing broken.
-    expect(card).toContain("as={blockerPose(blocker)}");
+    // Changed on purpose (the founder, 17 Nov 2026: no Flowflow inside the opened Home): Home draws no character.
+    expect(card).not.toContain("as={blockerPose(blocker)}");
   });
   test("Claude's own notice is a secondary button, and notes on the sea have a backing", () => {
     expect(card).not.toMatch(/claude-notice[\s\S]{0,400}btn primary/);

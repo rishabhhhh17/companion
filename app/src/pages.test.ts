@@ -41,8 +41,7 @@ describe("History as a timeline (spec 3.6)", () => {
     expect(panel).toContain('<time className="hist-time"');
     expect(panel).not.toContain("costWords");
     expect(panel).not.toContain("S.historyUndoWhy");
-    // Changed on purpose in M112: History's empty row shows the habitat's spiral glyph.
-    expect(panel).toContain("<EmptyRow icon=\"spiral\" title={S.screens.historyEmptyTitle} line={S.screens.historyEmptyLine}");
+    expect(panel).toContain("<EmptyRow icon=\"undo\" title={S.screens.historyEmptyTitle} line={S.screens.historyEmptyLine}");
     expect(panel).toContain("{ label: S.screens.startPractice, colour: \"purple\", onClick: onPractice }");
     expect(card).toContain("onPractice={groups.groupOn(\"guide\") ? () => beginPractice(FIRST_PRACTICE) : undefined}");
   });

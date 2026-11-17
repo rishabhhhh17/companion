@@ -256,8 +256,7 @@ describe("(37) the review card is found and heard", () => {
 describe("(51) empty History and the landmarks", () => {
   test("M69 (spec 3.6): History with nothing yet has the character at rest, one sentence and Start practice", () => {
     // M71 (one structure): the empty list is one row that says what will appear, with one action (Start practice).
-    // Changed on purpose in M112: History's empty row shows the habitat's spiral glyph.
-    expect(card).toContain("<EmptyRow icon=\"spiral\" title={S.screens.historyEmptyTitle} line={S.screens.historyEmptyLine}");
+    expect(card).toContain("<EmptyRow icon=\"undo\" title={S.screens.historyEmptyTitle} line={S.screens.historyEmptyLine}");
     expect(card).toContain("{ label: S.screens.startPractice, colour: \"purple\", onClick: onPractice }");
     expect(S.screens.historyEmpty).toBe("Nothing here yet. Your first fix will show up here with its proof.");
   });

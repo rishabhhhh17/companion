@@ -21,7 +21,7 @@ import { markSave } from "./commands.ts";
 import { backPlanStep, fixLadder, optionWords, stuckRung, tryCounter } from "./fixLadder.ts";
 import { lastWorkingTime, signInTurn, undoLimitsLine } from "./savePoints.ts";
 import { SaveMarksActions, SaveMarksLine } from "./savePointsRow.tsx";
-import { askedNoticeOf, askedNoticeParts, browserView, confirmable, lookState, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, historyWords, historyFacts, isFixing, triesNote, notDoneReason, notDoneLine, plainPath, stateLabel, pointsOnScreen, pointsOnFound, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
+import { askedNoticeOf, askedNoticeParts, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, historyWords, historyFacts, isFixing, triesNote, notDoneReason, notDoneLine, plainPath, stateLabel, pointsOnScreen, pointsOnFound, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, Model, MemoryLine, Practice, Problem, UndoState } from "./model.ts";
 import { FIRST_PRACTICE, NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, practiceWithoutNode, pointFixRoute, practiceNotes, practiceOf, recordFrom, reviewFixRoute, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
@@ -38,15 +38,12 @@ import { JobLive } from "./jobLive.tsx";
 import { failCopy, failedStep, proofSentence, proofTicks, replayRows, runList } from "./runList.ts";
 import { FailLead, ProofTicks, Replay, RunRows } from "./runListView.tsx";
 import { ASKED_NOTICE_MS, arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
-import { jobStep, needMainWords, goLiveAnswer, reviewHeroSays, askRoute, blockerOf, blockLineFor, blockMainFor, blockerPose, fixOffered, MAIN_TOOL, heroCompact, homeFixRoute, jobLive, timeLine, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroRingOf, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
+import { jobStep, needMainWords, goLiveAnswer, reviewHeroSays, askRoute, blockerOf, blockLineFor, blockMainFor, fixOffered, MAIN_TOOL, heroCompact, homeFixRoute, jobLive, timeLine, reviewLead, aboutWorthACard, needMainFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
 import { notePress, orderWays, readCounts, type Counts, type Way } from "./usedOften.ts";
 import { homeKey } from "./homeKeys.ts";
 import { paletteMove, paletteRows, paletteShown, type PaletteAction, type PaletteRow } from "./palette.ts";
-import { HomeCharacter } from "./homeCharacter.tsx";
 import { SetupList } from "./setupList.tsx";
 import { setupList } from "./setupList.ts";
-import { Waterline } from "./waterline.tsx";
-import { livelinessOf } from "./lookfeel.ts";
 import { alwaysFile, approvalChoices, approvalWords } from "./approvals.ts";
 import { useLook } from "./useLook.ts";
 import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
@@ -57,7 +54,7 @@ import { barContext, barKeyChord, layoutOf, sideOn, sidePlaces, sideRecent, useM
 import { askChips, firstWayTip } from "./askChips.ts";
 import { checkedAgo, lastFix, nowRows, restCards, restHero, restMainLabel, resultHero, sinceRows, workedFor } from "./homeRest.ts";
 import { ShotPair } from "./homeRest.tsx";
-import { heroMeaning, MEANING_COLOUR, PILL_MEANING, PLACE_COLOUR, PLACE_ICON, statusDot, type Colour, type PartColour } from "./meaning.ts";
+import { heroMeaning, MEANING_COLOUR, PILL_MEANING, PLACE_COLOUR, PLACE_ICON, statusDot, type Colour } from "./meaning.ts";
 import { reviewHead } from "./reviewHead.ts";
 import { HomeSide } from "./homeSide.tsx";
 import { ReviewCardView, REVIEW_ID } from "./reviewCard.tsx";
@@ -438,7 +435,7 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
       {/* Nothing yet: what will appear here, and one way to start (spec 2.4), never a lone grey sentence. */}
       {items.length === 0 && (
         <ListGroup label={S.recentTitle}>
-          <EmptyRow icon="spiral" title={S.screens.historyEmptyTitle} line={S.screens.historyEmptyLine} example={{ colour: MEANING_COLOUR.proven, icon: "tick", ...S.screens.historyExample }}
+          <EmptyRow icon="undo" title={S.screens.historyEmptyTitle} line={S.screens.historyEmptyLine} example={{ colour: MEANING_COLOUR.proven, icon: "tick", ...S.screens.historyExample }}
             action={onPractice ? { label: S.screens.startPractice, colour: "purple", onClick: onPractice } : onAsk ? { label: S.screens.askFirst, onClick: onAsk, colour: "blue" } : null} />
         </ListGroup>
       )}
@@ -2030,8 +2027,9 @@ export function Card() {
   useEffect(() => {
     if (chat && !chatHolds(m, { onboarded, vague: !!vague, noProject: !!noProjectFor, handoff: !!handoff, attached: attached.length, freshNotice, freshResult })) openOut();
   }, [chat, m, onboarded, vague, noProjectFor, handoff, attached, freshNotice, freshResult]);
-  // M83: the hand off waits for the person's AI tool (handoffCard.tsx): the character watches while it does.
-  const [handoffWaits, setHandoffWaits] = useState(false);
+  // M83: the hand off waits for the person's AI tool (handoffCard.tsx). (Home drew the character watching while it did;
+  // the founder took the character out of the opened Home on 17 Nov 2026.)
+  const [, setHandoffWaits] = useState(false);
   const sendTask = (prompt: string) => {
     dispatch({ type: "ui.undoClosed" });
     sentFromBox("task");
@@ -2334,9 +2332,6 @@ export function Card() {
     else if (needMain === "practiceFix" && pr) practiceFix(pr);
     else pickTab("learn");
   };
-  // The glow round Flowflow in its pond, in the colour of its state (never a filter inside its masked box).
-  const lookNow = lookState(m);
-  const glow = lookNow === "needsYou" || lookNow === "done" ? lookNow : undefined;
   // M73 (fluid, item 9): the places Command 1 to 4 open, in the order they are shown.
   const navPlaces: Tab[] = side ? sidePlaces({ learnOn: learnShown() }) : ["now", ...barPlaces({ practiceDone: practiceRec.rows.some((r) => !!r.done), learnWaits: needNow?.tab === "learn", learnOpen: home.tab === "learn", learnOn: learnShown() }).filter((t) => t !== "settings")];
   // M73 (fluid, item 8): what the ask box's list can offer, each by the same arrival the notch's panel uses (so Undo asks
@@ -2352,12 +2347,11 @@ export function Card() {
   const palRows: PaletteRow[] = home.tab === "now" && show("ask") && askMode !== "showme" ? paletteRows(palText, palActions, m.history.map((h) => taskName(h.label))) : [];
   const palOn = paletteShown(palRows);
   const palId = `${askId}-pal`;
-  // An ask and a plain action are presses: the accent (M112 review), never "blue", which is working's colour.
-  const palLook = (r: PaletteRow): { colour: PartColour; icon: IconName; words: string } =>
-    r.kind === "ask" ? { colour: "accent", icon: "send", words: S.look.palAsk(r.text) }
+  const palLook = (r: PaletteRow): { colour: Colour; icon: IconName; words: string } =>
+    r.kind === "ask" ? { colour: "blue", icon: "send", words: S.look.palAsk(r.text) }
     : r.kind === "past" ? { colour: "grey", icon: "undo", words: r.text }
     : r.id in PLACE_COLOUR ? { colour: PLACE_COLOUR[r.id as Tab], icon: PLACE_ICON[r.id as Tab], words: r.label }
-    : { colour: r.id === "review" || r.id === "undo" ? "orange" : "accent", icon: r.id === "review" ? "eye" : r.id === "undo" ? "undo" : r.id === "shipCheck" ? "shield" : "find", words: r.label };
+    : { colour: r.id === "review" || r.id === "undo" ? "orange" : "blue", icon: r.id === "review" ? "eye" : r.id === "undo" ? "undo" : r.id === "shipCheck" ? "shield" : "find", words: r.label };
   const runPal = (r: PaletteRow | undefined) => {
     if (!r) return;
     if (r.kind === "ask") { submit(); return; }
@@ -2368,8 +2362,6 @@ export function Card() {
     else pickTab(r.id as Tab);
   };
   const places = side ? [] : barPlaces({ practiceDone: practiceRec.rows.some((r) => !!r.done), learnWaits: needNow?.tab === "learn", learnOpen: home.tab === "learn", learnOn: learnShown() });
-  // Flowflow on Home's water follows how lively the person chose (M46); the water's drift stops with Still.
-  const lively = livelinessOf(useSetting("character.lively"));
   // The working card: when this job started (its time so far), and whether it is drawn (Stop lives in it then).
   const jobKey = m.task && working ? `${m.task.agent}:${m.task.checkpoint ?? m.task.label}` : "";
   const jobStart = useRef<{ key: string; at: number } | null>(null);
@@ -2796,27 +2788,15 @@ export function Card() {
       {/* Each place sits in its own boundary (must fix 4): a part that fails to draw shows one line and Reload this part,
           and the top bar above still leads everywhere else. */}
       {onboarded && (<PartBoundary part={home.tab} resetKey={home.tab}>
-      {/* Now, status first in one column (F28, the overhaul spec 4.1), with Flowflow living on its water beside the words (the
-          founder, 31 Oct). At rest and under a result: how the project is, from its last check, and the one main button
+      {/* Now, status first in one column (F28, the overhaul spec 4.1). The founder, 17 Nov 2026: no Flowflow inside the opened
+          Home ("I don't want the Flow Flow symbol to be on there"): the character lives on screen and in the notch, so the
+          lead and the review card no longer repeat it. At rest and under a result: how the project is, from its last check, and the one main button
           that status picks. While a job works, a question waits or an answer is in: that job's own words. */}
       {/* M71: the lead (ui/parts.tsx Lead): one tag in its meaning's colour (meaning.ts heroMeaning), one headline, one line,
-          one main button and at most one quiet one, and the character in its own column on the right, never over a word. */}
+          one main button and at most one quiet one. */}
       <Lead className="hero" wordsClass="hero-words" hidden={home.tab !== "now" || cardLeads} meaning={leadMeaning} labelledBy={home.tab === "now" && !cardLeads ? "home-title" : undefined}
         data={{ "data-mode": mode, "data-rest": atRest ? "" : undefined, "data-tight": compact ? "" : undefined }}
-        wordsData={{ "data-line-said": !statusFirst && heroLineSaid(heroStatus, heroShown.headline, heroLine) ? "" : undefined }}
-        character={
-          // Flowflow's glow (needs you, done) is a soft circle in its pond, outside the masked box, so no edge of it shows
-          // (the audit, item 28).
-          <div className="home-pond" data-lively={lively} data-glow={glow} aria-hidden="true">
-            <div className="ch-water"><Waterline under /></div>
-            {(() => { const say = blocker ? "" : sayFor(m, hero); return say ? <span className="say" key={say}>{say}</span> : null; })()}
-            {/* M55 (the character reacts): its eyes go to the ask box while the person types, and it leans toward the review card
-                while changes wait for it (only while that card is on Now). */}
-            {/* M69: while the review card leads Now, the character is drawn in that card instead (one at a time). */}
-            <div className="ch-char">{!cardLeads && <HomeCharacter m={m} as={blockerPose(blocker)} rest={!homeOpen || home.tab !== "now"} askId={askId}
-              ring={leadMeaning === "practice" ? null : heroRingOf(mode, heroStatus)} watching={handoffWaits} leanTo={home.tab === "now" && show("review") && reviewOn && changesWait(m.review) ? REVIEW_ID : null} />}</div>
-          </div>
-        }>
+        wordsData={{ "data-line-said": !statusFirst && heroLineSaid(heroStatus, heroShown.headline, heroLine) ? "" : undefined }}>
           {atRest
             ? restWords.pill && <Tag meaning={PILL_MEANING[restWords.pill]} words={S.homeNow.pill[restWords.pill]} />
             : resHero ? <Tag meaning={resHero.pill === "proven" ? "proven" : "problem"} words={S.homeNow.resultPill[resHero.pill]} tick={resHero.pill === "proven"} />
@@ -3012,8 +2992,7 @@ export function Card() {
       {/* The recent fixes, newest first: each opens its own receipt (the one on Now, or its row in History). At rest they come
           right under the ask field; while a result or an answer is on Now, under it (below, before the folder's notes). */}
       {/* In the tall Home, changes to review come before the recent list (item 11); in the wide one they lead the work below. */}
-      {!side && show("review") && reviewOn && <div className="view view-lead"><ReviewCardView r={m.review!} {...reviewHandlers} heroSays={reviewHeroSays(mode, rlead, m.review)} heroHeadline={mode === "review" && !cardLeads ? rlead?.headline : undefined} titleId={cardLeads ? "home-title" : undefined}
-        mark={cardLeads ? <HomeCharacter m={m} rest={!homeOpen || home.tab !== "now"} askId={askId} ring={heroRingOf(mode, heroStatus)} leanTo={null} /> : undefined} /></div>}
+      {!side && show("review") && reviewOn && <div className="view view-lead"><ReviewCardView r={m.review!} {...reviewHandlers} heroSays={reviewHeroSays(mode, rlead, m.review)} heroHeadline={mode === "review" && !cardLeads ? rlead?.headline : undefined} titleId={cardLeads ? "home-title" : undefined} /></div>}
       {/* M69 step 2: at rest the Last fix and Since then cards take the recent list's place (homeRest.tsx). */}
       {!side && show("ask") && restCards(restIn) && atRest && home.tab === "now" && <div className="view view-lead">{restBlock()}</div>}
       {!side && show("ask") && savedJobsEl && <div className="view view-lead">{savedJobsEl}</div>}
@@ -3248,8 +3227,7 @@ export function Card() {
         </section>
       )}
 
-      {side && show("review") && reviewOn && <ReviewCardView r={m.review!} {...reviewHandlers} heroSays={reviewHeroSays(mode, rlead, m.review)} heroHeadline={mode === "review" && !cardLeads ? rlead?.headline : undefined} titleId={cardLeads ? "home-title" : undefined}
-        mark={cardLeads ? <HomeCharacter m={m} rest={!homeOpen || home.tab !== "now"} askId={askId} ring={heroRingOf(mode, heroStatus)} leanTo={null} /> : undefined} />}
+      {side && show("review") && reviewOn && <ReviewCardView r={m.review!} {...reviewHandlers} heroSays={reviewHeroSays(mode, rlead, m.review)} heroHeadline={mode === "review" && !cardLeads ? rlead?.headline : undefined} titleId={cardLeads ? "home-title" : undefined} />}
 
       {show("drive") && m.drive && (
         <section className="panel">

@@ -7,14 +7,9 @@
 import { useEffect } from "react";
 import { storedSetting, useSetting } from "./settingsStore.ts";
 import { applyLook, applyLookChoices, flowColours } from "./lookfeel.ts";
-import { activeCharacter, applyHabitat, habitatFor, useHabitat } from "./habitat.ts";
-
-// M112: the character's habitat is on the root before the page's first frame (its colours are tokens), then kept in step.
-if (typeof document !== "undefined") applyHabitat(document.documentElement, habitatFor(activeCharacter()));
 
 export function useLook(opts: { keepNight?: boolean; choices?: boolean } = {}): { light: string; deep: string } {
   useEffect(() => { applyLook(document.documentElement); }, []);
-  useHabitat();
   const colour = useSetting("look.colour");
   useSetting("look.character");
   const character = storedSetting("look.character"), style = storedSetting("look.style");
