@@ -964,6 +964,34 @@ mod tests {
         assert_eq!(reasons[5]["proof"]["by"].as_str(), Some("line"));
     }
     #[test]
+    fn m103_a_saved_logins_note_carries_its_kind_what_happened_and_words_only() {
+        // M103: the shared fixtures (read by the runner's suite and the pages too). The shell passes guard events through as
+        // they are; here it checks the shape it may log or forward: known fields, a known outcome, and never a file's contents.
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let notes: Vec<Value> = events.lines().filter(|l| l.contains("\"id\":\"m103e")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(notes.len(), 4);
+        let mut outcomes = Vec::new();
+        for e in notes.iter().filter(|e| e["type"] == "guard.asked") {
+            for k in e.as_object().unwrap().keys() { assert!(["v", "id", "ts", "type", "project", "command", "reason", "kind", "outcome", "tool"].contains(&k.as_str()), "{k}"); }
+            // The M103 review: the AI tool it came from, one of the seven when it is there.
+            assert!(e.get("tool").is_none_or(|t| ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf"].contains(&t.as_str().unwrap_or(""))));
+            assert_eq!(e["kind"].as_str(), Some("login"));
+            assert!(e["command"].as_str().is_some_and(|c| !c.is_empty() && c.chars().count() <= 80));
+            assert!(e["reason"].as_str().is_some_and(|r| r.chars().count() <= 300 && !r.contains("password ") && !r.contains("aws_secret")));
+            outcomes.push(e["outcome"].as_str().unwrap().to_string());
+        }
+        assert_eq!(outcomes, ["asked", "ran", "blocked"]);
+        let tools: Vec<&str> = notes.iter().filter(|e| e["type"] == "guard.asked").filter_map(|e| e["tool"].as_str()).collect();
+        assert_eq!(tools, ["claude", "codex", "gemini"]);
+        let list = notes.iter().find(|e| e["type"] == "tasks.list").unwrap();
+        for r in list["asked"].as_array().unwrap() {
+            assert_eq!(r["kind"].as_str(), Some("login"));
+            assert!(["asked", "ran", "blocked"].contains(&r["outcome"].as_str().unwrap()));
+            assert!(r.get("answer").is_none(), "a login row is the tool's, never Squibby's own answer");
+            assert!(r.get("tool").is_none_or(|t| ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf"].contains(&t.as_str().unwrap_or(""))));
+        }
+    }
+    #[test]
     fn m79_the_weekly_summary_passes_only_for_the_chosen_project_and_its_events_and_the_package_findings_read() {
         // M79: the shared fixtures (read by the runner's suite and the pages too).
         let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");

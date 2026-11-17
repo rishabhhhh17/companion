@@ -106,7 +106,7 @@ describe("a live command: each tool's own ask, run for real", () => {
   test("the ask is said once and kept in History with its reason and a short command", async () => {
     const e = engine();
     await run("claude", LIVE, e);
-    expect(e.events.filter((x) => x.type === "guard.asked")).toEqual([{ type: "guard.asked", project: e.project, command: LIVE, reason: expect.stringContaining("live Supabase") }]);
+    expect(e.events.filter((x) => x.type === "guard.asked")).toEqual([{ type: "guard.asked", project: e.project, command: LIVE, reason: expect.stringContaining("live Supabase"), tool: "claude" }]);
     expect(e.rows).toEqual([{ command: LIVE, reason: expect.stringContaining("live Supabase") }]);
   });
   test("a live command that is also destructive is saved first, then asked about", async () => {
@@ -200,7 +200,7 @@ describe("a guard written before it could ask", () => {
     const j = JSON.parse(readFileSync(file, "utf8"));
     // Yesterday's guard: the same entry with the old ending (no ask, request named <token>.<pid>).
     const token = ds.tokenFor(p)!;
-    j.hooks.PreToolUse[0].hooks[0].command = j.hooks.PreToolUse[0].hooks[0].command.replace(`${token}.$$.ask`, `${token}.$$`).replace(/if \[ -s "\$r\.ok" \][^]*?fi; /, "");
+    j.hooks.PreToolUse[0].hooks[0].command = j.hooks.PreToolUse[0].hooks[0].command.replace(`${token}.$$.claude.ask`, `${token}.$$`).replace(/if \[ -s "\$r\.ok" \][^]*?fi; /, "");
     writeFileSync(file, JSON.stringify(j, null, 2));
     expect(ds.plan(p, "claude", "guard")).toMatchObject({ on: true, stale: true });
     ds.add(p, "claude", "guard");

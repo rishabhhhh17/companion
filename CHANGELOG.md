@@ -2,6 +2,17 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Catch AI tools reaching for your saved logins: 17 Nov 2026
+
+- **If your AI tool goes for your passwords, you hear about it.** An AI tool can pick up hidden instructions from a web page or a file it read. Squibby now notices when your own AI tool is about to read the Mac's Keychain, a .env file, a key, or a login file like ~/.aws/credentials, and tells you in plain words why that matters.
+- **It asks you first where it can.** Claude Code, Cursor, the VS Code agent and Antigravity ask you before the read, with the reason. Codex, Gemini CLI and Windsurf can't ask, so the command is let through and the notch, Now and History tell you, naming the tool.
+- **Block it if you prefer.** Settings, Privacy, Your AI tools, Saved logins: Ask first (the usual), Ask first and block otherwise, Tell me only, or Off.
+- **Squibby never opens the file.** It goes by the command's words and the file's name only. A file called credentials.ts or .env.example in your code is not mistaken for one. It also sees the less obvious ways in: opening the file in an editor, `curl -d@file`, and a short Python, Node, Ruby or Perl script that names the file.
+- **The why is right on the notice.** Now says which tool, the command, why it matters and what to do next, with See in History to jump to its row.
+- **History shows each one** as "Saved logins:" with Asked you, Let through or Stopped in its own colour, the reason and the tool. These are not counted as live system asks in Your numbers.
+- **Telling you never turns off the live system ask.** With Tell me only, a command that also resets a live database is still asked about first.
+- **Press Update on the saved copy signal** in Settings when it says a newer version is ready: the new one also sees file reads and names its tool.
+
 ## Every warning shows why: 17 Nov 2026
 
 - **Each warning says why Squibby is sure, in one line.** Under "Fix this first" or "Worth a look" you now see, for example, "Why I'm sure: Build did not pass (error code 1)", "the check for keys in code found it at src/pay.ts:2", "OSV.dev lists GHSA-… for the package at package.json:7" or "your house rule … covers src/pay/tax.ts". It is on the card itself, on each smaller finding below it, and in Why does this matter?. A line already shown in the code box is called "the line shown above", and an id or a rule already in the finding's own words is not said twice.

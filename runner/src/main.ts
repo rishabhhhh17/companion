@@ -160,6 +160,8 @@ const guard = new HookGuard(doneSignals.guardFolder, {
   // M85: a live command in the person's own tool: their tool asks them first, with Squibby's reason (safety.askBeforeLive).
   askLive: () => runnerSettings.get("safety.askBeforeLive") !== false,
   asked: (r) => { taskLog.asked({ ...r, by: "tool" }); },
+  // M103: a read of saved logins in the person's own tool: ask first where it can, tell otherwise (safety.savedLogins).
+  logins: () => runnerSettings.get("safety.savedLogins"),
   waitingMinutes: () => waitingMinutesOf(runnerSettings.get("notch.waitingMinutes")),
   busy: (p) => toolBusy.seen(p),
 });

@@ -76,7 +76,8 @@ describe("the guard and waiting hooks Squibby adds, only after a yes", () => {
     expect(g.on).toBe(false);
     expect(g.creates).toBe(true);
     const gj = JSON.parse(g.adds), wj = JSON.parse(w.adds);
-    expect(gj.hooks.PreToolUse[0].matcher).toBe("Bash");
+    // M103 (changed on purpose): the guard also sees Claude Code's Read tool, for reads of saved logins.
+    expect(gj.hooks.PreToolUse[0].matcher).toBe("Bash|Read");
     expect(gj.hooks.PreToolUse[0].hooks[0]).toMatchObject({ type: "command", timeout: 10 });
     expect(wj.hooks.Notification[0].matcher).toBe("permission_prompt|idle_prompt");
     expect(wj.hooks.Notification[0].hooks[0]).toMatchObject({ type: "command", timeout: 5 });

@@ -6,7 +6,7 @@ import { PRODUCT } from "./names.ts";
 import { CheckpointStore } from "./checkpoints.ts";
 import { clip, redact } from "./redact.ts";
 import { LIVE_TAIL } from "./livesystems.ts";
-import { MARK_KINDS, REVIEW_CHECKS, REVIEW_DID, REVIEW_RATINGS, REVIEW_TOUCHES, type MarkKind, type ReviewChecks, type ReviewRating, type ReviewRowView, type ReviewTouch, type SparedView, type WeekView } from "../../protocol/index.ts";
+import { DONE_SIGNAL_TOOLS, MARK_KINDS, REVIEW_CHECKS, REVIEW_DID, REVIEW_RATINGS, REVIEW_TOUCHES, type MarkKind, type ReviewChecks, type ReviewRating, type ReviewRowView, type ReviewTouch, type SparedView, type WeekView } from "../../protocol/index.ts";
 
 /** M57 feature 1: a review that ran, as it is kept. Names of files only, never their text. */
 export type ReviewRowIn = { project: string; batch: string; at: string; files: string[]; count: number; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; summary: string;
@@ -29,7 +29,12 @@ const REVIEW_BATCH = /^rv_[0-9a-f]{10}$/;
 const ASK_MODE = "ask";
 const ASKED_PREFIX = "Asked first: ";
 /** M85: an ask as History shows it (protocol AskedRowView). */
-export type AskedRow = { id: number; at: string; command: string; reason: string; by: "tool" | "squibby"; answer?: "once" | "always" | "no" | "expired" };
+export type AskedRow = { id: number; at: string; command: string; reason: string; by: "tool" | "squibby"; answer?: "once" | "always" | "no" | "expired"; kind?: "login"; outcome?: "asked" | "ran" | "blocked"; tool?: AiTool };
+/** The M103 review: the person's own AI tools a row may name (protocol DONE_SIGNAL_TOOLS); kept as the row's agent, tool:<id>. */
+type AiTool = (typeof DONE_SIGNAL_TOOLS)[number];
+const TOOL_AGENT = "tool:";
+/** M103: the status of a saved logins row: what happened in the person's own tool. */
+const LOGIN_STATUS = { asked: "login_asked", ran: "login_ran", blocked: "login_blocked" } as const;
 const SAVED_PREFIX = "Before Claude ran: ";
 /** M94: what each kind of mark may say as its choice; anything else is dropped (never free text). */
 const MARK_CHOICES: Record<MarkKind, readonly string[]> = { loop_stopped: [], cost_paused: ["keep", "stop", "undo"], bisect_found: [], drift: ["not_asked", "said_other"] };
@@ -125,11 +130,15 @@ export class TaskLog {
   /** M85: an ask, as its own finished row (mode ask): the person's own tool was told to ask (agent "tool", status asked),
    *  or Squibby's own card asked and the person answered (agent "squibby", status once, always, no or expired). Never a
    *  task, so nothing reads a verdict from it. */
-  asked(r: { project: string; command: string; reason: string; at: string; by: "tool" | "squibby"; answer?: "once" | "always" | "no" | "expired"; live?: boolean }): number {
-    // M94: live, the ask was about a live system. The person's own tool is only ever told to ask about one (guard.ts).
-    const live = r.live ?? (r.by === "tool" || r.reason.includes(LIVE_TAIL));
+  asked(r: { project: string; command: string; reason: string; at: string; by: "tool" | "squibby"; answer?: "once" | "always" | "no" | "expired"; live?: boolean; kind?: "login"; outcome?: "asked" | "ran" | "blocked"; tool?: AiTool }): number {
+    // M103: a read of saved logins in the person's own tool: its own status says what happened, and it is never a live ask.
+    const login = r.by === "tool" && r.kind === "login" ? LOGIN_STATUS[r.outcome ?? "ran"] ?? LOGIN_STATUS.ran : null;
+    // M94: live, the ask was about a live system. The person's own tool is otherwise only told to ask about one (guard.ts).
+    const live = login ? false : r.live ?? (r.by === "tool" || r.reason.includes(LIVE_TAIL));
     const q = this.db.query("INSERT INTO tasks (project, agent, mode, label, status, started_at, ended_at, note, live) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    return Number(q.run(r.project, r.by, ASK_MODE, clip(redact(`${ASKED_PREFIX}${r.command}`), 120), r.by === "tool" ? "asked" : r.answer ?? "no", r.at, r.at, clip(redact(r.reason), 300), live ? 1 : 0).lastInsertRowid);
+    // The M103 review: which AI tool, only one of the known seven; any other is kept as just "tool".
+    const agent = r.by === "tool" && (DONE_SIGNAL_TOOLS as readonly unknown[]).includes(r.tool) ? `${TOOL_AGENT}${r.tool}` : r.by;
+    return Number(q.run(r.project, agent, ASK_MODE, clip(redact(`${ASKED_PREFIX}${r.command}`), 120), login ?? (r.by === "tool" ? "asked" : r.answer ?? "no"), r.at, r.at, clip(redact(r.reason), 300), live ? 1 : 0).lastInsertRowid);
   }
   /** M94: one real event that stopped waste (MARK_KINDS), as it happened. Never in the way: a write that fails is dropped. */
   mark(r: { project: string; kind: MarkKind; ref: string | number; at: string; choice?: string }): void {
@@ -174,7 +183,9 @@ export class TaskLog {
       const label = String(r.label);
       const command = clip(label.startsWith(ASKED_PREFIX) ? label.slice(ASKED_PREFIX.length) : label, 80);
       const answer = ["once", "always", "no", "expired"].includes(r.status) ? (r.status as AskedRow["answer"]) : undefined;
-      return { id: r.id, at: r.started_at, command, reason: clip(String(r.note ?? ""), 300), by, ...(by === "squibby" && answer ? { answer } : {}) };
+      const login = by === "tool" && typeof r.status === "string" && r.status.startsWith("login_") ? (r.status.slice(6) as "asked" | "ran" | "blocked") : null;
+      const tool = typeof r.agent === "string" && r.agent.startsWith(TOOL_AGENT) ? r.agent.slice(TOOL_AGENT.length) : null;
+      return { id: r.id, at: r.started_at, command, reason: clip(String(r.note ?? ""), 300), by, ...(by === "squibby" && answer ? { answer } : {}), ...(login && ["asked", "ran", "blocked"].includes(login) ? { kind: "login" as const, outcome: login } : {}), ...(tool && (DONE_SIGNAL_TOOLS as readonly string[]).includes(tool) ? { tool: tool as AiTool } : {}) };
     });
   }
   /** M77: the project's saved copies, newest first. */

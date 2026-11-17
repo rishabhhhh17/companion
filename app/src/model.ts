@@ -24,6 +24,7 @@ import { signInReduce, signInStopped } from "./shipFinish.ts";
 import { whyLiveReduce, type WhyLive } from "./whyLive.ts";
 import { runwayFrom, savedFrom, type Runway } from "./runway.ts";
 import type { SavedJobView } from "../../protocol/index.ts";
+import { DONE_SIGNAL_TOOLS, LOGIN_OUTCOMES, type DoneSignalTool, type LoginOutcome } from "../../protocol/index.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
@@ -196,6 +197,27 @@ export type SecondLookView = {
   stage: string; app?: string; req?: string; why?: string; verdict?: string; items?: LookItem[]; checked?: string[]; cantTell?: string[];
   search?: string; searches?: number; usd?: number; reason?: string;
 };
+/** M85: the person's own AI tool was just told to ask them first. M103: login, a read of saved logins, with what happened.
+ *  The M103 review: its reason (Squibby's own words, redacted, never a file's contents) for Now's notice, and the AI tool
+ *  when its hook named it. */
+export type GuardAskedNote = { project: string; command: string; at: number; login?: LoginOutcome; reason?: string; tool?: DoneSignalTool };
+type NoteWords = Pick<GuardAskedNote, "command" | "login" | "reason" | "tool">;
+/** The AI tool's name, or undefined when the hook did not say (the words then say "your AI tool"). */
+export const aiToolName = (tool: unknown): string | undefined => ((DONE_SIGNAL_TOOLS as readonly unknown[]).includes(tool) ? S.doneSignal.tool[tool as DoneSignalTool] : undefined);
+/** The M103 review: a login notice in the parts the page draws: what happened with the command, the reason right on it (as
+ *  CodeRabbit puts the why on the finding) and the next step. null for any other ask. */
+export const askedNoticeParts = (a: NoteWords): { lead: string; command: string; reason: string; next: string } | null => {
+  if (!a.login) return null;
+  const tool = aiToolName(a.tool);
+  return { lead: S.guard.login.notice[a.login](tool), command: a.command, reason: a.reason ?? "", next: S.guard.login.next[a.login](tool) };
+};
+/** M103: Now's notice for an ask in the person's own tool, in the words of its kind. */
+export const askedNoticeOf = (a: NoteWords): string => {
+  const p = askedNoticeParts(a);
+  return p ? [`${p.lead} ${p.command}.`, p.reason, p.next].filter(Boolean).join(" ") : S.guard.askedNotice(a.command, aiToolName(a.tool));
+};
+/** M103: the notch's line for it. A login note never names the command: a passer by can read the notch. */
+export const askedLineOf = (a: NoteWords): string => (a.login ? S.guard.login.line[a.login](aiToolName(a.tool)) : S.guard.askedLine(a.command, aiToolName(a.tool)));
 export type Model = {
   // The folder Home shows (null until the page has heard it). away: agents still at work that was started in another
   // folder, and that folder: nothing of that work (its steps, checks, receipt, picture or explanation) is shown here, since
@@ -294,7 +316,7 @@ export type Model = {
   guardSaved?: { project: string; at: number } | null;
   /** M85 review: the person's own AI tool was just told to ask them first (guard.asked), in any project: the notch's line
    *  for a few seconds, and Now's notice (with the command) when it is the open project. */
-  guardAsked?: { project: string; command: string; at: number } | null;
+  guardAsked?: GuardAskedNote | null;
   /** M89: the last thing Claude said about the person's usage limit on Squibby's own runs (runway.ts), kept across projects:
    *  the limit is the person's, not the project's. */
   runway?: Runway | null;
@@ -943,11 +965,16 @@ function reduceRest(m: Model, e: Ev): Model {
     // M85: the person's own AI tool was told to ask them first: the notch's line for a few seconds (any project), and the
     // reason waits in History. M85 review: Now's notice names the command, only for the open project, and goes by itself
     // (ui.noticeExpired, from a timer on the page).
+    // M103: a read of saved logins comes the same way, with what happened (asked, ran or blocked), said in its own words.
     case "guard.asked": {
       if (typeof e.project !== "string" || typeof e.command !== "string" || !e.command.trim()) return m;
       const command = e.command.replace(/\s+/g, " ").trim().slice(0, 80);
       const here = !!m.folder && e.project.replace(/\/+$/, "") === m.folder.replace(/\/+$/, "");
-      return { ...m, guardAsked: { project: e.project, command, at: Date.now() }, ...(here ? { notice: S.guard.askedNotice(command) } : {}) };
+      const login = e.kind === "login" && (LOGIN_OUTCOMES as readonly unknown[]).includes(e.outcome) ? (e.outcome as LoginOutcome) : undefined;
+      const reason = typeof e.reason === "string" ? redact(e.reason).replace(/\s+/g, " ").trim().slice(0, 300) : "";
+      const tool = (DONE_SIGNAL_TOOLS as readonly unknown[]).includes(e.tool) ? (e.tool as DoneSignalTool) : undefined;
+      const note: GuardAskedNote = { project: e.project, command, at: Date.now(), ...(login ? { login } : {}), ...(reason ? { reason } : {}), ...(tool ? { tool } : {}) };
+      return { ...m, guardAsked: note, ...(here ? { notice: askedNoticeOf(note) } : {}) };
     }
     // A notice that goes by itself: cleared only if it is still the one shown.
     case "ui.noticeExpired": return typeof e.notice === "string" && m.notice === e.notice ? { ...m, notice: null } : m;

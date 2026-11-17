@@ -34,7 +34,8 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
   test("each page's main level holds at most 10 settings, and the main levels together are about 50", () => {
     for (const p of SIDEBAR) expect(mainKeys(p).length, p).toBeLessThanOrEqual(10);
     expect(MAIN.size).toBeGreaterThanOrEqual(38);
-    expect(MAIN.size).toBeLessThanOrEqual(54);
+    // The M103 review (changed on purpose): Saved logins (Your AI tools) came up to Privacy's main level from More options.
+    expect(MAIN.size).toBeLessThanOrEqual(55);
   });
   test("the main levels are the ones the spec names", () => {
     // M74: the warning before the daily limit, and the most one task may spend, beside it.
@@ -58,7 +59,8 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
     // The overhaul spec (3.4): Prompt help, split out of voice.on, is its own group on Keys and voice.
     expect(mainKeys("keys")).toEqual(["keys.hotkeys", "voice.on", "talk.voice", "talk.speak", "talk.captions", "talk.dictate", "prompt.on"]);
     // M74: what goes to Claude, and how long safety copies are kept.
-    expect(mainKeys("privacy")).toEqual(["sharing.hide", "calls.quiet", "memory.paused", "privacy.neverSend", "review.send", "undo.keepSize", "undo.keepAge"]);
+    // The M103 review (changed on purpose): what your own AI tools may read of your saved logins, beside sharing.
+    expect(mainKeys("privacy")).toEqual(["sharing.hide", "calls.quiet", "safety.savedLogins", "memory.paused", "privacy.neverSend", "review.send", "undo.keepSize", "undo.keepAge"]);
     // M89: Install updates while away sits under the daily check it depends on.
     expect(mainKeys("about")).toEqual(["updates.daily", "updates.quiet"]);
     expect(mainKeys("more")).toEqual([]);

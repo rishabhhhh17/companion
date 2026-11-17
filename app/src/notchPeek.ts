@@ -195,7 +195,9 @@ export function todayLine(m: Model, now: number): TodayEntry[] {
   for (const a of m.askedRows ?? []) {
     const t = today(a.at);
     if (t === null) continue;
-    out.push({ key: `a${a.id}`, kind: "asked", at: t, when: whenWords(a.at, now), words: L.asked(a.command), ...TODAY_LOOK.asked });
+    // M103: a read of saved logins says so, in its own words.
+    const words = a.kind === "login" && a.outcome ? S.guard.login.today[a.outcome](a.command) : L.asked(a.command);
+    out.push({ key: `a${a.id}`, kind: "asked", at: t, when: whenWords(a.at, now), words, ...TODAY_LOOK.asked });
   }
   return out.sort((a, b) => b.at - a.at).slice(0, TODAY_MAX);
 }

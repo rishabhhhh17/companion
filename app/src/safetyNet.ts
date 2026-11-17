@@ -2,7 +2,7 @@
 // changes did not tell you. Pure: card.tsx, homeRest.ts and reviewCard.tsx only draw what this says. Honest words (never
 // "Claude did"), a count only when it is above zero and never praise (rule 16), at most three untold lines.
 import type { AskedRowView, CaughtView, ReviewUntold, SavedRowView } from "../../protocol/index.ts";
-import { REVIEW_CHECKS } from "../../protocol/index.ts";
+import { DONE_SIGNAL_TOOLS, LOGIN_OUTCOMES, REVIEW_CHECKS, type DoneSignalTool, type LoginOutcome } from "../../protocol/index.ts";
 import { redact } from "../../runner/src/redact.ts";
 import { S } from "./strings.ts";
 
@@ -83,16 +83,27 @@ export function askedRowsOf(v: unknown): AskedRowView[] {
     if (!x || typeof x !== "object" || Array.isArray(x)) continue;
     if (!Number.isInteger(x.id) || typeof x.at !== "string" || Number.isNaN(Date.parse(x.at)) || typeof x.command !== "string" || typeof x.reason !== "string" || (x.by !== "tool" && x.by !== "squibby")) continue;
     const answer = ["once", "always", "no", "expired"].includes(x.answer as string) ? (x.answer as AskedRowView["answer"]) : undefined;
-    out.push({ id: x.id as number, at: x.at, command: redact(x.command).slice(0, 80), reason: redact(x.reason).slice(0, 300), by: x.by, ...(answer ? { answer } : {}) });
+    // M103: a read of saved logins in the person's own tool, kept only with a known outcome.
+    const login = x.by === "tool" && x.kind === "login" && (LOGIN_OUTCOMES as readonly unknown[]).includes(x.outcome) ? (x.outcome as LoginOutcome) : undefined;
+    // The M103 review: the AI tool it came from, only one of the known seven.
+    const tool = x.by === "tool" && (DONE_SIGNAL_TOOLS as readonly unknown[]).includes(x.tool) ? (x.tool as DoneSignalTool) : undefined;
+    out.push({ id: x.id as number, at: x.at, command: redact(x.command).slice(0, 80), reason: redact(x.reason).slice(0, 300), by: x.by, ...(answer ? { answer } : {}), ...(login ? { kind: "login" as const, outcome: login } : {}), ...(tool ? { tool } : {}) });
     if (out.length >= MAX_SAVED) break;
   }
   return out;
 }
-/** M85: an ask's row as History draws it: the command, who asked and what was answered, and the reason under it. */
-export function askedRowLook(r: AskedRowView): { title: string; lead: string; command: string; line: string; mark: string; tone: "blue" | "orange" | "red" } {
+/** M85: an ask's row as History draws it: the command, who asked and what was answered, and the reason under it. The M103
+ *  review: who, the AI tool's name when its hook said which (else null). The page colours the mark in the row's tone too. */
+export function askedRowLook(r: AskedRowView): { title: string; lead: string; command: string; line: string; mark: string; tone: "blue" | "orange" | "red"; who: string | null } {
+  const who = r.tool && (DONE_SIGNAL_TOOLS as readonly string[]).includes(r.tool) ? S.doneSignal.tool[r.tool] : null;
+  // M103: a read of saved logins: what happened, blue when the tool asked, amber when it was let through, red when stopped.
+  if (r.kind === "login" && r.outcome) {
+    const l = S.guard.login;
+    return { title: `${l.lead} ${r.command}`, lead: l.lead, command: r.command, line: r.reason, mark: l.mark[r.outcome], tone: r.outcome === "asked" ? "blue" : r.outcome === "ran" ? "orange" : "red", who };
+  }
   const a = S.guard.asked;
   const mark = r.by === "tool" ? a.byTool : r.answer === "always" ? a.always : r.answer === "once" ? a.once : r.answer === "expired" ? a.expired : a.no;
-  return { title: a.row(r.command), lead: a.lead, command: r.command, line: r.reason, mark, tone: r.by === "tool" ? "blue" : r.answer === "no" || r.answer === "expired" ? "red" : "orange" };
+  return { title: a.row(r.command), lead: a.lead, command: r.command, line: r.reason, mark, tone: r.by === "tool" ? "blue" : r.answer === "no" || r.answer === "expired" ? "red" : "orange", who };
 }
 /** M85 review: the longest word of a command History keeps whole on one line; a longer one (a long path) may break. */
 export const WHOLE_WORD = 40;

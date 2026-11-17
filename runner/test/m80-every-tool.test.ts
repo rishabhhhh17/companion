@@ -71,7 +71,7 @@ describe("every tool's own file, event and shape", () => {
     s.add(p, "antigravity", "guard"); s.add(p, "antigravity", "done");
     const j = read(join(p, ".agents/hooks.json"));
     expect(Object.keys(j)).toEqual(["my-linter", "companion-guard", "companion-done"]);
-    expect(j["companion-guard"].PreToolUse[0].matcher).toBe("run_command");
+    expect(j["companion-guard"].PreToolUse[0].matcher).toBe("run_command|view_file"); // M103 (changed on purpose): file reads too, for saved logins
     expect(j["companion-guard"].PreToolUse[0].hooks[0]).toMatchObject({ type: "command", timeout: 10 });
     expect(j["companion-done"].Stop[0]).toMatchObject({ type: "command" });
     expect(s.plan(p, "antigravity", "guard").on).toBe(true);
@@ -201,7 +201,7 @@ describe("M81: Gemini CLI and Windsurf (Devin)", () => {
     const j = read(join(p, ".gemini/settings.json"));
     expect(j.theme).toBe("Dracula");
     expect(j.hooks.BeforeTool).toHaveLength(2);
-    expect(j.hooks.BeforeTool[1].matcher).toBe("run_shell_command");
+    expect(j.hooks.BeforeTool[1].matcher).toBe("run_shell_command|read_file"); // M103 (changed on purpose): file reads too
     expect(j.hooks.BeforeTool[1].hooks[0]).toMatchObject({ name: "companion-guard", type: "command", timeout: 10000 });
     expect(j.hooks.AfterAgent[0].hooks[0]).toMatchObject({ name: "companion-done", type: "command" });
     s.remove(p, "gemini", "guard"); s.remove(p, "gemini", "done");

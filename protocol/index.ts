@@ -589,10 +589,18 @@ export type DoneSignalState = Envelope & { type: "donesignal.state"; project: st
 export type GuardSaved = Envelope & { type: "guard.saved"; project: string; checkpoint: string; command: string };
 /** M85: the person's own AI tool was told to ask them first about a command that touches a live system (guard.ts). command:
  *  short and redacted (60 characters); reason: Squibby's plain reason, redacted, at most 300 characters. */
-export type GuardAsked = Envelope & { type: "guard.asked"; project: string; command: string; reason: string };
+export type GuardAsked = Envelope & { type: "guard.asked"; project: string; command: string; reason: string; kind?: "login"; outcome?: LoginOutcome; tool?: DoneSignalTool };
+/** M103: a command or file read in the person's own tool reached for saved logins (the Keychain, a login or key file): kind
+ *  "login", with what happened. asked: the tool asked the person first. ran: not stopped. Squibby let it through (the tool
+ *  cannot ask, or the person chose to be told only); the hook fires before the tool runs, so it is not known whether the
+ *  read happened (the tool's own approval or the person may still stop it). blocked: the person chose Block and the tool
+ *  was told not to run it. Never the file's contents. The M103 review: tool, the AI tool it came from (one of
+ *  DONE_SIGNAL_TOOLS), when its hook names it; an older hook does not. */
+export const LOGIN_OUTCOMES = ["asked", "ran", "blocked"] as const;
+export type LoginOutcome = (typeof LOGIN_OUTCOMES)[number];
 /** M85: an ask in History: the person's own tool asked (by "tool"), or Squibby's own card did (by "squibby", with what the
  *  person answered). */
-export type AskedRowView = { id: number; at: string; command: string; reason: string; by: "tool" | "squibby"; answer?: "once" | "always" | "no" | "expired" };
+export type AskedRowView = { id: number; at: string; command: string; reason: string; by: "tool" | "squibby"; answer?: "once" | "always" | "no" | "expired"; kind?: "login"; outcome?: LoginOutcome; tool?: DoneSignalTool };
 /** M77: Claude Code is waiting for the person in this project (a permission or its idle prompt), or no longer is. message:
  *  Claude Code's own short notification (120 characters, redacted), never the question itself. */
 export type HookWaiting = Envelope & { type: "hook.waiting"; project: string; waiting: boolean; message?: string };
@@ -906,6 +914,10 @@ const savedRowsOk: Check = (m) => {
   });
   return ok ? null : '"saved" must be a list of saved copies: id, at, checkpoint, a short command and undone';
 };
+// M103: kind "login" always comes with what happened, and what happened only with it.
+const loginOk = (o: Record<string, unknown>): boolean =>
+  (o.kind === undefined ? o.outcome === undefined : o.kind === "login" && (LOGIN_OUTCOMES as readonly unknown[]).includes(o.outcome))
+  && (o.tool === undefined || (DONE_SIGNAL_TOOLS as readonly unknown[]).includes(o.tool));
 // M85: the asks History shows (at most 50): a short command, the reason, who asked, and what the person answered.
 const askedRowsOk: Check = (m) => {
   const rows = m.asked;
@@ -913,7 +925,8 @@ const askedRowsOk: Check = (m) => {
     const o = x as Record<string, unknown> | null;
     return !!o && typeof o === "object" && !Array.isArray(o) && Number.isInteger(o.id) && typeof o.at === "string" && !Number.isNaN(Date.parse(o.at as string))
       && typeof o.command === "string" && Array.from(o.command as string).length <= 80 && typeof o.reason === "string" && Array.from(o.reason as string).length <= 300
-      && (o.by === "tool" || o.by === "squibby") && (o.answer === undefined || ["once", "always", "no", "expired"].includes(o.answer as string));
+      && (o.by === "tool" || o.by === "squibby") && (o.answer === undefined || ["once", "always", "no", "expired"].includes(o.answer as string))
+      && loginOk(o);
   });
   return ok ? null : '"asked" must be a list of asks: id, at, a short command, the reason, who asked and the answer';
 };
@@ -1241,7 +1254,7 @@ const EVENTS: Record<string, Check[]> = {
   // M77: the saved copy names its project, checkpoint and the short command (never over 80 characters); the waiting mark
   // names its project, and its message is Claude Code's own short notification (never over 120 characters).
   "guard.saved": [str("project"), str("checkpoint"), (m) => (typeof m.command === "string" && m.command.length > 0 && Array.from(m.command).length <= 80 ? null : '"command" must be a short text, at most 80 characters')],
-  "guard.asked": [str("project"), (m) => (typeof m.command === "string" && m.command.length > 0 && Array.from(m.command).length <= 80 ? null : '"command" must be a short text, at most 80 characters'), (m) => (typeof m.reason === "string" && m.reason.length > 0 && Array.from(m.reason).length <= 300 ? null : '"reason" must be text, at most 300 characters')],
+  "guard.asked": [str("project"), (m) => (typeof m.command === "string" && m.command.length > 0 && Array.from(m.command).length <= 80 ? null : '"command" must be a short text, at most 80 characters'), (m) => (typeof m.reason === "string" && m.reason.length > 0 && Array.from(m.reason).length <= 300 ? null : '"reason" must be text, at most 300 characters'), (m) => (loginOk(m as Record<string, unknown>) ? null : '"kind" login must come with "outcome": asked, ran or blocked, and "tool" must be one of the AI tools')],
   "hook.busy": [str("project"), bool("busy")],
   "hook.waiting": [str("project"), bool("waiting"), opt("message", (m) => (typeof m.message === "string" && Array.from(m.message).length <= 120 ? null : '"message" must be text, at most 120 characters'))],
   "cost.pause": [str("agent"), str("project"), (m) => (Object.keys(m).some((k) => /usd|cost|amount|spent|limit/i.test(k)) ? "the cost pause carries no amount" : null)],

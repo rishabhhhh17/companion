@@ -1,7 +1,7 @@
 // Home in the notch (F18.1): the card, moved under the island and laid out in tabs. Which part of the old card lives on
 // which tab, which tab opens by itself when something needs the person, when a click elsewhere may close Home, and the
 // island's own words. Plain code, tested in home.test.ts; card.tsx and island.tsx only draw what this decides.
-import { characterWords, lookState, receiptVerdict, resultShown, stateLabel, visualState, waitsForAnswer, type CharacterState, type Model } from "./model.ts";
+import { askedLineOf, characterWords, lookState, receiptVerdict, resultShown, stateLabel, visualState, waitsForAnswer, type CharacterState, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 import { nameOf } from "./watch.ts";
 
@@ -324,7 +324,7 @@ function islandLineBase(m: Model, o: { update?: string | null; now?: number }): 
   // M85 review: the person's own AI tool was told to ask them first: said the same way, for the same few seconds, with
   // the short command. Something that needs the person in Squibby itself comes first.
   const askedFresh = !!m.guardAsked && (o.now ?? Date.now()) - m.guardAsked.at < SAVED_LINE_MS && !m.approvals.length && !waiting(m);
-  if (askedFresh && m.voice?.stage !== "listening" && !looksAtScreen(m)) return cut(S.guard.askedLine(m.guardAsked!.command));
+  if (askedFresh && m.voice?.stage !== "listening" && !looksAtScreen(m)) return cut(askedLineOf(m.guardAsked!));
   if (m.voice?.stage === "listening") return S.islandListening;
   if (looksAtScreen(m)) return S.islandLooking;
   // M36: what the Type key just did (typed, copied instead, or refused), for a few seconds.

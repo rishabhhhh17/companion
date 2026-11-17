@@ -16,6 +16,9 @@ const whenWords = (iso: string | undefined): string => {
 /** The product's name ("Squibby"), and with 's. Other page files import these rather than typing the word. */
 export const PRODUCT: string = names.product;
 export const PRODUCT_S: string = names.productPossessive;
+/** M103: the saved logins setting's label, and the review's line on each guard's yes card that says where to change it. */
+const SAVED_LOGINS_LABEL = "Saved logins";
+const LOGINS_WHERE = `For saved logins, you can change this in Settings, Privacy, Your AI tools, ${SAVED_LOGINS_LABEL}.`;
 export const NAMES = names;
 /** M58 (UI 20): "About 7 cents", but never "About less than 1 cent": a cost under a cent is said as "Less than 1 cent". */
 export const aboutCost = (cost: string): string => (/^less than /i.test(cost.trim()) ? `L${cost.trim().slice(1)}` : `About ${cost}`);
@@ -555,6 +558,8 @@ export const S = {
     // M85
     "safety.askBeforeLive": "Your own AI tool asks you first before it touches a live database, server or site.",
     "approval.offerAlways": "A question about reading one file outside the project can be answered once for good.",
+    // M103
+    "safety.savedLogins": "Hear about it when your AI tool reaches for saved passwords or login files.",
     // M86
     "replay.show": "Each review card plays a short drawing of what changed, made only from what the review measured.",
     "numbers.yours": "History shows your numbers for this week, counted on this Mac. Nothing is sent unless you send it.",
@@ -700,7 +705,7 @@ export const S = {
     "fixing.review": "Reviews of changes to your project", "fixing.tools": "Your AI tools", "fixing.done": "Start reviews sooner", "fixing.tries": "Fixes", "fixing.rules": "Rules", "fixing.checks": "Checks", "fixing.undo": "Undo",
     "flowflow.preview": "", "flowflow.lively": "Movement", "flowflow.look": "Size and name", "flowflow.place": "Where it lives", "flowflow.sound": "Sound",
     "keys.keys": "Keys", "keys.talking": "Talking", "keys.prompt": "Prompt help",
-    "privacy.see": `What ${PRODUCT} may see`, "privacy.sharing": "Sharing and calls", "privacy.memory": "Memory", "privacy.claude": "What goes to Claude", "privacy.copies": "Safety copies and history", "privacy.danger": "Danger zone",
+    "privacy.see": `What ${PRODUCT} may see`, "privacy.sharing": "Sharing and calls", "privacy.tools": "Your AI tools", "privacy.memory": "Memory", "privacy.claude": "What goes to Claude", "privacy.copies": "Safety copies and history", "privacy.danger": "Danger zone",
     "about.updates": "Updates", "about.help": "Help", "about.legal": "Legal",
     "more.account.spending": "Spending per job and models",
     "more.account.developer": "For developers",
@@ -721,6 +726,8 @@ export const S = {
     "general.notch": `The notch is where ${PRODUCT} shows what it is doing. Point at it for a small panel; click it for Home.`,
     "more.general.notch": "What the notch calls you, what it shows at rest and while working, how fast it opens and closes, and which screen it uses.",
     "privacy.claude": "Everything else stays on this Mac.",
+    // The M103 review: the saved logins choice, where people look for what may read their things.
+    "privacy.tools": `${PRODUCT} goes by the command's words and the file's name only, and never opens the file.`,
   } as Record<string, string>,
   // The parts of Settings that are not settings, as search finds them (the spec, 3.7).
   setFixed: {
@@ -2002,14 +2009,47 @@ export const S = {
     savedNotice: `${PRODUCT} saved a copy before Claude's command.`,
     // M85: a command that touches a live system, in the person's own AI tool: their tool asks them, with this reason.
     // M85 review: with the command, only for the open project, and it goes by itself after a while.
-    askedNotice: (command: string) => `Your AI tool asked you first about ${command}. The reason is in History.`,
+    // The M103 review: the AI tool is named when its hook says which.
+    askedNotice: (command: string, tool?: string) => `${tool ?? "Your AI tool"} asked you first about ${command}. The reason is in History.`,
     // M85 review: the notch's line for a few seconds, like a saved copy's.
-    askedLine: (command: string) => `Your AI tool is asking you first: ${command}`,
+    askedLine: (command: string, tool?: string) => `${tool ?? "Your AI tool"} is asking you first: ${command}`,
+    // M103: a command or file read in the person's own AI tool reached for saved logins (the Keychain, a login or key
+    // file). asked: their tool asked them; ran: it could not ask (or they chose to be told only); blocked: they chose Block.
+    // The M103 review: only what is known. The hook fires before the tool runs, so a let through read may still be stopped by
+    // the tool's own approval or the person: "let through", never "read". The tool is named when its hook says which.
+    login: {
+      // Now's notice: this, the command, the reason (never the file's contents) and the next step, then See in History.
+      notice: {
+        asked: (tool?: string) => `${tool ?? "Your AI tool"} wants to read saved logins:`,
+        ran: (tool?: string) => `${tool ?? "Your AI tool"} was let through to read saved logins:`,
+        blocked: (tool?: string) => `${PRODUCT} stopped ${tool ?? "your AI tool"} reading saved logins:`,
+      },
+      next: {
+        asked: (tool?: string) => `Answer it in ${tool ?? "your tool"}.`,
+        ran: (tool?: string) => `Check what ${tool ?? "your AI tool"} is doing, and stop it there if needed.`,
+        blocked: (_tool?: string) => "You chose Block in Settings.",
+      },
+      seeInHistory: "See in History",
+      // The notch's line for a few seconds. Never the command: a passer by can read the notch.
+      line: {
+        asked: (tool?: string) => `${tool ?? "Your AI tool"} is asking to read saved logins`,
+        ran: (tool?: string) => `${tool ?? "Your AI tool"} went for saved logins. See History.`,
+        blocked: (tool?: string) => `${PRODUCT} stopped ${tool ?? "your AI tool"} reading saved logins`,
+      },
+      lead: "Saved logins:",
+      mark: { asked: "Asked you", ran: "Let through", blocked: "Stopped" },
+      today: {
+        asked: (command: string) => `Asked you first about saved logins: ${command}`,
+        ran: (command: string) => `Let through to saved logins: ${command}`,
+        blocked: (command: string) => `Stopped a read of saved logins: ${command}`,
+      },
+    },
     asked: {
       row: (command: string) => `Asked first: ${command}`,
       // M85 review: the same words, with the command drawn after them in code type.
       lead: "Asked first:",
-      byTool: "Your AI tool asked you",
+      // The M103 review: the same short mark as a saved logins row (it wrapped badly on narrow Home).
+      byTool: "Asked you",
       once: "Allowed once",
       always: "Always allowed here",
       no: "Not now",
@@ -2052,7 +2092,7 @@ export const S = {
     } as Record<"guard" | "waiting" | "start", string>,
     askTitleFor: { guard: "Add the saved copy signal for Claude Code?", waiting: "Add the waiting signal for Claude Code?", start: "Give Claude Code your notes at the start?" } as Record<"guard" | "waiting" | "start", string>,
     askWhatFor: {
-      guard: `Before each shell command, Claude Code hands the command to ${PRODUCT_S} own folder and waits up to 5 seconds for an answer. ${PRODUCT} saves a copy first when the command is destructive, then answers. The command always runs; if ${PRODUCT} is closed or slow, Claude Code goes on without waiting. The command's words are read once and not kept, apart from a short form in the History row's name.`,
+      guard: `Before each shell command or file read, Claude Code hands the command, or the file's name, to ${PRODUCT_S} own folder and waits up to 5 seconds for an answer. ${PRODUCT} saves a copy first when the command is destructive, then answers. When it reaches for saved logins, Claude Code asks you first. The command always runs as you decide; if ${PRODUCT} is closed or slow, Claude Code goes on without waiting. The words are read once and not kept, apart from a short form in the History row's name. ${PRODUCT} never opens the file. ${LOGINS_WHERE}`,
       waiting: `When Claude Code waits for you, it hands its own short notice to ${PRODUCT_S} own folder. Only that notice travels. Nothing is blocked.`,
       start: `As a session starts, Claude Code shows Claude a file of notes ${PRODUCT} keeps in its own folder: the same lines the Memory page shows under What Claude Code is told at the start. Nothing is read from Claude Code and nothing is sent anywhere. It works while ${PRODUCT} is closed too.`,
     } as Record<"guard" | "waiting" | "start", string>,
@@ -2065,7 +2105,11 @@ export const S = {
       doneRow: (tool: string) => `${tool}: start a review when it is done`,
       line: (tool: string) => `When ${tool} is about to run a command that throws work away (a reset of files, a delete of files or of a database), it tells ${PRODUCT} first. ${PRODUCT} saves a copy of the project, then the command runs as ${tool} decided. Nothing is blocked or changed. Undo in History puts the files back.`,
       askTitle: (tool: string) => `Add the saved copy signal for ${tool}?`,
-      askWhat: (tool: string) => `Before each shell command, ${tool} hands the command to ${PRODUCT_S} own folder and waits up to 5 seconds for an answer. ${PRODUCT} saves a copy first when the command is destructive, then answers. The command always runs as ${tool} decided; if ${PRODUCT} is closed or slow, ${tool} goes on without waiting. The command's words are read once and not kept, apart from a short form in the History row's name.`,
+      // The M103 review: by what the tool's hook can do. A tool that can ask (Cursor, the VS Code agent, Antigravity) asks;
+      // one that can block (Codex, Gemini CLI, Windsurf) is stopped only when the person chose Block. reads: the hook also
+      // hands over the file read tool's file name (Gemini CLI, Antigravity, the VS Code agent).
+      askWhat: (tool: string, reads = false) => `Before each shell command${reads ? " or file read" : ""}, ${tool} hands the command${reads ? ", or the file's name," : ""} to ${PRODUCT_S} own folder and waits up to 5 seconds for an answer. ${PRODUCT} saves a copy first when the command is destructive, then answers. When it reaches for saved logins, ${tool} asks you first. The command runs as you decide in ${tool}; if ${PRODUCT} is closed or slow, ${tool} goes on without waiting. The words are read once and not kept, apart from a short form in the History row's name.${reads ? ` ${PRODUCT} never opens the file.` : ""} ${LOGINS_WHERE}`,
+      askWhatBlock: (tool: string, reads = false) => `Before each shell command${reads ? " or file read" : ""}, ${tool} hands the command${reads ? ", or the file's name," : ""} to ${PRODUCT_S} own folder and waits up to 5 seconds for an answer. ${PRODUCT} saves a copy first when the command is destructive, then answers. When it reaches for saved logins, ${PRODUCT} tells you; it is stopped only if you choose Block. Otherwise it runs as ${tool} decided; if ${PRODUCT} is closed or slow, ${tool} goes on without waiting. The words are read once and not kept, apart from a short form in the History row's name.${reads ? ` ${PRODUCT} never opens the file.` : ""} ${LOGINS_WHERE}`,
     },
     askTool: {
       cursor: `This is new in Cursor. If ${PRODUCT} does not react, check Cursor's settings for this project.`,
@@ -2080,14 +2124,15 @@ export const S = {
     remove: "Remove",
     // M85: a guard written before it could ask the person first about live systems.
     update: "Update",
-    stale: "A newer version can have your AI tool ask you first before it touches something live",
+    stale: "A newer version can ask or tell you before your AI tool touches something live or reads saved logins",
     // M85 review: the Update card says it replaces the older line, and what the new one does.
     updateTitle: (file: string) => `Update ${PRODUCT_S} line in ${file}?`,
     updateWhere: (file: string) => `${PRODUCT} will replace its older line in ${file} with this one:`,
-    updateAsks: (tool: string) => `With the new line, ${tool} asks you first, with ${PRODUCT_S} reason, before a command that touches something live: a live database, a production deploy, history on GitHub. You decide in ${tool}. Everything else works as before.`,
+    // The M103 review: Update is how a person already set up gets the saved logins check, so it says so.
+    updateAsks: (tool: string) => `With the new line, ${tool} asks you first, with ${PRODUCT_S} reason, before a command that touches something live: a live database, a production deploy, history on GitHub. It also asks you before it reads saved passwords or login files. You decide in ${tool}. Everything else works as before.`,
     updateYes: "Update it",
     updatePlain: "The new line does the same job as the old one, the way it is done today.",
-    updateSame: (tool: string) => `The new line works as the old one did. ${tool} cannot ask you first yet, so it goes on as before.`,
+    updateSame: (tool: string) => `With the new line, ${PRODUCT} also tells you when ${tool} reads saved logins, and can stop it if you choose Block in Settings. ${tool} cannot ask you first yet, so everything else works as before.`,
     noProject: "Pick a project first.",
     askTitle: (tool: string) => `Add a done signal for ${tool}?`,
     askWhere: (file: string, creates: boolean) => `${PRODUCT} will ${creates ? "make" : "add to"} ${file} in this project:`,
@@ -2711,6 +2756,8 @@ export const S = {
     "report.codeLines": { label: "Include short code lines in go live reports", help: "A go live report names files but leaves their contents out. On, it adds the review's own short lines, three at most for each finding, with keys and passwords hidden. Off is safer for a report you send to someone.", also: ["report", "client", "share", "pdf", "code", "go live"] },
     "handoff.improve": { label: "Write a clear prompt first", help: `When you hand a job to your AI tool, ${PRODUCT} first writes a clear prompt from your words, with this project's house rules. You can change it before anything is sent. Off: your own words go as they are, and no model is asked.`, also: ["have my ai do it", "hand off", "prompt", "rewrite", "improve", "Cursor", "Codex", "Claude Code", "clear prompt"] },
     "safety.askBeforeLive": { label: "Ask before live systems", help: `Some commands touch something a saved copy on this Mac can't bring back. Think of a live database, a production site or a cloud account. When your AI tool is about to run one, ${PRODUCT} has that tool ask you first, with the reason. You decide in your tool. It works in Claude Code, Cursor, the VS Code agent and Antigravity. Codex, Gemini CLI and Windsurf can't ask yet, so they go on as before. Each ask is in History.`, also: ["live", "production", "database", "drop", "deploy", "terraform", "supabase", "prisma", "vercel", "force push", "ask", "cloud", "token"] },
+    // M103: saved logins in the person's own AI tool.
+    "safety.savedLogins": { label: SAVED_LOGINS_LABEL, help: `An AI tool can pick up hidden instructions, for example from a web page it read. It could then quietly read your saved passwords or login files and send them away. ${PRODUCT} notices when your AI tool is about to read the Mac's Keychain, a .env file, a key or a login file like ~/.aws/credentials. It goes only by the command's words and the file's name: ${PRODUCT} never opens the file or the Keychain. Ask first: Claude Code, Cursor, the VS Code agent and Antigravity ask you, with the reason. Codex, Gemini CLI and Windsurf can't ask, so the command is let through and the notch and History tell you. Block: those three are stopped instead, and you can run it yourself. Tell me only: nothing asks or stops, you are just told. Each one is in History.`, also: ["saved logins", "ai tools", "passwords", "keychain", "credentials", "login", "token", "key", ".env", "secrets", "hijacked", "prompt injection", "block"], options: { ask: "Ask first, tell me otherwise", block: "Ask first, block otherwise", note: "Tell me only", off: "Off" } },
     "replay.show": { label: "Watch what changed", help: `After each review, ${PRODUCT} draws a short replay on the review card and in the notch. It shows the files that changed and which part of your app they are. It shows each check and how it ended, and the picture of your page. It is made only from what the review measured.`, also: ["replay", "watch", "animation", "drawing", "what changed", "review", "explain"] },
     "replay.speed": { label: "Replay speed", help: "How fast each step of Watch what changed is drawn. Each step stays on long enough to read its sentence.", also: ["replay", "speed", "slow", "fast", "watch"], options: { slow: "Slow", normal: "Normal", fast: "Fast" } },
     "replay.reduceMotion": { label: "Replay motion", help: "Follow my Mac draws the replay unless Reduce Motion is on. A still picture shows every step at once with no drawing.", also: ["replay", "reduce motion", "animation", "still", "accessibility"], options: { followMac: "Like my Mac", still: "Still", moving: "Always draw" } },
@@ -3803,7 +3850,7 @@ export const S = {
       waiting: () => "Say in the notch when Claude Code waits for you",
       start: () => "Give Claude Code your notes as each session starts",
     } as Record<"done" | "guard" | "waiting" | "start", (tool: string) => string>,
-    connectWhat: (tool: string) => `Each line only tells ${PRODUCT} that ${tool} is done, or about to run a destructive command. Nothing is blocked, and nothing ${tool} says is kept.`,
+    connectWhat: (tool: string) => `Each line only tells ${PRODUCT} that ${tool} is done, or about to run a destructive command or read saved logins. Nothing is blocked unless you choose that in Settings, and nothing ${tool} says is kept.`,
     yes: "Connect",
     no: "Not now",
     connectedSaid: (tool: string) => `Connected. ${tool} now tells ${PRODUCT} when it is done here.`,

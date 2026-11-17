@@ -32,6 +32,10 @@
 //    Antigravity's own approval as it is (auto_approve would skip it, and is never used).
 //  - Xcode runs Claude Agent and Codex inside it; whether they read the project's own hook files is checked on the real Mac
 //    ([verify]). The VS Code Claude extension runs Claude Code itself, so Claude Code's hooks are its hooks.
+// M103 (saved logins): the guard also sees the file read tools where a tool's matcher can name them (Claude Code's Read,
+// Gemini CLI's read_file, Antigravity's view_file; the VS Code agent's hook already sees every tool). Only the path is read.
+// Cursor's beforeReadFile is not used: it hands the hook the file's contents. A tool that cannot ask may block a read of
+// saved logins, only when the person chose Block in Settings (GUARD_BLOCK); otherwise every tool still goes on as before.
 // Nothing here runs git or writes the person's git (rule 10). Every other line of the file is kept as it was, a file that is
 // not plain JSON is refused and left alone, and Remove takes out only Squibby's own entry (found by its marker path).
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmdirSync, rmSync, statSync, watch as fsWatch } from "node:fs";
@@ -51,7 +55,9 @@ export const HOOK_EVENT: Readonly<Record<HookKind, string>> = { done: "Stop", gu
 /** The matcher of each kind (Stop has none). */
 /** M78: SessionStart matches on how the session started. resume is left out: a resumed conversation already holds its
  *  block, and printing it again would change the start of the conversation ([verify] on a real Mac). */
-export const HOOK_MATCHER: Readonly<Partial<Record<HookKind, string>>> = { guard: "Bash", waiting: "permission_prompt|idle_prompt", start: "startup|clear|compact" };
+/** M103: the guard also sees Claude Code's Read tool, so a read of a saved login file can be asked about first. Only the
+ *  file's path is looked at, never its contents (Read's input holds no contents). */
+export const HOOK_MATCHER: Readonly<Partial<Record<HookKind, string>>> = { guard: "Bash|Read", waiting: "permission_prompt|idle_prompt", start: "startup|clear|compact" };
 /** The hooks each tool may have. M80: the other tools have the done signal and the guard (their waiting and start contracts
  *  differ or are missing, so those stay Claude Code's). */
 export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting", "start"], codex: ["done", "guard"], cursor: ["done", "guard"], copilot: ["done", "guard"], antigravity: ["done", "guard"], gemini: ["done", "guard"], windsurf: ["done", "guard"] };
@@ -112,14 +118,30 @@ export const GUARD_ASK: Readonly<Partial<Record<DoneTool, string>>> = {
 };
 /** M85: the tools whose guard can ask. */
 export const canAsk = (tool: DoneTool): boolean => GUARD_ASK[tool] !== undefined;
-/** M77: the guard hook's command. Its input (the tool call's JSON) goes to <guardDir>/<token>.<pid> through a temporary
- *  name, then it waits for <that>.ok up to GUARD_WAIT_TENTHS tenths of a second, removes both and exits 0.
+/** M103: how each tool that cannot ask says "do not run this", with %s standing for Squibby's reason. Used only for a read
+ *  of saved logins, and only when the person chose Block in Settings (safety.savedLogins); by default these tools go on and
+ *  Squibby tells the person. From each tool's own hook docs ([verify] each on a real Mac, M103):
+ *  - Codex: hookSpecificOutput.permissionDecision "deny" with permissionDecisionReason (developers.openai.com/codex/hooks).
+ *  - Gemini CLI: BeforeTool decision "deny" with reason (geminicli.com/docs/hooks).
+ *  - Windsurf as part of Devin: decision "block" with reason.
+ *  A tool that can ask is never sent a block: asking is the person deciding. */
+export const GUARD_BLOCK: Readonly<Partial<Record<DoneTool, string>>> = {
+  codex: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}`,
+  gemini: `{"decision":"deny","reason":%s}`,
+  windsurf: `{"decision":"block","reason":%s}`,
+};
+/** M103: the tools whose guard can block, when the person chose it. */
+export const canBlock = (tool: DoneTool): boolean => GUARD_BLOCK[tool] !== undefined;
+/** M77: the guard hook's command. Its input (the tool call's JSON) goes to <guardDir>/<token>.<pid>.<tool> (the M103
+ *  review: the tool's id, so a note can name it) through a temporary name, then it waits for <that>.ok up to GUARD_WAIT_TENTHS tenths of a second, removes both and exits 0.
  *  M85: a tool that can ask names its request <token>.<pid>.ask. When Squibby's answer file is not empty it holds the
  *  reason as a JSON string, and the hook prints the tool's own ask with it (GUARD_ASK) and exits 0. An empty answer, no
  *  answer and a closed Squibby all end as before, with the tool's own "go on". */
 export const guardCommand = (guardDir: string, token: string, tool: DoneTool = "claude"): string => {
-  const go = GUARD_GO[tool], ask = GUARD_ASK[tool];
-  const name = ask ? `${token}.$$.ask` : `${token}.$$`;
+  // M103: a tool that can block names its request <token>.<pid>.block, and prints its own block with a non empty answer.
+  const go = GUARD_GO[tool], ask = GUARD_ASK[tool] ?? GUARD_BLOCK[tool];
+  // The M103 review: the request names its tool, so a note can say which AI tool it was.
+  const name = `${token}.$$.${tool}${GUARD_ASK[tool] ? ".ask" : GUARD_BLOCK[tool] ? ".block" : ""}`;
   const asks = ask ? `if [ -s "$r.ok" ]; then q=$(cat "$r.ok" 2>/dev/null); rm -f "$r" "$r.ok"; [ -n "$q" ] && { printf '${ask}' ${ask.split("%s").length > 2 ? `"$q" "$q"` : `"$q"`}; exit 0; }; fi; ` : "";
   return `${guardOpening(guardDir, go)} r="$d/${name}"; cat >"$r.tmp" 2>/dev/null && mv "$r.tmp" "$r" 2>/dev/null || { rm -f "$r.tmp"; ${go}; }; i=0; while [ ! -e "$r.ok" ] && [ $i -lt ${GUARD_WAIT_TENTHS} ]; do sleep 0.1; i=$((i+1)); done; ${asks}rm -f "$r" "$r.ok"; ${go}`;
 };
@@ -141,10 +163,13 @@ export const guardEntryFor = (tool: DoneTool, guardDir: string, token: string): 
   const command = guardCommand(guardDir, token, tool);
   if (tool === "cursor") return { command, timeout: GUARD_TIMEOUT_S };
   if (tool === "copilot") return { type: "command", command, timeoutSec: GUARD_TIMEOUT_S };
-  if (tool === "antigravity") return { matcher: "run_command", hooks: [{ type: "command", command, timeout: GUARD_TIMEOUT_S }] };
+  // M103: the file read tools too, so a read of saved logins can be asked about ([verify] Antigravity's view_file name).
+  if (tool === "antigravity") return { matcher: "run_command|view_file", hooks: [{ type: "command", command, timeout: GUARD_TIMEOUT_S }] };
   // M81: Gemini CLI names each hook (its /hooks panel lists them by name) and counts the timeout in milliseconds.
-  if (tool === "gemini") return { matcher: "run_shell_command", hooks: [{ name: "companion-guard", type: "command", command, timeout: GUARD_TIMEOUT_S * 1000 }] };
+  if (tool === "gemini") return { matcher: "run_shell_command|read_file", hooks: [{ name: "companion-guard", type: "command", command, timeout: GUARD_TIMEOUT_S * 1000 }] };
   if (tool === "windsurf") return { matcher: "exec", hooks: [{ type: "command", command, timeout: GUARD_TIMEOUT_S }] };
+  // M103: Codex reads files through its shell, so its guard stays on Bash.
+  if (tool === "codex") return { matcher: "Bash", hooks: [{ type: "command", command, timeout: GUARD_TIMEOUT_S }] };
   return guardEntry(guardDir, token);
 };
 /** M80: the done entry in each tool's own shape (the same command: touch the marker, print {}, exit 0). */

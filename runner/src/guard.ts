@@ -9,13 +9,18 @@
 //    Claude Code session, and never changes the command (the hook exits 0 whatever happens anyway).
 //  - A waiting note is the notification's JSON. Only `message` (120 characters, redacted) and `notification_type` are kept,
 //    and said as hook.waiting; it clears on the next hook event for that project or after a timer.
+// M103 (saved logins): a command or a file read that reaches for saved passwords or login files (savedlogins.ts, words and
+// paths only, never the file) is said as guard.asked with kind "login" and kept in History. A tool that can ask asks the
+// person first; one that cannot goes on, unless the person chose Block in Settings (safety.savedLogins), the one case where
+// Squibby stops a command in the person's own tool, and only because they asked it to.
 // Nothing here runs git or writes the person's git (rule 10): the snapshot is Squibby's own shadow copy, and Undo restores
 // from it.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, watch as fsWatch, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { databaseProgram, databaseScript, databaseSetting, databaseTool } from "./dbsafety.ts";
 import { liveCommand } from "./livesystems.ts";
-import { GUARD_PID } from "./donesignal.ts";
+import { loginModeOf, savedLoginCommand, savedLoginPath, shownPath } from "./savedlogins.ts";
+import { DONE_TOOLS, GUARD_PID, type DoneTool } from "./donesignal.ts";
 import { clip, redact } from "./redact.ts";
 import { commandsWithFolder, resolveLinks, whereIs } from "./safety.ts";
 
@@ -31,8 +36,9 @@ export const waitingMinutesOf = (v: unknown): number => { const n = Number(v); r
 /** The notification types that mean Claude Code is waiting for the person (the hook's matcher names the same two). */
 const WAITING_TYPES = new Set(["permission_prompt", "idle_prompt"]);
 /** A request file: <token>.<pid>, with .note for a waiting note, or (M85) .ask from a hook that can ask the person first.
- *  Nothing else in the folder is touched. */
-const REQUEST = /^([0-9a-f]{24})\.(\d{1,10})(\.note|\.ask)?$/;
+ *  The M103 review: a guard hook names its AI tool too (<token>.<pid>.<tool>.ask), so a note can say which tool it was;
+ *  a hook written before that has none. Only the seven known tools' names are read. Nothing else in the folder is touched. */
+const REQUEST = new RegExp(`^([0-9a-f]{24})\\.(\\d{1,10})(?:\\.(${DONE_TOOLS.join("|")}))?(\\.note|\\.ask|\\.block)?$`);
 /** M85: the History row's name for a command the person's own tool was asked to ask about first. */
 export const ASKED_LABEL = "Asked first: ";
 /** M85: the most a reason the hook carries may be, in characters. */
@@ -109,6 +115,8 @@ function destructiveWords(name: string, args: string[], project: string, cwd: st
   return null;
 }
 
+/** M103: what happened to a read of saved logins in the person's own tool. */
+export type LoginOutcome = "asked" | "ran" | "blocked";
 /** What a guard request carries that the engine reads: nothing else of the JSON is kept. */
 export type GuardRequest = { token: string; command: string; cwd?: string };
 export type WaitingNote = { token: string; message: string; type: string };
@@ -128,8 +136,12 @@ export type GuardDeps = {
   live?: (command: string, project: string) => string | null;
   /** M85: whether the person's own tool is asked to ask first about a live command (safety.askBeforeLive), read each time. */
   askLive?: () => boolean;
-  /** M85: keeps the History row of an ask (the task log), with the reason. */
-  asked?: (r: { project: string; command: string; reason: string; at: string }) => void;
+  /** M85: keeps the History row of an ask (the task log), with the reason. M103: a read of saved logins is kind "login",
+   *  with what happened: asked (the tool asked the person), ran (the tool could not ask, or the person chose to be told
+   *  only), or blocked (the person chose Block). */
+  asked?: (r: { project: string; command: string; reason: string; at: string; kind?: "login"; outcome?: LoginOutcome; tool?: DoneTool }) => void;
+  /** M103: what the person chose for saved logins (safety.savedLogins), read each time; ask when unknown. */
+  logins?: () => unknown;
   /** M90: the person's own tool ran a command in this project (any guard request for a known project): it is working.
    *  toolbusy.ts turns this into hook.busy, at most now and then. Only the project is passed, never the command. */
   busy?: (project: string) => void;
@@ -199,7 +211,8 @@ export class HookGuard {
     try { rmSync(file, { force: true }); } catch { /* gone */ }
     const token = m[1];
     const project = this.o.projectOf(token);
-    if (m[3] === ".note") { if (project) this.note(project, text); return; }
+    const tool = m[3] as DoneTool | undefined, kind = m[4];
+    if (kind === ".note") { if (project) this.note(project, text); return; }
     // The answer file: empty lets the command go; M85: for a hook that can ask, a reason (a JSON string) has its tool ask.
     // It is written exactly once, whatever goes wrong.
     let written = false;
@@ -211,7 +224,7 @@ export class HookGuard {
     if (!project) { done(""); return; }
     this.activity(project);
     try { this.o.busy?.(project); } catch { /* the peek is a nicety; the answer always goes */ }
-    const p = this.answer(project, text, m[3] === ".ask", done).catch(() => undefined).finally(() => done("")).finally(() => this.inFlight.delete(name));
+    const p = this.answer(project, text, kind === ".ask", kind === ".block", done, tool).catch(() => undefined).finally(() => done("")).finally(() => this.inFlight.delete(name));
     this.inFlight.set(name, p);
     await p;
   }
@@ -220,22 +233,44 @@ export class HookGuard {
    *  live command is answered at once with its reason as a JSON string, and the snapshot finishes on its own (M85 review: a
    *  slow snapshot of a big project must never outlast the hook's own wait and lose the ask). The person still has to answer
    *  in their tool. The ask is said and kept in History only once its answer file is written. */
-  private async answer(project: string, text: string, canAsk: boolean, done: (answer: string) => boolean): Promise<void> {
+  private async answer(project: string, text: string, canAsk: boolean, canBlock: boolean, done: (answer: string) => boolean, tool?: DoneTool): Promise<void> {
     const req = parseRequest(text);
-    if (!req) { done(""); return; }
+    // M103: a file read tool's call carries only a path here; it is judged for saved logins and nothing else.
+    const read = req ? null : parseRead(text);
+    if (!req && !read) { done(""); return; }
+    const mode = loginModeOf(this.o.logins?.());
+    let login: string | null = null;
+    if (mode !== "off") {
+      try { login = req ? savedLoginCommand(req.command, req.cwd ?? project) : savedLoginPath(read!.path); } catch { login = null; }
+    }
+    // M103: ask where the tool can (unless the person chose to be told only), block where it cannot and the person chose
+    // Block, and otherwise let it through (ran: Squibby did not stop it; the tool or the person may still have).
+    const outcome: LoginOutcome | null = !login ? null : canAsk && mode !== "note" ? "asked" : canBlock && mode === "block" ? "blocked" : "ran";
+    // M85: a live system. The M103 review: also when a login read was let through (Tell me only in a tool that can ask), so
+    // choosing to be told about logins never turns off the ask about a live database in the same command.
     let reason: string | null = null;
-    if (canAsk && (this.o.askLive?.() ?? true)) {
+    if (req && canAsk && (!login || outcome === "ran") && (this.o.askLive?.() ?? true)) {
       try { reason = (this.o.live ?? liveCommand)(req.command, project); } catch { reason = null; }
     }
     // The snapshot starts first, before any answer, so a destructive command is being saved before the tool can ask.
-    const saving = this.save(project, req.command);
+    const saving = req ? this.save(project, req.command) : Promise.resolve();
+    const named = tool ? { tool } : {};
+    const at = () => new Date((this.o.now ?? Date.now)()).toISOString();
+    if (login && outcome) {
+      // Each is said and kept once, after its answer is written (a let through needs no answer of its own).
+      const said = clip(redact(login).replace(/\s+/g, " ").trim(), ASK_REASON);
+      if (outcome === "ran" || done(JSON.stringify(said))) {
+        const command = shortCommand(req ? req.command : shownPath(read!.path));
+        try { this.o.asked?.({ project, command, reason: said, at: at(), kind: "login", outcome, ...named }); } catch { /* the row is a nicety */ }
+        this.o.emit({ type: "guard.asked", project, command, reason: said, kind: "login", outcome, ...named });
+      }
+    }
     if (reason) {
       const said = clip(redact(reason).replace(/\s+/g, " ").trim(), ASK_REASON);
       if (done(JSON.stringify(said))) {
-        const command = shortCommand(req.command);
-        const at = new Date((this.o.now ?? Date.now)()).toISOString();
-        try { this.o.asked?.({ project, command, reason: said, at }); } catch { /* the row is a nicety */ }
-        this.o.emit({ type: "guard.asked", project, command, reason: said });
+        const command = shortCommand(req ? req.command : "");
+        try { this.o.asked?.({ project, command, reason: said, at: at(), ...named }); } catch { /* the row is a nicety */ }
+        this.o.emit({ type: "guard.asked", project, command, reason: said, ...named });
       }
     }
     await saving;
@@ -311,6 +346,30 @@ const objOf = (v: unknown): Record<string, unknown> | null => {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 };
 const textOf = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
+
+/** M103: the file read tools whose calls the guard reads, by the name each AI tool gives them, and where each puts the path:
+ *  Claude Code's Read (file_path), Gemini CLI's read_file (absolute_path, or file_path in newer versions), the VS Code
+ *  agent's read_file (filePath), and Antigravity's view_file (AbsolutePath; [verify] the name on a real Mac). */
+const READ_TOOLS: Readonly<Record<string, readonly string[]>> = { Read: ["file_path"], read_file: ["file_path", "absolute_path", "filePath", "path"], view_file: ["AbsolutePath", "file_path"] };
+/** M103: a file read tool's call as the engine reads it: the path and its folder, in any of the tools' shapes, or null.
+ *  Only the tool's name, the path and the folder are looked at; a read tool's input carries no file contents. */
+export function parseRead(text: string): { path: string; cwd?: string } | null {
+  const o = objOf(text);
+  if (!o) return null;
+  const out = (path: unknown, cwd: unknown) => (textOf(path) ? { path: (path as string).trim(), ...(typeof cwd === "string" && cwd ? { cwd } : {}) } : null);
+  const call = objOf(o.toolCall);
+  if (call) {
+    const fields = typeof call.name === "string" && Object.hasOwn(READ_TOOLS, call.name) ? READ_TOOLS[call.name] : undefined;
+    const args = objOf(call.args);
+    const ws = Array.isArray(o.workspacePaths) ? o.workspacePaths.find((w) => typeof w === "string") : undefined;
+    return fields && args ? out(fields.map((f) => args[f]).find(textOf), args.Cwd ?? ws) : null;
+  }
+  const name = o.tool_name ?? o.toolName;
+  const fields = typeof name === "string" && Object.hasOwn(READ_TOOLS, name) ? READ_TOOLS[name] : undefined;
+  if (!fields) return null;
+  const input = objOf(o.tool_input ?? o.toolArgs);
+  return input ? out(fields.map((f) => input[f]).find(textOf), o.cwd ?? input.cwd) : null;
+}
 
 /** The request as the engine reads it: a shell command and its folder, in any of the tools' shapes, or null for anything
  *  else. Only the tool's name, the command and the folder are looked at. */

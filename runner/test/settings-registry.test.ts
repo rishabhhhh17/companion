@@ -155,6 +155,9 @@ describe("the shipped list of settings", () => {
       // deciding, never a block), and Squibby's own cards offer Always allow for this project where it fits (on; only a plain
       // read of one file outside the project, saved as a house rule they can see and remove).
       "safety.askBeforeLive": true, "approval.offerAlways": true,
+      // M103: a read of saved logins in the person's own AI tool: asked about first where the tool can ask, and said in the
+      // notch and History where it cannot (ask; block and tell me only are the person's choice, off is too).
+      "safety.savedLogins": "ask",
       // M86: Watch what changed plays on each review card (on), at the usual speed, still when the Mac asks for less motion;
       // its one capped model call is on (measured under a cent with stand in token counts; m86-replay.test.ts).
       "replay.show": true, "replay.speed": "normal", "replay.reduceMotion": "followMac", "replay.model": true,
@@ -203,6 +206,11 @@ describe("the shipped list of settings", () => {
   test("M85: asking before live systems, and Always allow for this project", () => {
     expect(defOf("safety.askBeforeLive")).toMatchObject({ section: "work", kind: "switch", default: true, scope: "app", applies: ["runner"], store: "settings", live: true });
     expect(defOf("approval.offerAlways")).toMatchObject({ section: "work", kind: "switch", default: true, scope: "app", applies: ["runner"], store: "settings", live: true });
+  });
+  test("M103: saved logins: ask first where the tool can, block, tell me only, or off", () => {
+    expect(defOf("safety.savedLogins")).toMatchObject({ section: "work", kind: "choice", default: "ask", options: ["ask", "block", "note", "off"], scope: "app", applies: ["runner"], store: "settings", live: true });
+    expect(validate(defOf("safety.savedLogins")!, "deny").ok).toBe(false);
+    expect(validate(defOf("safety.savedLogins")!, "block").ok).toBe(true);
   });
   test("M86: Watch what changed: on or off, speed, Reduce Motion, and its one model call", () => {
     expect(defOf("replay.show")).toMatchObject({ section: "watch", kind: "switch", default: true, scope: "app", applies: ["runner", "pages"], store: "settings", live: true });

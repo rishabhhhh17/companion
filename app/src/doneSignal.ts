@@ -27,6 +27,8 @@ export function doneStateFrom(e: unknown, project: string): DoneState | null {
  *  their own line about what travels. */
 /** M85: the tools whose guard hook can have the tool ask the person first (each tool's own hook docs, read 14 Nov 2026). */
 const CAN_ASK: readonly string[] = ["claude", "cursor", "copilot", "antigravity"];
+/** M103: the other tools whose guard hook also hands over a file read tool's file name (runner donesignal.ts matchers). */
+const READS: readonly string[] = ["copilot", "antigravity", "gemini"];
 export function doneAsk(row: DoneRow): { title: string; where: string; what: string; notes: string[]; yes: string } {
   const tool = S.doneSignal.tool[row.tool];
   // M85 review: Update on an older line of Squibby's says it replaces that line, and what the new one does.
@@ -34,7 +36,10 @@ export function doneAsk(row: DoneRow): { title: string; where: string; what: str
   // M80: another tool's guard names that tool; Claude Code's keeps its own words.
   const other = row.hook === "guard" && row.tool !== "claude";
   const title = row.hook === "done" ? S.doneSignal.askTitle(tool) : other ? S.doneSignal.guardOther.askTitle(tool) : S.doneSignal.askTitleFor[row.hook];
-  const what = row.hook === "done" ? S.doneSignal.askWhat : other ? S.doneSignal.guardOther.askWhat(tool) : S.doneSignal.askWhatFor[row.hook];
+  // The M103 review: another tool's guard says what its hook can do (ask, or block when chosen) and whether it hands over
+  // file reads too.
+  const reads = READS.includes(row.tool);
+  const what = row.hook === "done" ? S.doneSignal.askWhat : other ? (CAN_ASK.includes(row.tool) ? S.doneSignal.guardOther.askWhat(tool, reads) : S.doneSignal.guardOther.askWhatBlock(tool, reads)) : S.doneSignal.askWhatFor[row.hook];
   const toolNote = row.tool === "codex" ? S.doneSignal.askCodex : row.tool === "claude" ? null : S.doneSignal.askTool[row.tool];
   return { title, where: S.doneSignal.askWhere(row.file, row.creates), what: row.adds, notes: [what, S.doneSignal.askGit, ...(toolNote ? [toolNote] : [])], yes: S.doneSignal.yes };
 }

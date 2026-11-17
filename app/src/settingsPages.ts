@@ -130,6 +130,8 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     groups: [
       { id: "privacy.see", items: [f("permissions")] },
       { id: "privacy.sharing", items: ["sharing.hide", "calls.quiet"] },
+      // The M103 review: what your own AI tools may read of your saved logins, where people look for what reads their things.
+      { id: "privacy.tools", items: ["safety.savedLogins"] },
       { id: "privacy.memory", items: ["memory.paused", f("kept")] },
       // M74: what leaves this Mac for Claude, and how long safety copies and review history are kept.
       { id: "privacy.claude", items: ["privacy.neverSend", "review.send"] },

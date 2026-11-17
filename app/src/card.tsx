@@ -21,7 +21,7 @@ import { markSave } from "./commands.ts";
 import { backPlanStep, fixLadder, optionWords, stuckRung, tryCounter } from "./fixLadder.ts";
 import { lastWorkingTime, signInTurn, undoLimitsLine } from "./savePoints.ts";
 import { SaveMarksActions, SaveMarksLine } from "./savePointsRow.tsx";
-import { browserView, confirmable, lookState, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, historyWords, historyFacts, isFixing, triesNote, notDoneReason, notDoneLine, plainPath, stateLabel, pointsOnScreen, pointsOnFound, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
+import { askedNoticeOf, askedNoticeParts, browserView, confirmable, lookState, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, historyWords, historyFacts, isFixing, triesNote, notDoneReason, notDoneLine, plainPath, stateLabel, pointsOnScreen, pointsOnFound, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, Model, MemoryLine, Practice, Problem, UndoState } from "./model.ts";
 import { FIRST_PRACTICE, NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, practiceWithoutNode, pointFixRoute, practiceNotes, practiceOf, recordFrom, reviewFixRoute, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
@@ -365,10 +365,13 @@ function OnlineBox({ f, project, onClose, onCheckAgain, onLesson, dispatch, whyL
 // and the files it changed, and when on the right (the time today, else the day; history.ts historyDays). Undo is the
 // newest changing task's one action. A press on a row opens its save point's marks (Star, Name it) under the list. No
 // cost (F29). Empty: one row that says what will appear, with one action.
-function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = null, q, setQ, undoState: u, project, keepsMine, dispatch, focus, now, onAsk, onPractice, shotFor, reviewUndo = null, undoFor, askUndo }: { items: HistoryItem[]; reviews?: ReviewRowView[]; saved?: SavedRowView[]; asked?: AskedRowView[]; caught?: CaughtView | null; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number; onAsk?: () => void; onPractice?: () => void; shotFor?: (checkpoint: string) => string | undefined;
+function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = null, q, setQ, undoState: u, project, keepsMine, dispatch, focus, askedFocus = null, now, onAsk, onPractice, shotFor, reviewUndo = null, undoFor, askUndo }: { items: HistoryItem[]; reviews?: ReviewRowView[]; saved?: SavedRowView[]; asked?: AskedRowView[]; caught?: CaughtView | null; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; askedFocus?: string | null; now: number; onAsk?: () => void; onPractice?: () => void; shotFor?: (checkpoint: string) => string | undefined;
   /** M101: Put these files back on a review's row: the flow open now, how to draw it under a row, and the row's press. */
   reviewUndo?: ReviewUndo | null; undoFor?: (batch: string, idBase: string) => ReactNode; askUndo?: (batch: string) => void }) {
   useEffect(() => { if (focus != null) document.getElementById(`history-${focus}`)?.scrollIntoView({ block: "center" }); }, [focus]);
+  // The M103 review: See in History on Now's saved logins notice opens here at its row (the newest with that command).
+  const askedAt = askedFocus ? asked.find((x) => x.kind === "login" && x.command === askedFocus)?.id ?? null : null;
+  useEffect(() => { if (askedAt != null) document.getElementById(`asked-${askedAt}`)?.scrollIntoView({ block: "center" }); }, [askedAt]);
   // M77: the week's count, one line under the lead, only when the setting is on and there is something (read on every render).
   const weekOn = useSetting("history.thisWeek") !== false;
   const weekLine = thisWeekLine(caught, weekOn);
@@ -447,7 +450,8 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
           {byTime(shown, filtering ? [] : reviews, filtering ? [] : saved).map((row) => {
             // M85: an ask, with its reason: the person's own AI tool asked them, or Squibby's own card did and what they said.
             if (row.kind === "asked") { const x = row.x, l = askedRowLook(x); return (
-              <ListRow key={`asked-${x.id}`} colour={l.tone} icon="shield" title={<>{l.lead} <code className="hist-cmd">{commandParts(l.command).map((w, i) => <Fragment key={i}>{i > 0 ? " " : ""}<span className={w.whole ? "hist-word" : undefined}>{w.text}</span></Fragment>)}</code></>} line={`${l.line} · ${agoWords(x.at, now)}`} fact={l.mark} />
+              // The M103 review: the mark in the row's own colour (Stopped red, Let through amber), and the AI tool by name.
+              <ListRow key={`asked-${x.id}`} rowId={`asked-${x.id}`} flash={askedAt === x.id} colour={l.tone} factColour={l.tone} icon="shield" title={<>{l.lead} <code className="hist-cmd">{commandParts(l.command).map((w, i) => <Fragment key={i}>{i > 0 ? " " : ""}<span className={w.whole ? "hist-word" : undefined}>{w.text}</span></Fragment>)}</code></>} line={[l.line, l.who, agoWords(x.at, now).replace(/ /g, "\u00a0")].filter(Boolean).join(" · ")} fact={l.mark} />
             ); }
             if (row.kind === "review") { const x = row.x, l = reviewRowLook(x, now);
               // M101: Put these files back under the row, while its versions are kept; greyed, with why, once they are not.
@@ -1255,11 +1259,13 @@ export function Card() {
   // Squibby never hears), and only if it is still the one shown.
   useEffect(() => {
     const a = m.guardAsked;
-    if (!a || m.notice !== S.guard.askedNotice(a.command)) return;
+    if (!a || m.notice !== askedNoticeOf(a)) return;
     const said = m.notice;
     const id = setTimeout(() => dispatch({ type: "ui.noticeExpired", notice: said }), Math.max(0, a.at + ASKED_NOTICE_MS - Date.now()));
     return () => clearTimeout(id);
   }, [m.guardAsked, m.notice]);
+  // The M103 review: Now's notice for a read of saved logins, drawn in its parts while it is the one shown.
+  const loginNotice = m.guardAsked && m.notice === askedNoticeOf(m.guardAsked) ? askedNoticeParts(m.guardAsked) : null;
   // Coming back to the front after editing elsewhere: the list (and whether the files changed since the last check, must
   // fix 11) is asked again, so Home never says the project works over edits nobody checked. Home is a non activating panel
   // (rule 9), so "focus" may never fire: it also asks when the pointer comes onto it, at most once every SINCE_ASK_MS, and
@@ -2386,6 +2392,8 @@ export function Card() {
   const pickFromFolderMenu = (id: string) => { if (id === "change") pickFolder(); else if (id === "link") setLinkOpen(true); else if (id.startsWith("r:")) openFolder(id.slice(2)); };
   // A recent fix opens its own receipt: the one on Now when it is the last task, else its row in History.
   const [historyFocus, setHistoryFocus] = useState<number | null>(null);
+  // The M103 review: the saved logins row See in History opens at.
+  const [askedFocus, setAskedFocus] = useState<string | null>(null);
   useEffect(() => { if (home.tab !== "did") setHistoryFocus(null); }, [home.tab]);
   const openRecent = (i: HistoryItem) => {
     if (m.receipt && i.checkpoint && i.checkpoint === m.receipt.checkpoint) { pickTab("now"); setTimeout(() => root.current?.querySelector(".panel.receipt")?.scrollIntoView({ block: "start" }), 0); return; }
@@ -3014,7 +3022,16 @@ export function Card() {
       {show("notes") && <>
       {/* M28: "Not connected" says how to fix it, and the fix is one press away. */}
       {/* M69 (F29, spec 3.11): the not connected line is the setup list's first step now, never a second message or an Add your key. */}
-      {m.notice && m.notice !== S.notConnectedNotice && <div className="notice" role="status">{m.notice}</div>}
+      {m.notice && m.notice !== S.notConnectedNotice && (loginNotice
+        // The M103 review: a read of saved logins in the person's own tool says why right here, with the next step, and
+        // one press opens History at its row.
+        ? <div className="notice login-notice" role="status" data-kind="login" data-outcome={m.guardAsked?.login}>
+            <div className="ln-head"><b>{loginNotice.lead}</b> <code className="hist-cmd">{loginNotice.command}</code></div>
+            {loginNotice.reason && <div className="ln-why">{loginNotice.reason}</div>}
+            <div className="ln-next"><span>{loginNotice.next}</span>
+              {home.tab !== "did" && <button className="btn" type="button" onClick={() => { setAskedFocus(loginNotice.command); pickTab("did"); }}>{S.guard.login.seeInHistory}</button>}</div>
+          </div>
+        : <div className="notice" role="status">{m.notice}</div>)}
       {/* M77: the person's own Claude Code waits for them (the waiting hook): the same line as the notch, with Claude Code's own
           short notice under it, never the question. */}
       {m.claudeWaiting && <div className="notice" role="status" data-kind="claude-waiting"><b>{S.guard.waitingWhy(shortProjectName(m.claudeWaiting.project))}.</b> {m.claudeWaiting.message ? `${m.claudeWaiting.message}. ` : ""}{S.guard.waitingLine}</div>}
@@ -3761,7 +3778,7 @@ export function Card() {
           </Group>
         </section>
       )}
-      {show("history") && <HistoryPanel items={project ? m.history : []} reviews={project ? m.reviewHistory ?? [] : []} saved={project ? m.savedRows ?? [] : []} asked={project ? m.askedRows ?? [] : []} caught={project ? m.caught ?? null : null} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus}
+      {show("history") && <HistoryPanel items={project ? m.history : []} reviews={project ? m.reviewHistory ?? [] : []} saved={project ? m.savedRows ?? [] : []} asked={project ? m.askedRows ?? [] : []} caught={project ? m.caught ?? null : null} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} askedFocus={askedFocus}
         reviewUndo={m.reviewUndo ?? null} undoFor={(batch, idBase) => undoFlow(batch, "history", idBase, true)} askUndo={(batch) => { if (!project) return; dispatch({ type: "ui.reviewUndoAsked", project, batch, where: "history" }); void sendQuiet(lookCommand(project, batch)).catch(() => dispatch({ type: "ui.reviewUndoRefused" })); }} now={clock} onAsk={() => { pickTab("now"); setTimeout(() => box.current?.focus(), 0); }} onPractice={groups.groupOn("guide") ? () => beginPractice(FIRST_PRACTICE) : undefined}
         shotFor={(cp) => (m.receipt?.checkpoint === cp && !m.receipt.undone ? m.receipt.visual?.image : undefined)} />}
       {/* F28: watch routines start off, so the fold stays away until they are on or this folder already has watches. */}

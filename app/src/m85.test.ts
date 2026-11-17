@@ -116,7 +116,7 @@ describe("the asks in History", () => {
   test("each row says who asked and what was answered, with the reason under it", () => {
     const base = { id: 1, at: "2026-11-14T10:00:00Z", command: "vercel --prod", reason: "This puts a new version of your site live." };
     // M85 review: the row also carries its lead and the command on their own, so History draws the command in code type.
-    expect(askedRowLook({ ...base, by: "tool" })).toEqual({ title: "Asked first: vercel --prod", lead: "Asked first:", command: "vercel --prod", line: base.reason, mark: "Your AI tool asked you", tone: "blue" });
+    expect(askedRowLook({ ...base, by: "tool" })).toEqual({ title: "Asked first: vercel --prod", lead: "Asked first:", command: "vercel --prod", line: base.reason, mark: "Asked you", tone: "blue", who: null });   // The M103 review (on purpose): the short mark, and who
     expect(askedRowLook({ ...base, by: "squibby", answer: "always" }).mark).toBe("Always allowed here");
     expect(askedRowLook({ ...base, by: "squibby", answer: "no" }).tone).toBe("red");
   });
