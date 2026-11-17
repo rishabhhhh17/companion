@@ -433,7 +433,24 @@ export type Receipt = Envelope & {
    *  said_other, a command it ran goes against what it said it would do (review/drift.ts). Plain words, at most two. */
   flags?: { kind: "not_asked" | "said_other"; say: string }[];
   asks?: boolean;  // those words stop to ask the person something: the follow up box is where they answer
+  /** M104: a Fix it from a review: each problem that review found, checked again by its rules (never a model) against
+   *  what the fix left. gone: checked again, it is not there. still: it is still there (the result is then not proven).
+   *  unsure: the fix changed its files, but no rule can check this kind, so the person looks. batch: the review's. */
+  rechecked?: { batch: string; findings: { say: string; outcome: FixOutcome }[] };
 };
+/** M104: what the rules found, problem by problem, after a Fix it. */
+export const FIX_OUTCOMES = ["gone", "still", "unsure"] as const;
+export type FixOutcome = (typeof FIX_OUTCOMES)[number];
+/** M104: the most problems a receipt names, and the most characters each. */
+export const RECHECKED_MAX = 20;
+export const RECHECKED_SAY_MAX = 400;
+/** M104: a receipt's rechecked part, of its known shape only. */
+export function recheckedOk(v: unknown): boolean {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  if (typeof o.batch !== "string" || !/^rv_[0-9a-f]{10}$/.test(o.batch) || !Array.isArray(o.findings) || o.findings.length === 0 || o.findings.length > RECHECKED_MAX) return false;
+  return o.findings.every((f: unknown) => { const x = f as Record<string, unknown>; return !!x && typeof x === "object" && typeof x.say === "string" && x.say.length > 0 && Array.from(x.say).length <= RECHECKED_SAY_MAX && (FIX_OUTCOMES as readonly unknown[]).includes(x.outcome) && Object.keys(x).every((k) => k === "say" || k === "outcome"); });
+}
 // Explain: two short lines of why and one check question. step: which Drive step it explains.
 export type ExplainReady = Envelope & { type: "explain.ready"; agent: string; checkpoint: string; bullets: string[]; question?: { text: string; options: string[]; correct: number }; step?: { index: number; title: string }; usdEstimate: number };
 // Your turn. made: false says why nothing was changed. target: the second place, now as it was before the fix. example: the
@@ -504,7 +521,9 @@ export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: n
 // undone (M45): an Undo put the project back to before this task. back: "Bring the fix back" then put its files back again
 // (undone stays set: nothing was checked since).
 /** failedCheck (M72): the rung of the check that failed (install, checks, tests, start, browser, review), for a failed task. */
-export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string; failedCheck?: string };
+export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string; failedCheck?: string;
+  /** M104: a Fix it from a review left this many of its problems still there, so it is not proven (absent: none, or not a Fix it). */
+  still?: number };
 /** M77: a saved copy taken the instant before the person's own AI tool ran a destructive command (runner/src/guard.ts), as
  *  its own row in History: never a task, so no verdict is read from it. command: the short, redacted command (60
  *  characters). undone: an Undo went back to this copy or an earlier one. */
@@ -1226,7 +1245,7 @@ const EVENTS: Record<string, Check[]> = {
   "agent.file": [str("agent"), fileInProject("file"), oneOf("kind", FILE_KINDS)],
   "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network", "settings", "house_rule", "scripts"]), str("title"), str("expiresAt"), opt("action", str("action")), opt("undoable", bool("undoable")), opt("check", bool("check")), opt("always", (m) => (typeof m.always === "string" && /^allow reading \S/.test(m.always) && Array.from(m.always).length <= 214 ? null : '"always" must be an "allow reading" house rule line')), opt("live", bool("live"))],
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
-  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("endedWhy", oneOf("endedWhy", ["check_failed", "spending_limit", "daily_limit", "turns", "no_connection", "claude_busy", "error"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), opt("claimedPassed", bool("claimedPassed")), opt("flags", (m) => (Array.isArray(m.flags) && m.flags.length > 0 && m.flags.length <= 2 && m.flags.every((f: unknown) => { const o = f as Record<string, unknown>; return !!o && typeof o === "object" && (o.kind === "not_asked" || o.kind === "said_other") && typeof o.say === "string" && o.say.length > 0 && Array.from(o.say).length <= 400; }) ? null : '"flags" must be one or two of not_asked and said_other, each with words')), opt("notesStay", (m) => (Array.isArray(m.notesStay) && m.notesStay.length > 0 && m.notesStay.length <= 2 && m.notesStay.every((f: unknown) => f === "AGENTS.md" || f === "CLAUDE.md") ? null : '"notesStay" must name AGENTS.md or CLAUDE.md')), practiceOk],
+  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("endedWhy", oneOf("endedWhy", ["check_failed", "spending_limit", "daily_limit", "turns", "no_connection", "claude_busy", "error"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), opt("claimedPassed", bool("claimedPassed")), opt("flags", (m) => (Array.isArray(m.flags) && m.flags.length > 0 && m.flags.length <= 2 && m.flags.every((f: unknown) => { const o = f as Record<string, unknown>; return !!o && typeof o === "object" && (o.kind === "not_asked" || o.kind === "said_other") && typeof o.say === "string" && o.say.length > 0 && Array.from(o.say).length <= 400; }) ? null : '"flags" must be one or two of not_asked and said_other, each with words')), opt("rechecked", (m) => (recheckedOk(m.rechecked) ? null : '"rechecked" must name the review and each problem with gone, still or unsure')), opt("notesStay", (m) => (Array.isArray(m.notesStay) && m.notesStay.length > 0 && m.notesStay.length <= 2 && m.notesStay.every((f: unknown) => f === "AGENTS.md" || f === "CLAUDE.md") ? null : '"notesStay" must name AGENTS.md or CLAUDE.md')), practiceOk],
   "protocol.error": [str("reason")],
   "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), stepNeedsOk],
   "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), stepsNeedsOk, num("tries"), opt("of", (m) => (Number.isInteger(m.of) && (m.of as number) >= 1 ? null : '"of" must be a whole number from 1')), opt("privateOpen", textList("privateOpen"))],

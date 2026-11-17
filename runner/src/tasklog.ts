@@ -55,7 +55,9 @@ export type TaskRow = { id: number; project: string; agent: string; mode: string
   undone?: boolean; back?: boolean;
   /** M72: the rung of the check that failed (the ladder's own id: install, checks, tests, start, browser, review), so a page
    *  can say which check failed. Never the check's output. */
-  failedCheck?: string };
+  failedCheck?: string;
+  /** M104: a review's Fix it left this many of its problems there, so it is not proven. */
+  still?: number };
 /** The rungs a task may keep as its failed check: anything else is dropped (never free text). */
 const RUNGS = ["install", "checks", "tests", "start", "browser", "review"];
 
@@ -90,6 +92,8 @@ export class TaskLog {
     if (!have.includes("brought_back")) this.db.run("ALTER TABLE tasks ADD COLUMN brought_back INTEGER NOT NULL DEFAULT 0");
     // M72: which check failed (a rung's id), for a failed task.
     if (!have.includes("failed_check")) this.db.run("ALTER TABLE tasks ADD COLUMN failed_check TEXT");
+    // M104: how many of a review's problems a Fix it left there (null: none, or not a Fix it).
+    if (!have.includes("still")) this.db.run("ALTER TABLE tasks ADD COLUMN still INTEGER");
     // M85: why an ask was asked (its plain reason, redacted), for an ask row.
     if (!have.includes("note")) this.db.run("ALTER TABLE tasks ADD COLUMN note TEXT");
     // M94: 1 when an ask was about a live system (a copy on this Mac can't bring it back), for What Squibby saved you.
@@ -250,10 +254,11 @@ export class TaskLog {
     const days = new Set([...tasks.map((t) => day(t.at)), ...reviews.map((r) => day(r.at))].filter(Boolean));
     return { jobs: tasks.filter((t) => t.mode !== GUARD_MODE && t.mode !== ASK_MODE).length, days: days.size };
   }
-  finish(id: number, status: string, usd: number, endedAt: string, receipt?: { checkpoint: string; changed: number; proof: string; failedCheck?: string }) {
+  finish(id: number, status: string, usd: number, endedAt: string, receipt?: { checkpoint: string; changed: number; proof: string; failedCheck?: string; still?: number }) {
     const failed = receipt?.proof === "failed" && receipt.failedCheck && RUNGS.includes(receipt.failedCheck) ? receipt.failedCheck : null;
-    this.db.query("UPDATE tasks SET status = ?, usd = ?, ended_at = ?, checkpoint = COALESCE(?, checkpoint), changed = ?, proof = ?, failed_check = ? WHERE id = ?")
-      .run(status, usd, endedAt, receipt?.checkpoint ?? null, receipt?.changed ?? null, receipt?.proof ?? null, failed, id);
+    const still = receipt?.still && Number.isInteger(receipt.still) && receipt.still > 0 ? Math.min(receipt.still, 20) : null;
+    this.db.query("UPDATE tasks SET status = ?, usd = ?, ended_at = ?, checkpoint = COALESCE(?, checkpoint), changed = ?, proof = ?, failed_check = ?, still = ? WHERE id = ?")
+      .run(status, usd, endedAt, receipt?.checkpoint ?? null, receipt?.changed ?? null, receipt?.proof ?? null, failed, still, id);
   }
   // An Undo back to checkpoint number fromN took back every task of this project that started there or later (upToN: only
   // up to that number, for an Undo of one task). Each is marked with the Undo's safety copy, unless an earlier Undo already
@@ -352,6 +357,7 @@ export class TaskLog {
       id: r.id, project: r.project, agent: r.agent, mode: r.mode, label: r.label, status: r.status, usd: r.usd, startedAt: r.started_at, endedAt: r.ended_at,
       checkpoint: r.checkpoint ?? null, changed: r.changed ?? null, proof: r.proof ?? null, undone: r.undone_by != null, back: r.undone_by != null && r.brought_back === 1,
       ...(r.failed_check && RUNGS.includes(r.failed_check) ? { failedCheck: r.failed_check as string } : {}),
+      ...(typeof r.still === "number" && r.still > 0 ? { still: r.still as number } : {}),
     }));
   }
 }

@@ -50,6 +50,7 @@ import { changedPackages, isManifest } from "./packages.ts";
 import { PACKAGE_NOTES, packageReasons, type PackageLookup } from "./osv.ts";
 import { dirname as dirOf } from "node:path";
 import { committedSince } from "./gitcommit.ts";
+import { findingsOf, outcomeOf, stillCount, type FixCheck, type FixOutcome } from "./fixcheck.ts";
 
 /** The commands whose work can write in the project (a task, a plan, Undo, an install, a check or a ship step that builds
  *  it, the shared memory files): main.ts wraps each in around(), so nothing they change is ever counted as the other
@@ -90,8 +91,10 @@ export type ReviewDeps = {
   /** The project's own build, tests and browser check, no model, nothing changed (agent.ts checkForReview). asked: the
    *  person pressed Review them, which is their yes to running the project's scripts in the safety box. */
   check?: (project: string, signal: AbortSignal, o: { asked: boolean }) => Promise<CheckOutcome>;
-  /** Starts Fix it: an ordinary task, admitted by the plan gate and run by the agent runner (main.ts). */
-  fix?: (cmd: AgentStart) => Promise<unknown> | unknown;
+  /** Starts Fix it: an ordinary task, admitted by the plan gate and run by the agent runner (main.ts). M104: check is
+   *  called by that task once its last change is saved, before its receipt, so the receipt says problem by problem what
+   *  the rules found again. */
+  fix?: (cmd: AgentStart, check?: FixCheck) => Promise<unknown> | unknown;
   /** M58 (feature 9): a project whose reviews use the rules alone, with no model and no cost (the key practice's copy,
    *  practicekey.ts isKeyPractice). No note is added: nothing is missing, the practice simply needs no model. */
   rulesOnly?: (project: string) => boolean;
@@ -180,6 +183,7 @@ const NOT_OPEN = "Open this project first, then review its changes.";
 const BUSY_REASON = "A review is already running. It will finish in a moment.";
 /** M58 (feature 9): the key practice's copy is free and model free, so its review's Fix it never starts a model fix there. */
 const PRACTICE_FIX = "In this practice, Fix it is the practice's own move.";
+const FIX_RUNNING = "The fix for these changes is already running. Wait for its result.";
 const MOVED_ON = "Those changes were already reviewed or have moved on. Review the newest ones.";
 const NOTHING = "Nothing has changed since the last review.";
 const STOPPED = "The review was stopped.";
@@ -285,6 +289,8 @@ export class ReviewService {
   private dirtyCapped = false;
   private reviewing: { batch: string; abort: AbortController } | null = null;
   private reviewed = new Map<string, Reviewed>();
+  /** M104: reviews whose Fix it task runs now. */
+  private fixing = new Set<string>();
   private ownBy = new Map<string, number>();
   private ownEpoch = 0;
   /** Changes of the other tool set aside (Held). At most one is held; later ones join it. */
@@ -825,9 +831,42 @@ export class ReviewService {
     // practice's own fixed move (practice.key) is its Fix it. Refused before the plan gate, so nothing is counted or spent.
     if (this.deps.rulesOnly?.(cmd.project) === true) { fail(PRACTICE_FIX); return; }
     this.said(rec.batch, "fix");
-    this.reviewed.delete(cmd.batch);
-    // An ordinary task: it keeps a safety copy first and can be undone, like every fix. The plan gate admits it in main.ts.
-    await this.deps.fix({ v: 1, id: cmd.id, type: "agent.start", project: cmd.project, agent: cmd.agent, mode: "drive", prompt: fixPrompt(rec.words), model: cmd.model, budgetUsd: cmd.budgetUsd });
+    // M104: the review is kept (it was deleted here before), so the task can check each problem again when it ends, and
+    // Try again on its receipt is Fix it again for what is still there. A press again while it runs is not a second fix.
+    if (this.fixing.has(cmd.batch)) { fail(FIX_RUNNING); return; }
+    // Only the problems not taken out yet are asked for (all of them on the first press).
+    const open = rec.words.reasons.filter((_, i) => !rec.fixed.has(i));
+    const words = open.length && open.length < rec.words.reasons.length ? { ...rec.words, reasons: open } : rec.words;
+    this.fixing.add(cmd.batch);
+    try {
+      // An ordinary task: it keeps a safety copy first and can be undone, like every fix. The plan gate admits it in main.ts.
+      await this.deps.fix({ v: 1, id: cmd.id, type: "agent.start", project: cmd.project, agent: cmd.agent, mode: "drive", prompt: fixPrompt(words), model: cmd.model, budgetUsd: cmd.budgetUsd }, this.fixCheckOf(rec));
+    } finally { this.fixing.delete(cmd.batch); }
+  }
+
+  /** M104: what the fix's task calls once its last change is saved: each problem of this review checked again by its rules
+   *  (no model, no script) against that version. Those gone are marked; a review with nothing still there is closed, and
+   *  one with something still there stays for Try again. Null when there is nothing to say (no problems, or the versions
+   *  are gone). Never throws: the receipt goes out without it. */
+  private fixCheckOf(rec: Reviewed): FixCheck {
+    return async ({ after, proof }) => {
+      try {
+        const says = rec.words.reasons.map((r) => redact(r.say));
+        if (!says.length || !rec.rechecks.length) return null;
+        const store = this.deps.store(rec.batch.project);
+        if (!store.has(after) || !store.has(rec.batch.from) || !store.has(rec.batch.to)) return null;
+        const want = new Set(recheckFiles(rec.rechecks));
+        const text = want.size ? await store.readFiles(after, (x) => want.has(x)) : {};
+        const migrations = rec.rechecks.some((t) => t.how === "table") ? await store.readFiles(after, (x) => MIGRATION.test(x)) : {};
+        const changed = async (a: string) => new Set([...(await store.diff(a, after)).map((c) => c.file), ...(await store.envChanged(a, after))]);
+        const changedSinceBefore = await changed(rec.batch.from), byFix = await changed(rec.batch.to);
+        const outcomes: FixOutcome[] = rec.rechecks.map((t, i) => outcomeOf({ kind: rec.kinds[i] ?? "", recheck: t, state: { text, changedSinceBefore, migrations }, byFix, proof, fixedBefore: rec.fixed.has(i) }));
+        outcomes.forEach((o, i) => { if (o === "gone") rec.fixed.add(i); });
+        const findings = findingsOf(says.slice(0, outcomes.length), outcomes);
+        if (!stillCount(findings) && this.reviewed.get(rec.batch.id) === rec) this.reviewed.delete(rec.batch.id);
+        return { batch: rec.batch.id, findings };
+      } catch { return null; }
+    };
   }
 
   // ---------- M101: Put these files back ----------

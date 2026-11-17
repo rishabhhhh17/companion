@@ -2,6 +2,7 @@
 // stop at the spending limit, and finish with a receipt. The engine (real Claude or a
 // scripted stand in) only supplies turns; everything safe happens here.
 
+import { stillCount, type FixCheck, type FixFinding } from "./review/fixcheck.ts";
 import { claimsPassed } from "./review/weakened.ts";
 import { parseSketch, sketchRequest } from "./sketch.ts";
 import { runCommand, shq, type RunOptions, type RunResult } from "./proof/exec.ts";
@@ -404,6 +405,8 @@ export class AgentRunner {
   private rulesSaid = new Set<string>();
   private lastProof = new Map<string, { verdict: string; snapshot: string }>();   // "Carry on" pressed before the loop is waiting for it
   private teachOffers = new Map<string, TeachOffer>();   // project -> the latest proven fix that made the same change twice
+  /** M104: a Fix it from a review, by its command id: the review's check, run once the task's last change is saved. */
+  private fixChecks = new Map<string, FixCheck>();
   private teaching = new Map<string, TeachTurn>();       // project -> the place the person was asked to change
   private lastTask = new Map<string, LastTask>();   // agent -> its last task, for a follow up or Try again
 
@@ -1063,7 +1066,7 @@ export class AgentRunner {
         const working = this.lastWorking(cmd.project);
         let marks: Record<string, { star?: true; name?: string }> = {};
         try { marks = this.store(cmd.project).marks(); } catch { /* no marks to show */ }
-        const tasks = this.o.log.list(cmd.project, 50).map((t) => ({ id: t.id, label: t.label, status: t.status, usd: t.usd, startedAt: t.startedAt, endedAt: t.endedAt, checkpoint: t.checkpoint, changed: t.changed, proof: t.proof, ...(t.undone ? { undone: true } : {}), ...(t.failedCheck ? { failedCheck: t.failedCheck } : {}), ...(t.back ? { back: true } : {}),
+        const tasks = this.o.log.list(cmd.project, 50).map((t) => ({ id: t.id, label: t.label, status: t.status, usd: t.usd, startedAt: t.startedAt, endedAt: t.endedAt, checkpoint: t.checkpoint, changed: t.changed, proof: t.proof, ...(t.undone ? { undone: true } : {}), ...(t.failedCheck ? { failedCheck: t.failedCheck } : {}), ...(t.still ? { still: t.still } : {}), ...(t.back ? { back: true } : {}),
           ...(working?.task === t.id ? { lastWorking: true } : {}), ...(t.checkpoint && marks[t.checkpoint]?.star ? { star: true } : {}), ...(t.checkpoint && marks[t.checkpoint]?.name ? { name: marks[t.checkpoint].name } : {}) }));
         const sinceCheck = await this.sinceProven(cmd.project);
         // M57 feature 1: the reviews of changes to this project, as their own rows (names of files only), within review.keepDays.
@@ -1244,6 +1247,10 @@ export class AgentRunner {
   /** The shadow store every task of this project uses (T06), for the review of changes (review/service.ts), so its
    *  snapshots and a task's are always taken one at a time. */
   checkpointsFor(project: string): CheckpointStore { return this.store(project); }
+  /** M104: the task started by this command is a review's Fix it: it calls check before its receipt (main.ts). */
+  checkAfter(commandId: string, check: FixCheck): void { this.fixChecks.set(commandId, check); }
+  /** M104: a check whose task never ran (refused, or the engine failed to start it) is let go. */
+  dropCheck(commandId: string): void { this.fixChecks.delete(commandId); }
   /** The project an agent's plan or last task is in, for a command that names only the agent (drive.approve). */
   projectOf(agent: string): string | undefined { return this.plans.get(agent)?.project ?? this.lastTask.get(agent)?.project; }
   /** Whether any work of the engine is on this folder now, a watch's own check included. Read only: unlike projectInUse it
@@ -1652,9 +1659,17 @@ export class AgentRunner {
     // A step of a plan that passed its checks but ends on a question for the person waits for the answer, like a step that
     // changed nothing: the next step must not start over it (a single task stays done, with the question on its receipt).
     if (status === "done" && this.driving.has(cmd.agent) && asking() && !abort.signal.aborted) status = "needs_you";
+    // M104: a review's Fix it: each problem it found, checked again by its rules (never a model) on what the task left.
+    // One still there means the fix is not proven: the receipt and History say so, and it is not counted as a proven fix.
+    const fixCheck = this.fixChecks.get(cmd.id);
+    this.fixChecks.delete(cmd.id);
+    let rechecked: { batch: string; findings: FixFinding[] } | null = null;
+    if (fixCheck && status !== "interrupted") { try { rechecked = await fixCheck({ after: lastAfter, proof }); } catch { rechecked = null; } }
+    if (rechecked && !rechecked.findings.length) rechecked = null;
+    const still = stillCount(rechecked?.findings);
     // Save the task first, so a page that asks for the timeline when the receipt arrives sees it.
     book();
-    this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof, ...(proof === "failed" && failedCheck ? { failedCheck } : {}) });
+    this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof, ...(proof === "failed" && failedCheck ? { failedCheck } : {}), ...(still ? { still } : {}) });
     this.openTasks.delete(cmd.agent);
     // Our work ends here: the project as it is now is what this step left. Later differences are the person's own.
     started.ended = true;
@@ -1689,10 +1704,10 @@ export class AgentRunner {
     try { flags = driftFlags({ request: cmd.prompt ?? "", changed: changed.map((c) => c.file), steps, project: cmd.project }); } catch { flags = []; }
     // M94: the flags' kinds only (never their words), so an Undo of this task later counts as a wrong change caught.
     for (const f of flags) this.markSaved("drift", cmd.project, taskId, f.kind);
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(lastSaid && proof !== "passed" && claimsPassed(lastSaid) ? { claimedPassed: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...(notesStay.length ? { notesStay } : {}), ...(flags.length ? { flags } : {}), ...practice } as never);
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(lastSaid && proof !== "passed" && claimsPassed(lastSaid) ? { claimedPassed: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...(notesStay.length ? { notesStay } : {}), ...(flags.length ? { flags } : {}), ...(rechecked ? { rechecked } : {}), ...practice } as never);
     // A proven fix (M45: it ended done and its checks passed) counts once toward Free's month (plan.ts). Nothing else does,
-    // and an Undo or Bring back later never changes it.
-    if (status === "done" && proof === "passed") this.o.fixes?.proven(opts.fixTicket, taskId);
+    // and an Undo or Bring back later never changes it. M104: nor a fix that left one of its review's problems there.
+    if (status === "done" && proof === "passed" && !still) this.o.fixes?.proven(opts.fixTicket, taskId);
     // M78: a fix that ended not proven (the loop breaker stopped it, or its checks still failed) leaves one "tried and failed"
     // line with its proof. Never off the record, never for a practice copy, never after Stop.
     if (proof === "failed" && lastFailure && status !== "interrupted" && !offRecord && !cmd.practice) this.rememberTried(cmd.project, lbl, lastFailure, stuckOffered);

@@ -130,12 +130,15 @@ const review = new ReviewService({
   // M79 (T18): known serious problems in packages a change added, on OSV.dev. Names and versions only, a day's cache in
   // this data folder, and packages.check turns it off. A stand in engine (tests) never reaches OSV.
   ...(settings.engine === "sdk" && !settings.assistStub ? { packages: new OsvClient({ cacheFile: join(settings.data, "osv-cache.json") }) } : {}),
-  fix: (start) => {
+  fix: (start, check) => {
     const admitted = plan.admit(start);
     if (!admitted) return;
     metrics.observeCommand(admitted);
-    const p = ownWork(start.project, () => runner.handle(admitted), "agent.start").catch((e: Error) => say({ type: "protocol.error", ...failure(e, "review.fix") })).finally(() => inflight.delete(p));
+    // M104: the task checks each problem of the review again before its receipt (rules only, no model).
+    if (check) runner.checkAfter(admitted.id, check);
+    const p = ownWork(start.project, () => runner.handle(admitted), "agent.start").catch((e: Error) => say({ type: "protocol.error", ...failure(e, "review.fix") })).finally(() => { inflight.delete(p); runner.dropCheck(admitted.id); });
     inflight.add(p);
+    return p;
   },
 });
 // M75 (roadmap 19, F30): the other tool's done signal. Only Squibby's own done folder is listened to; a marker for the project
