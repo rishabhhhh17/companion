@@ -311,14 +311,14 @@ button, select, input, textarea { font: inherit; }
    a short tag and its added and removed lines; the footer line; and the faceless glass orb with its state ring. */
 .ui-tag[data-tone="stop"] { border-color: transparent; background: var(--tag-stop-bg); color: var(--bad); }
 /* M69 (spec 1.2, 1.7): the status is a short tag, a pill with its dot and its word in the meaning's colour on a faint tint
-   of it, uppercase and a little open. The only uppercase words in the app (rule 16, M69 correction 5). */
-.ui-status { display: inline-flex; align-items: center; gap: var(--pill-gap); justify-self: start; width: fit-content; min-height: var(--h-pill); box-sizing: border-box; margin: 0; padding: 0 var(--pill-x); border-radius: var(--r-pill); background: var(--neutral-tint); color: var(--fg-2); font: var(--w-eyebrow) var(--t-eyebrow) / var(--lh-eyebrow) var(--font); letter-spacing: var(--track-eyebrow); text-transform: uppercase; }
+   of it. M112 (the founder, 16 Nov 2026, on PRACTICE READY): sentence case, like every other word in the app. */
+.ui-status { display: inline-flex; align-items: center; gap: var(--pill-gap); justify-self: start; width: fit-content; min-height: var(--h-pill); box-sizing: border-box; margin: 0; padding: 0 var(--pill-x); border-radius: var(--r-pill); background: var(--neutral-tint); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
 .ui-status-dot { flex: none; width: var(--dot); height: var(--dot); border-radius: var(--r-round); background: currentColor; }
 .ui-status[data-tone="needs"] { background: var(--warn-tint); color: var(--amber); }
 .ui-status[data-tone="proven"] { background: var(--ok-tint); color: var(--ok); }
 .ui-status[data-tone="stop"] { background: var(--danger-tint); color: var(--bad); }
 /* A section's short label over a card (LAST FIX, SINCE THEN): the same tag's type, in the second words, no pill. */
-.ui-eyebrow { margin: 0; color: var(--fg-2); font: var(--w-eyebrow) var(--t-eyebrow) / var(--lh-eyebrow) var(--font); letter-spacing: var(--track-eyebrow); text-transform: uppercase; }
+.ui-eyebrow { margin: 0; color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
 .ui-status[data-tone="working"] { background: var(--acc-tint); color: var(--status-working); }
 .ui-status[data-tone="working"] .ui-status-dot { background: var(--ring-working); }
 .ui-dot { display: inline-block; flex: none; width: var(--dot-bar); height: var(--dot-bar); border-radius: var(--r-round); background: var(--fg-2); }
@@ -420,7 +420,7 @@ button, select, input, textarea { font: inherit; }
 .ui-mtile[data-size="btn"] { width: var(--tile-btn); height: var(--tile-btn); border-radius: var(--r-tile-sm); font-size: var(--t-caption); }
 .ui-mtile .ic * { stroke-width: 2.25; }
 .ui-mdot { display: inline-block; flex: none; width: var(--dot-m); height: var(--dot-m); border-radius: var(--r-round); background: var(--mc); transition: background-color var(--dur-2) var(--ease-out); }
-.ui-mtag { display: inline-flex; align-items: center; gap: var(--pill-gap); width: fit-content; min-height: var(--h-pill); box-sizing: border-box; margin: 0; padding: 0 var(--space-2); border-radius: var(--r-pill); background: var(--mc-soft); color: var(--mc-text); font: var(--w-bold) var(--t-eyebrow) / var(--lh-eyebrow) var(--font); letter-spacing: var(--track-eyebrow); text-transform: uppercase; transition: background-color var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out); }
+.ui-mtag { display: inline-flex; align-items: center; gap: var(--pill-gap); width: fit-content; min-height: var(--h-pill); box-sizing: border-box; margin: 0; padding: 0; border-radius: var(--r-pill); background: transparent; color: var(--mc-text); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); transition: background-color var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out); }
 .ui-mtag-tick { display: inline-grid; flex: none; color: var(--mc); }
 .ui-mtag-tick .ic * { stroke-width: 3; stroke-dasharray: 24; stroke-dashoffset: 0; animation: ui-tick-draw var(--dur-4) var(--ease-out) var(--dur-2) both; }
 @keyframes ui-tick-draw { from { stroke-dashoffset: 24; } }
@@ -436,8 +436,8 @@ button.ui-mrow-main:hover { background: var(--surface-2); }
 .ui-mrow-line { color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
 .ui-mrow-fact { flex: none; color: var(--fg-2); font: var(--w-bold) var(--t-small) / var(--lh-small) var(--font); font-variant-numeric: tabular-nums; }
 .ui-mrow-fact[data-c] { color: var(--mc-text); }
-.ui-mrow-act { flex: none; min-height: var(--h-sm); margin: 0; padding: 0 var(--space-2); border: 0; border-radius: var(--r-control); background: transparent; color: var(--mc-text); font: var(--w-bold) var(--t-small) / var(--lh-small) var(--font); transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
-.ui-mrow-act:hover { background: var(--mc-soft); }
+.ui-mrow-act { flex: none; min-height: var(--h-sm); margin: 0; padding: 0 var(--space-2); border: 0; border-radius: var(--r-control); background: transparent; color: var(--row-act-fg, var(--mc-text)); font: var(--w-bold) var(--t-small) / var(--lh-small) var(--font); transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
+.ui-mrow-act:hover { background: var(--row-act-soft, var(--mc-soft)); }
 .ui-mrow-act:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
 /* M101: an action that cannot be pressed now (its row's line says why). */
 /* No colour and regular weight, so it never reads as a press beside one that is (the M101 review). */
@@ -453,6 +453,10 @@ button.ui-mrow-main:hover { background: var(--surface-2); }
 .ui-place { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; min-height: var(--h-place); margin: 0; padding: 0 var(--space-3) 0 var(--space-1); border: 0; border-radius: var(--r-pill); background: transparent; color: var(--fg-2); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .ui-place:hover { color: var(--fg); background: var(--surface-1); }
 .ui-place[aria-pressed="true"] { background: var(--mc-soft); color: var(--fg); }
+/* M112: a place's living glyph, quiet until its place is open, then lit in the habitat's accent. */
+.ui-place-glyph { display: grid; place-items: center; width: var(--tile-place); height: var(--tile-place); color: var(--fg-2); transition: color var(--dur-hover) var(--ease-out); }
+.ui-place:hover .ui-place-glyph { color: var(--fg); }
+.ui-place[aria-pressed="true"] .ui-place-glyph { color: var(--mc-text); }
 /* A sidebar item with a colour tile (M71): the open one on its colour's soft fill. */
 .sb-item[data-c][aria-current="page"] { background: var(--mc-soft); }
 .sb-item .ui-mtile .ic, .sb-item[aria-current="page"] .ui-mtile .ic { color: var(--c-mark); }

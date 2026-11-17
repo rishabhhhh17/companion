@@ -44,3 +44,9 @@ People on real Macs find it distracting at work, or read it as a glitch; then th
 - The character can now live in the notch (F18 update of 16 Nov 2026). The peek out from the notch side keeps its own setting (`notch.peek`) and rules, unchanged, whether the character is tucked or not.
 - The notch's hover row and the small chat show the character's face; while tucked, that face can be dragged out onto the screen, and the chat has one small Bring out button beside Settings. A click on the face still opens the chat.
 - Built in `docs/milestones/M111-tuck-into-notch.md`.
+
+## Update, 17 Nov 2026 (founder, 16 Nov): the notch's look is Squibby's own (M112)
+- The founder liked the M96 notch ("the best thing you've done till now") but said it "feels a lot like HeyClicky": change the colours and things, and "don't make it feel too much like HeyClicky".
+- The behaviour, states, focus rules and sizes of M96 are unchanged. The look changed: the lavender to blue gradient pill, the lavender glow on the field, the lavender bubbles and the dotted grid are gone. The notch and the small chat now take the character's habitat (Flowflow's: deep sea glow, a cyan teal glow on black with membranes of light and a small photophore in the pill), the founder's theme of life from elsewhere as an undertone.
+- Also fixed: the opened notch could show the small chat and Home's ask box at once in the tall Home.
+- Built in `docs/milestones/M112-squibby-notch-look.md`.

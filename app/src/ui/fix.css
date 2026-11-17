@@ -21,7 +21,8 @@
 .run-row[data-state="failed"] .run-mark, .tick-row[data-state="bad"] .run-mark, .fail-step .run-mark { color: var(--bad); }
 /* Under way: a still dot in the accent (it never spins: the status words say it is running). Waiting, or a check that did not
    finish: an empty ring. */
-.run-row[data-state="now"] .run-mark::before { content: ""; width: var(--dot); height: var(--dot); border-radius: var(--r-round); background: var(--acc); }
+/* The step under way is working, in working's own colour (M112 review: never the accent, which means "press this"). */
+.run-row[data-state="now"] .run-mark::before { content: ""; width: var(--dot); height: var(--dot); border-radius: var(--r-round); background: var(--water); }
 .run-row[data-state="waiting"] .run-mark::before, .tick-row[data-state="unfinished"] .run-mark::before { content: ""; width: var(--dot); height: var(--dot); border-radius: var(--r-round); box-shadow: inset 0 0 0 var(--hair) var(--fg-2); }
 .run-status { display: inline-flex; align-items: baseline; gap: var(--space-2); color: var(--fg-2); font-variant-numeric: tabular-nums; }
 .run-row[data-state="failed"] .run-status { color: var(--bad); }

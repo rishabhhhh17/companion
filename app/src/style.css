@@ -11,6 +11,7 @@
 .muted { color: var(--fg-2); font-size: var(--t-small); }
 .ic { display: block; flex: none; }
 .ic * { vector-effect: non-scaling-stroke; }
+/* M112: the habitat's one stroke; a living glyph's nucleus filled as it says (tokens.css). */ .ic { stroke-width: var(--hab-glyph-stroke, 1.5); } .ic .hg-n { fill: currentColor; fill-opacity: var(--hab-nucleus-a, 0); } /* Off (habitat.ts glyphs.nucleus): an outline. */ :root[data-glyph-nucleus="off"] .ic .hg-n { fill-opacity: 0; }
 
 /* ------------------------------------------------------------------------------------------------------------------ */
 /* The character. Its page paints nothing (the window is see through too, main.rs), so it floats on the desktop. A simple
@@ -40,8 +41,8 @@ html.dock-page, body.dock-page { background: transparent; }
 /* What it says under the character: a small pill that stays readable on any wallpaper. */
 /* M66 (dockStates.ts): the word is always on the page under the button (94 px, centred), out of the layout, so the character
    never moves; the poses stay stacked and cross fade; thinking is a small arc at the character, never an empty card. */
-.dock-label { max-width: 150px; box-sizing: border-box; text-align: center; padding: var(--space-1) var(--space-3); border-radius: var(--r-card); font-size: var(--t-caption); font-weight: 500; color: var(--glass-ink); background: var(--glass-quiet); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 0 0 var(--hair) var(--glass-edge); position: absolute; top: calc(50% + 94px / 2 + var(--space-2)); left: 50%; translate: -50% 0; width: max-content; pointer-events: none; opacity: 0; transform: scale(.96); transform-origin: top center; transition: opacity var(--dur-1) var(--ease-exit), transform var(--dur-1) var(--ease-exit); }
-.dock-label[data-shown] { opacity: 1; transform: none; transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out); }
+.dock-label { max-width: min(150px, calc(100vw - 2 * var(--space-2))); box-sizing: border-box; text-align: center; padding: var(--space-1) var(--space-3); border-radius: var(--r-card); font-size: var(--t-caption); font-weight: 500; color: var(--glass-ink); background: var(--glass-quiet); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 0 0 var(--hair) var(--glass-edge); position: absolute; top: calc(50% + 94px / 2 + var(--space-2)); left: 50%; width: max-content; pointer-events: none; opacity: 0; transform: translateX(-50%) scale(.96); transform-origin: top center; transition: opacity var(--dur-1) var(--ease-exit), transform var(--dur-1) var(--ease-exit); }
+.dock-label[data-shown] { opacity: 1; transform: translateX(-50%); transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out); }
 .character .pose-stack { position: absolute; inset: 0; display: block; } .character .pose-stack.flow-ready { visibility: hidden; }
 .character .pose-stack .pose { position: absolute; inset: 0; opacity: 0; transition: opacity var(--dur-1) var(--ease-exit); } .character .pose-stack .pose[data-on] { opacity: 1; transition: opacity var(--dur-2) var(--ease-out); }
 .think-glyph { position: absolute; top: calc(var(--space-1) * -1); left: calc(var(--space-1) * -1); width: var(--space-4); height: var(--space-4); box-sizing: border-box; border-radius: var(--r-round); border: 2px solid var(--ring-working); border-right-color: transparent; pointer-events: none; opacity: 0; animation: think-turn var(--loop-spin) linear infinite; animation-play-state: paused; transition: opacity var(--dur-1) var(--ease-exit); }

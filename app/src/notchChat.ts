@@ -72,11 +72,29 @@ export type Bubble = { key: string; who: "squibby" | "you"; words: string; go?: 
 const sameFolder = (a: string, b: string): boolean => !!a && a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
 const timeOf = (h: Pick<HistoryItem, "startedAt" | "endedAt">): number => { const t = Date.parse(h.endedAt ?? h.startedAt ?? ""); return Number.isFinite(t) ? t : 0; };
 
-const projectName = (project: string): string => project.split("/").filter(Boolean).at(-1) ?? "";
+/** M112 (the founder's glitch, 16 Nov 2026): the longest project name the chat shows, in its top row and in the field's hint.
+ *  A longer one is cut at a word where it can be, with an ellipsis, so it never wraps or runs past the shape. */
+export const CHAT_NAME_MAX = 28;
+const shorten = (n: string, max = CHAT_NAME_MAX): string => {
+  if (n.length <= max) return n;
+  const cut = n.slice(0, max - 1), sp = cut.lastIndexOf(" ");
+  return `${(sp >= max * 0.6 ? cut.slice(0, sp) : cut).trimEnd()}…`;
+};
+/** M112 review: the top row has more room than the field's hint (shot 3f), so it keeps more of the name; a longer one still
+ *  wraps inside the row at a bigger text size, never cut by the window. */
+export const CHAT_ROW_MAX = 40;
+/** The project's whole name, or "" with none: the top row's tooltip and what VoiceOver says, so the full name can always
+ *  be read (M112 review: it was the shortened one). */
+export const chatProject = (project: string): string => project.split("/").filter(Boolean).at(-1) ?? "";
+/** The name as the top row shows it: up to CHAT_ROW_MAX letters. */
+export const chatRowProject = (project: string): string => shorten(chatProject(project), CHAT_ROW_MAX);
+/** The name shortened to CHAT_NAME_MAX letters, for the field's hint and Squibby's own words. */
+export const chatShortProject = (project: string): string => shorten(chatProject(project));
+const projectName = chatShortProject;
 /** The field's hint, naming the project an ask goes to (Return starts a task there). */
 export const chatAsk = (project: string): string => { const n = projectName(project); return n ? S.m96.chat.askAbout(n) : S.m96.chat.ask; };
-/** The project's name for the top row, or "" with none. */
-export const chatProject = projectName;
+/** The field's spoken name: the same, with the whole name. */
+export const chatAskFull = (project: string): string => { const n = chatProject(project); return n ? S.m96.chat.askAbout(n) : S.m96.chat.ask; };
 
 /** What Squibby says about one finished task, from its history row only. */
 export function outcome(h: HistoryItem): string {

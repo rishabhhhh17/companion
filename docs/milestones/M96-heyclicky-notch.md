@@ -117,3 +117,7 @@ Served from `app/dist` with a stand in for the app, headless Chromium at 2x, in 
 ## Later, 16 Nov 2026: M111
 
 While the character is dragged over the notch, the notch grows this same 330 by 42 row (`island.rs` `take_look`) to say it will take it, with a soft inset lavender glow on its black (`--tuck-line`, `--tuck-glow`, kept apart from the four lavender parts above). While tucked, the face in this row and in the small chat can be dragged out onto the screen, and the chat's top row gains one Bring out button beside Settings. See `docs/milestones/M111-tuck-into-notch.md`.
+
+## Later, 17 Nov 2026: M112
+
+The founder: the notch "feels a lot like HeyClicky... don't make it feel too much like HeyClicky." The behaviour and states above stay; the look is now the character's habitat (no lavender, no gradient pill, no dotted grid). The founder's glitch of 16 Nov (the chat and Home's ask box showing at once in the tall Home) is fixed there too. See `docs/milestones/M112-squibby-notch-look.md`.

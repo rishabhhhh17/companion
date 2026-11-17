@@ -67,8 +67,12 @@ describe("the same news has the same colour", () => {
     expect(MEANING_COLOUR[VERDICT_MEANING.stopped]).toBe("grey");
     expect(MEANING_COLOUR[FIX_MEANING.undone]).toBe("orange");
   });
-  test("each place has its own colour: Now blue, Learn purple, History orange, Memory pink, Settings grey", () => {
-    expect(PLACE_COLOUR).toEqual({ now: "blue", learn: "purple", did: "orange", memory: "pink", settings: "grey" });
+  // Changed on purpose in M112 (the founder's habitat): the places take the one accent and their own living glyph, never a
+  // meaning's colour each.
+  test("each place is lit in the one accent with its own glyph; Settings grey", () => {
+    // Changed on purpose (M112 review): the places take the accent itself, never "blue", which is working's colour.
+    expect(PLACE_COLOUR).toEqual({ now: "accent", learn: "accent", did: "accent", memory: "accent", settings: "grey" });
+    expect(PLACE_ICON).toEqual({ now: "cell", learn: "sprout", did: "spiral", memory: "neuron", settings: "gear" });
     for (const p of PLACES) expect(typeof PLACE_ICON[p]).toBe("string");
   });
 });

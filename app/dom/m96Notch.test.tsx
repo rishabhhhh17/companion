@@ -97,7 +97,10 @@ describe("the small chat in Home", () => {
     await renderHome();
     await opened();
     const name = PROJECT.split("/").at(-1)!;
-    expect(document.querySelector(".notch-chat .nc-proj")?.textContent).toBe(name);
+    // Changed on purpose (M112 review): the row shows the name (shortened only past CHAT_ROW_MAX) and VoiceOver reads the
+    // whole name, so the top row's text is the shown words plus the whole name for VoiceOver.
+    expect(document.querySelector('.notch-chat .nc-proj > [aria-hidden="true"]')?.textContent).toBe(name);
+    expect(document.querySelector(".notch-chat .nc-proj > .sr")?.textContent).toBe(name);
     expect(field()?.getAttribute("placeholder")).toBe(S.m96.chat.askAbout(name));
   });
 

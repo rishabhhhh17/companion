@@ -2,6 +2,24 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Squibby's own look: life from elsewhere: 17 Nov 2026
+
+- **Fixed: the notch showed two panels at once.** With the tall Home, opening the notch could show the small chat and, under it, Home's own ask box cut off by the edge. Now only the chat shows, and nothing under it can scroll into view.
+- **Fixed: the word under the character was cut off.** "Looking at your screen" hung off to one side of the character and was cut by its window. It now sits centred under it, and a long word wraps instead of running off.
+- **Long project names fit.** In the chat, a long name is shortened with an ellipsis instead of wrapping or being cut in half.
+- **The notch looks like Squibby now, not like another app.** The light blue pill, the glowing outline and the dotted background are gone. Pointing at the notch shows a dark pill with a soft cyan glow and a tiny light at its left: cyan when nothing waits, amber when changes wait for your review, red when a check failed. Everything works exactly as before.
+- **A theme of life from elsewhere, kept quiet.** Squibby's world is a deep sea at night: black, one soft cyan glow on the one thing to press, thin edges of light on cards and bubbles. Your work stays the loudest thing on the screen.
+- **New icons for Now, Learn, History and Memory.** Small living shapes in one line style (a cell, a sprouting seed, a shell's spiral, a neuron) instead of four coloured squares.
+- **Calmer labels.** "PRACTICE READY" and its friends are written normally now ("Practice ready"), with a small dot in their colour.
+- **Colours still mean the same things.** Green means proven, amber means something to review, red means a risk, and Flowflow's blue means it is working. Every word passes the contrast rules, and Increase Contrast, Reduce Transparency and Reduce Motion are respected.
+- **One colour for "press this".** A row's own action, like "Start practice" or "Undo these changes", now always takes the cyan glow, so it never reads as a different kind of thing from the main button. Coloured dots and labels still carry their meaning.
+- **Working never looks like a button.** Working dots, tags and the ring around the character are Flowflow's blue again, and the microphone's listening light is a soft orchid. Only the things you can press, and the place you are on, are cyan.
+- **The notch's button looks like a button.** When nothing waits, the action under the notch ("Check my project") is a filled cyan button, the same as in Home. When something waits for you, it stays dark with an amber or red light.
+- **Send lights up only when there is something to send,** in the small chat and in Home.
+- **The whole project name is always there.** Point at it in the chat to read all of it; VoiceOver reads all of it too.
+- **Small fixes:** the soft fill behind the place you are on now covers its whole name, and a list that goes on under the ask box shows a thin line there instead of stopping in a hard cut.
+- **Each character gets its own home.** The look now belongs to the character, so a future character can bring its own colours and small details without changing the app. Flowflow's is the only one for now.
+
 ## Tuck the character into the notch: 16 Nov 2026
 
 - **Drag it onto the notch and it tucks away.** As you bring Squibby over the notch, the notch glows softly and says "Let go to tuck Squibby in", and Squibby shrinks a little toward it. Let go and it shrinks up into the notch and is gone from your screen. Move away instead and nothing changes.

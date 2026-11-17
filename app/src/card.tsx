@@ -57,7 +57,7 @@ import { barContext, barKeyChord, layoutOf, sideOn, sidePlaces, sideRecent, useM
 import { askChips, firstWayTip } from "./askChips.ts";
 import { checkedAgo, lastFix, nowRows, restCards, restHero, restMainLabel, resultHero, sinceRows, workedFor } from "./homeRest.ts";
 import { ShotPair } from "./homeRest.tsx";
-import { heroMeaning, MEANING_COLOUR, PILL_MEANING, PLACE_COLOUR, PLACE_ICON, statusDot, type Colour } from "./meaning.ts";
+import { heroMeaning, MEANING_COLOUR, PILL_MEANING, PLACE_COLOUR, PLACE_ICON, statusDot, type Colour, type PartColour } from "./meaning.ts";
 import { reviewHead } from "./reviewHead.ts";
 import { HomeSide } from "./homeSide.tsx";
 import { ReviewCardView, REVIEW_ID } from "./reviewCard.tsx";
@@ -435,7 +435,7 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
       {/* Nothing yet: what will appear here, and one way to start (spec 2.4), never a lone grey sentence. */}
       {items.length === 0 && (
         <ListGroup label={S.recentTitle}>
-          <EmptyRow icon="undo" title={S.screens.historyEmptyTitle} line={S.screens.historyEmptyLine} example={{ colour: MEANING_COLOUR.proven, icon: "tick", ...S.screens.historyExample }}
+          <EmptyRow icon="spiral" title={S.screens.historyEmptyTitle} line={S.screens.historyEmptyLine} example={{ colour: MEANING_COLOUR.proven, icon: "tick", ...S.screens.historyExample }}
             action={onPractice ? { label: S.screens.startPractice, colour: "purple", onClick: onPractice } : onAsk ? { label: S.screens.askFirst, onClick: onAsk, colour: "blue" } : null} />
         </ListGroup>
       )}
@@ -2005,6 +2005,8 @@ export function Card() {
     if (was && home && was.value) { home.value = was.value; was.value = ""; }
     setChat(false); void invoke("home_expand").catch(() => {});
   };
+  // M112 (the founder's glitch): the chat opens at the top of Home, never scrolled down to the parts hidden under it.
+  useLayoutEffect(() => { if (chat && root.current) root.current.scrollTop = 0; }, [chat]);
   // And Home's draft moves into the chat's field as it opens.
   useLayoutEffect(() => {
     const now = chatBox.current, was = homeBox.current;
@@ -2344,11 +2346,12 @@ export function Card() {
   const palRows: PaletteRow[] = home.tab === "now" && show("ask") && askMode !== "showme" ? paletteRows(palText, palActions, m.history.map((h) => taskName(h.label))) : [];
   const palOn = paletteShown(palRows);
   const palId = `${askId}-pal`;
-  const palLook = (r: PaletteRow): { colour: Colour; icon: IconName; words: string } =>
-    r.kind === "ask" ? { colour: "blue", icon: "send", words: S.look.palAsk(r.text) }
+  // An ask and a plain action are presses: the accent (M112 review), never "blue", which is working's colour.
+  const palLook = (r: PaletteRow): { colour: PartColour; icon: IconName; words: string } =>
+    r.kind === "ask" ? { colour: "accent", icon: "send", words: S.look.palAsk(r.text) }
     : r.kind === "past" ? { colour: "grey", icon: "undo", words: r.text }
     : r.id in PLACE_COLOUR ? { colour: PLACE_COLOUR[r.id as Tab], icon: PLACE_ICON[r.id as Tab], words: r.label }
-    : { colour: r.id === "review" || r.id === "undo" ? "orange" : "blue", icon: r.id === "review" ? "eye" : r.id === "undo" ? "undo" : r.id === "shipCheck" ? "shield" : "find", words: r.label };
+    : { colour: r.id === "review" || r.id === "undo" ? "orange" : "accent", icon: r.id === "review" ? "eye" : r.id === "undo" ? "undo" : r.id === "shipCheck" ? "shield" : "find", words: r.label };
   const runPal = (r: PaletteRow | undefined) => {
     if (!r) return;
     if (r.kind === "ask") { submit(); return; }

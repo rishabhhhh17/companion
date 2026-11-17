@@ -156,18 +156,28 @@ describe("type, tags, keys and elevation (spec 1.1, 1.6, 1.7)", () => {
     // No weight over 600 anywhere (spec 1.1).
     for (const m of ALL_CSS().matchAll(/font-weight:\s*(\d+)/g)) expect(Number(m[1])).toBeLessThanOrEqual(600);
   });
-  test("the status tag is a pill with a word, upper case only there and on a card's short label (rule 16)", () => {
+  // Changed on purpose in M112 (the founder, 16 Nov 2026, on PRACTICE READY): the tags are sentence case like every word.
+  test("the status tag is a pill with a word, and nothing in the app is upper case (rule 16)", () => {
     const parts = blocks(PARTS_CSS());
     const status = parts.find((b) => b.sel === ".ui-status")!.decl;
-    expect(status).toMatchObject({ "border-radius": "var(--r-pill)", "text-transform": "uppercase", "letter-spacing": "var(--track-eyebrow)", background: "var(--neutral-tint)" });
+    expect(status).toMatchObject({ "border-radius": "var(--r-pill)", background: "var(--neutral-tint)" });
+    expect(status["text-transform"]).toBeUndefined();
     for (const [tone, tint] of [["needs", "--warn-tint"], ["proven", "--ok-tint"], ["stop", "--danger-tint"], ["working", "--acc-tint"]]) {
       expect(parts.find((b) => b.sel === `.ui-status[data-tone="${tone}"]`)!.decl.background, tone).toBe(`var(${tint})`);
     }
     const upper = blocks(ALL_CSS()).filter((b) => /text-transform:\s*uppercase/.test(Object.entries(b.decl).map(([k, v]) => `${k}: ${v}`).join(";")));
     // M71: the meaning tag (ui/parts.tsx Tag) is the same short status tag, in its meaning's colour.
-    expect(upper.map((b) => b.sel).sort()).toEqual([".ui-eyebrow", ".ui-mtag", ".ui-status"]);
+    expect(upper.map((b) => b.sel).sort()).toEqual([]);
     // The words in a tag are short: the status words are one to three words.
     for (const w of Object.values(S.ui.status)) expect(w.split(" ").length, w).toBeLessThanOrEqual(3);
+  });
+  // M112 review: with upper case gone, the status tag, the meaning tag and the eyebrow are one type: caption, strong.
+  test("every tag is set in the same type as the eyebrow: caption size, strong weight", () => {
+    const parts = blocks(PARTS_CSS());
+    const font = (sel: string) => parts.find((b) => b.sel === sel)!.decl.font;
+    expect(font(".ui-eyebrow")).toBe("var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font)");
+    expect(font(".ui-mtag")).toBe(font(".ui-eyebrow"));
+    expect(font(".ui-status")).toBe(font(".ui-eyebrow"));
   });
   test("buttons are keys: a 2 point bottom edge at rest, 1 when pressed, drawn inside so nothing moves; quiet ones have none", () => {
     const parts = blocks(PARTS_CSS());

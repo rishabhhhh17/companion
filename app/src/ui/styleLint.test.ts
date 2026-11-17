@@ -187,7 +187,8 @@ describe("flat silver, plain titles (the overhaul spec, 2.2; the founder, 31 Oct
     // M69 correction 5 (rule 16): upper case only on the spec's short status tags (PROVEN, FIX THIS FIRST) and a card's
     // short label (LAST FIX), never on a header, a button or a sentence.
     for (const r of all) {
-      if (!/^\.ui-(status|eyebrow|mtag)$/.test(r.sel)) expect(r.body, r.sel).not.toMatch(/text-transform:\s*uppercase/);
+      // Changed on purpose in M112 (the founder, on PRACTICE READY): no upper case anywhere, the tags included.
+      expect(r.body, r.sel).not.toMatch(/text-transform:\s*uppercase/);
       if (/\.sb-|nav|side/.test(r.sel)) expect(r.body, r.sel).not.toMatch(/border-left/);
     }
   });
@@ -252,22 +253,25 @@ describe("M71: one black look, colour for meaning only", () => {
    *  it"): the one thing to press under the notch is a lavender pill with a soft blue glow, and the small chat's mic, field
    *  and the person's own bubble share it, on a faint dotted grid. Exactly these parts, named here, and nothing else;
    *  m96Notch.test.ts holds that the lavender appears nowhere else. */
-  const M96_GLOW = /^(\.island-panel button\.nb-pill|\.notch-chat \.nc-mic|\.notch-chat \.nc-field|\.notch-chat \.nc-field:focus-within)$/;
-  const M96_GRADIENT = /^(\.island-panel button\.nb-pill|\.notch-chat \.nc-mic|\.notch-chat \.nc-me|\.home\[data-chat\] \.notch-chat)$/;
+  // Changed on purpose in M112 (the founder, 16 Nov 2026: "don't make it feel too much like HeyClicky"): the lavender's
+  // gradients are gone, and the habitat's glow is only on the one thing to press in the notch (the pill) and the small chat
+  // (send, and the field while it has the keys).
+  const M96_GLOW = /^(\.island-panel button\.nb-pill|\.notch-chat \.nc-send|\.notch-chat \.nc-field:focus-within)$/;
+  const M96_GRADIENT = /^$/;
   test("no gradient outside the character's own art", () => {
     const bad: string[] = [];
     // A mask that fades a scrolling strip's edge is no colour: it is left to the clean up, which decides about it.
     for (const [file, rules] of M71_FILES) for (const r of rules) for (const [k, v] of r.decl) if (!CHARACTER_ART.test(r.sel) && !M96_GRADIENT.test(r.sel) && !CHARACTER_ART.test(r.at ?? "") && !/mask-image$/.test(k) && /gradient\(/.test(v)) bad.push(`${file}: ${r.sel} { ${k} }`);
     expect(bad).toEqual([]);
   });
-  test("M96: the lavender's gradient and glow are on exactly the parts the mock gave them", () => {
+  test("M112: the habitat's glow is on exactly the one thing to press, and the notch and the chat have no gradient", () => {
     const found = { glow: new Set<string>(), gradient: new Set<string>() };
     for (const [, rules] of M71_FILES) for (const r of rules) for (const [k, v] of r.decl) {
       if (M96_GLOW.test(r.sel) && /--[\w-]*glow/.test(v)) found.glow.add(r.sel);
       if (M96_GRADIENT.test(r.sel) && /gradient\(/.test(v) && k.startsWith("background")) found.gradient.add(r.sel);
     }
-    expect(found.glow.size).toBe(4);
-    expect(found.gradient.size).toBe(4);
+    expect([...found.glow].sort()).toEqual([".island-panel button.nb-pill", ".notch-chat .nc-field:focus-within", ".notch-chat .nc-send"]);
+    expect(found.gradient.size).toBe(0);
   });
   test("no glow or halo: no drop shadow, no glow or halo token, no blurred coloured shadow, outside the character's art", () => {
     const bad: string[] = [];
@@ -280,6 +284,54 @@ describe("M71: one black look, colour for meaning only", () => {
       }
     }
     expect(bad).toEqual([]);
+  });
+  // M112 review: the glow lint only caught --*glow* tokens and the --c-/--mc- colours, so the photophore's blurred amber or
+  // red shadow (var(--pill-light)) and the main button's glow (a token in tokens.css) went past it. Any shadow layer with a
+  // blur is a glow unless its colour is a neutral shadow token, and every glow is named here: the notch pill (and its
+  // photophore and the waiting dot), the chat's send and its field with the keys, and the main button.
+  const NEUTRAL_SHADOW = /^--(shadow|sheen|el-shadow|key|keycap|glass|notch-ink|ask-shadow|btn-key)/;
+  const GLOWS_ALLOWED = /^(\.island-panel button\.nb-pill(\[data-c="(orange|red)"\])?|\.island-panel button\.nb-pill(\[data-c="(orange|red)"\])?::before|\.island-panel \.nb-dot|\.notch-chat \.nc-send|\.notch-chat \.nc-field:focus-within)$/;
+  const TOKEN_GLOWS_ALLOWED = new Set(["--main-shadow"]);
+  /** The colour token of every blurred layer of a shadow value that is not a neutral shadow. */
+  const glowsIn = (v: string): string[] => {
+    const layers: string[] = []; let depth = 0, from = 0;
+    for (let i = 0; i < v.length; i++) { if (v[i] === "(") depth++; else if (v[i] === ")") depth--; else if (v[i] === "," && depth === 0) { layers.push(v.slice(from, i)); from = i + 1; } }
+    layers.push(v.slice(from));
+    const out: string[] = [];
+    for (const layer of layers) {
+      const parts: string[] = []; let d = 0, cur = "";
+      for (const ch of layer.trim()) { if (ch === "(") d++; if (ch === ")") d--; if (/\s/.test(ch) && d === 0) { if (cur) parts.push(cur); cur = ""; } else cur += ch; }
+      if (cur) parts.push(cur);
+      const p = parts.filter((x) => x !== "inset");
+      if (p.length < 4) continue;
+      const blur = p[2]!, colour = p[p.length - 1]!;
+      if (/^0(px)?$/.test(blur)) continue;
+      const token = colour.match(/var\((--[\w-]+)/)?.[1];
+      if (!token) { if (!/^(transparent|none)$/.test(colour)) out.push(colour); continue; }
+      if (!NEUTRAL_SHADOW.test(token)) out.push(token);
+    }
+    return out;
+  };
+  test("M112 review: every blurred coloured shadow is a glow, and every glow is named (the pill, its light, send, the field, the main button)", () => {
+    const bad: string[] = [];
+    for (const [file, rules] of M71_FILES) for (const r of rules) {
+      if (CHARACTER_ART.test(r.sel) || CHARACTER_ART.test(r.at ?? "") || sels(r).every((x) => GLOWS_ALLOWED.test(x))) continue;
+      for (const [k, v] of r.decl) if (/shadow$/.test(k) && !/^var\(--[\w-]+\)$/.test(v)) for (const g of glowsIn(v)) bad.push(`${file}: ${r.sel} { ${k}: ${g} }`);
+    }
+    // The tokens a shadow reads: only the main button's glows.
+    for (const r of parse(TOKENS_CSS())) for (const [k, v] of r.decl) if (/shadow/.test(k) && !TOKEN_GLOWS_ALLOWED.has(k)) for (const g of glowsIn(v)) if (/glow|--hab-|--c-|--mc|--acc|--water/.test(g)) bad.push(`tokens.css: ${r.sel} { ${k}: ${g} }`);
+    expect(bad).toEqual([]);
+  });
+  test("M112 review: the photophore's light has a blur token that Reduce Transparency sets to none", () => {
+    const notch = parse(NOTCH_CSS());
+    for (const sel of ['.island-panel button.nb-pill[data-c="orange"]::before', ".island-panel .nb-dot"]) {
+      const r = notch.find((x) => x.sel.split(",").map((s) => s.trim()).includes(sel));
+      expect(r, sel).toBeTruthy();
+    }
+    for (const r of notch) for (const [k, v] of r.decl) if (/shadow$/.test(k) && /var\(--pill-light\)/.test(v)) expect(v, r.sel).toMatch(/var\(--hab-light-blur\)/);
+    const rt = parse(TOKENS_CSS()).filter((r) => /prefers-reduced-transparency/.test(r.at ?? "") && r.sel === ":root[data-habitat]");
+    expect(rt.some((r) => r.decl.some(([k, v]) => k === "--hab-light-blur" && v === "0"))).toBe(true);
+    expect(parse(TOKENS_CSS()).some((r) => r.sel === ":root[data-habitat]" && !r.at && r.decl.some(([k, v]) => k === "--hab-light-blur" && v === "6px"))).toBe(true);
   });
   test("no colour value outside tokens.css, and no rule keyed on the old rooms ([data-element]) in any stylesheet", () => {
     const bad: string[] = [];

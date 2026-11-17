@@ -8,7 +8,7 @@ import { useLayoutEffect, useRef, type KeyboardEvent, type Ref } from "react";
 import { FlowMini } from "./flowflowMini.tsx";
 import { Icon } from "./icons.tsx";
 import type { Model } from "./model.ts";
-import { chatAsk, chatBubbles, chatProject, chatWhen, type Bubble } from "./notchChat.ts";
+import { chatAsk, chatAskFull, chatBubbles, chatProject, chatRowProject, chatWhen, type Bubble } from "./notchChat.ts";
 import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
 import { useSetting } from "./settingsStore.ts";
@@ -43,7 +43,7 @@ export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk,
   const bubbles = chatBubbles(m, project, { hint });
   const when = chatWhen(m, project, now);
   // Which project an ask goes to: Return starts a task there (the M96 review).
-  const name = chatProject(project), ask = chatAsk(project);
+  const name = chatProject(project), shown = chatRowProject(project), ask = chatAsk(project), askFull = chatAskFull(project);
   // The newest is at the foot, by the field: kept in view as news arrives (the older scroll up).
   const news = useRef<HTMLDivElement>(null);
   const last = bubbles.at(-1)?.key ?? "";
@@ -56,7 +56,7 @@ export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk,
           <FlowMini className="nc-face" state={m.character} />
         </span>
         <span className="nc-hi" title={greet}>{greet}</span>
-        {name && <span className="nc-proj" title={C.project(name)}>{name}</span>}
+        {name && <span className="nc-proj" title={C.project(name)}><span aria-hidden="true">{shown}</span><span className="sr">{name}</span></span>}
         {stop && <button type="button" className="nc-stop" aria-label={stop.label} title={stop.title} onClick={onStop}><Icon name="stop" size={12} />{C.stop}</button>}
         {tucked && <button type="button" className="nc-ico nc-out" aria-label={S.m111.bringOut(who)} title={S.m111.bringOut(who)} onClick={() => void invoke("untuck").catch(() => {})}><Icon name="bringOut" size={14} /></button>}
         <button type="button" className="nc-ico" aria-label={C.settings} title={C.settings} onClick={onSettings}><Icon name="gear" size={14} /></button>
@@ -71,7 +71,7 @@ export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk,
       <div className="nc-bar">
         {talk.on && <button type="button" className="nc-mic" aria-label={talk.label} title={talk.title} onClick={onMic}><Icon name="mic" size={15} /></button>}
         <div className="nc-field">
-          <textarea ref={boxRef} rows={1} autoComplete="off" spellCheck={false} placeholder={ask} aria-label={ask} onKeyDown={onKeyDown} onInput={onInput} onFocus={onFocus} />
+          <textarea ref={boxRef} rows={1} autoComplete="off" spellCheck={false} placeholder={ask} aria-label={askFull} onKeyDown={onKeyDown} onInput={onInput} onFocus={onFocus} />
           <button type="button" className="nc-send" aria-label={C.send} title={C.send} disabled={working} onClick={onSend}><Icon name="send" size={14} /></button>
         </div>
       </div>

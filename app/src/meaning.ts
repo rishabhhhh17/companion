@@ -42,9 +42,14 @@ export const colourOf = (m: Meaning): Colour => MEANING_COLOUR[m];
 
 export const PLACES = ["now", "learn", "did", "memory", "settings"] as const;
 export type Place = (typeof PLACES)[number];
-/** Each place has its own colour tile: Now blue, Learn purple, History orange, Memory pink, Settings grey. */
-export const PLACE_COLOUR: Record<Place, Colour> = { now: "blue", learn: "purple", did: "orange", memory: "pink", settings: "grey" };
-export const PLACE_ICON: Record<Place, IconName> = { now: "now", learn: "sparkle", did: "undo", memory: "memory", settings: "gear" };
+/** A part's colour: one of the meaning colours, or the accent itself ("press this", "you are here"), which no meaning
+ *  ever takes (M112 review; tokens.css [data-c="accent"]). */
+export type PartColour = Colour | "accent";
+/** M112: the places are lit in the habitat's one accent, so a place never wears a meaning's colour (History was orange,
+ *  the colour of something to review; then blue, the colour of working). Settings stays grey. Its glyph tells it apart. */
+export const PLACE_COLOUR: Record<Place, PartColour> = { now: "accent", learn: "accent", did: "accent", memory: "accent", settings: "grey" };
+// M112: the places are the habitat's living glyphs (icons.tsx cell, sprout, spiral, neuron), never coloured squares.
+export const PLACE_ICON: Record<Place, IconName> = { now: "cell", learn: "sprout", did: "spiral", memory: "neuron", settings: "gear" };
 
 // ---------- the states, each to one meaning ----------
 

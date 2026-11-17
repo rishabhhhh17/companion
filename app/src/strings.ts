@@ -4108,7 +4108,8 @@ export const S = {
       expand: "Open all of Home",
       ask: `Ask ${PRODUCT}…`,
       // The field's hint names the project an ask goes to (the M96 review: nothing in the chat said which).
-      askAbout: (project: string) => `Ask about ${project}…`,
+      // M112: a shortened name already ends in an ellipsis, so it never gets a second one.
+      askAbout: (project: string) => `Ask about ${project}${project.endsWith("…") ? "" : "…"}`,
       // The project, beside the hello in the top row.
       project: (project: string) => `Project: ${project}`,
       send: "Send",
@@ -4119,7 +4120,7 @@ export const S = {
       today: "Today",
       yesterday: "Yesterday",
       history: "What happened lately",
-      empty: (project: string) => (project ? `Ask me anything about ${project}.` : "Pick a project, or ask me anything."),
+      empty: (project: string) => (project ? `Ask me anything about ${project}${project.endsWith("…") ? "" : "."}` : "Pick a project, or ask me anything."),
       working: "Working on it.",
       // Only proof says done (rule 14): a finished task whose checks did not all pass is said as what its proof says.
       unchecked: (n: number | null) => (!n ? "Finished, not checked yet." : n === 1 ? "Finished, not checked yet. It changed 1 file." : `Finished, not checked yet. It changed ${n} files.`),

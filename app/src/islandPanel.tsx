@@ -169,7 +169,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
           <FlowMini className="ip-face nb-face" state={m.character} still={!shown} />
           <span className="nb-greet" title={greet}>{greet}</span>
         </button>
-        <button className="nb-pill" type="button" tabIndex={tab} data-act={action.id} aria-label={action.id === "stop" ? stopSay : pill.dot ? `${pill.words}. ${S.m96.waits}` : undefined} title={action.id === "stop" ? keyHint("stop", S.look.stopKeys) : hline?.words ?? undefined} onClick={act}>
+        <button className="nb-pill" type="button" tabIndex={tab} data-act={action.id} data-c={action.look.colour} aria-label={action.id === "stop" ? stopSay : pill.dot ? `${pill.words}. ${S.m96.waits}` : undefined} title={action.id === "stop" ? keyHint("stop", S.look.stopKeys) : hline?.words ?? undefined} onClick={act}>
           {pill.dot && <span className="nb-dot" aria-hidden="true" />}{pill.words}
         </button>
       </div>

@@ -27,6 +27,11 @@
 .home:not([data-side]):not([data-view="settings"]) .work:has(> .askwrap) { display: flex; flex-direction: column; min-width: 0; min-height: calc(100vh - var(--space-3) - var(--space-5) - var(--hair)); }
 .home:not([data-side]):not([data-view="settings"]) .work:has(> .askwrap) > * { flex: none; }
 .home:not([data-side]):not([data-view="settings"]) .work > .askwrap { order: 1; position: sticky; bottom: 0; z-index: 3; margin-top: auto; margin-bottom: 0; padding: var(--space-2) 0 var(--space-1); background: var(--bg); }
+/* M112 review (shot 4h: a row ended in a hard cut at the ask box's top): while there is more work below to scroll to
+   (data-more, homeLayout.ts useMoreBelow), a hairline marks where the work goes under the ask box, as the wide Home does
+   (wide.css: a fade there hid a card's Undo and its proof, so nothing fades over the work). At the end of the page the
+   last row reads in full down to the box and the line is gone. */
+.home:not([data-side]):not([data-view="settings"])[data-more] .work > .askwrap::after { content: ""; position: absolute; top: 0; left: 0; right: 0; border-top: var(--hair) solid var(--line-strong); pointer-events: none; }
 .home[data-side] .work > .askwrap { margin-top: auto; }
 /* The box: a floating card (level 1), the words on top and the row of tokens and chips under a hairline. */
 .home .askwrap .ask { flex-wrap: wrap; align-items: center; row-gap: var(--space-2); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3); border-radius: var(--r-ask); background: var(--surface-1); box-shadow: var(--ask-shadow-float); }
