@@ -93,6 +93,9 @@
 .home:not([data-side]):not([data-view="settings"]) .work:has(> .askwrap) { min-height: 0; }
 .home:not([data-side]):not([data-view="settings"]) .work > .askwrap { margin-top: var(--space-4); background: var(--surface-0); }
 .home .askwrap { background: var(--surface-0); }
+/* Round 1 (a hard edged black band over the ask box on the first screen): in the wide Home the band under the ask box is
+   its own soft edged ::after (wide.css), as in the gutter beside it, so the box itself draws no second, hard edged black. */
+.home[data-side] .work > .askwrap { background: transparent; }
 .home .askwrap .ask { padding: var(--space-3) var(--space-3) var(--space-2); border: 0; border-radius: var(--r-list); background: var(--surface-1); box-shadow: inset 0 0 0 var(--hair) var(--edge); }
 .home .askwrap .ask:focus-within { box-shadow: inset 0 0 0 var(--hair) var(--line-strong); }
 .home .askwrap .ask > .ask-mark { display: none; }
@@ -149,6 +152,8 @@
 .home .mem-section .ui-mlist-title { margin-bottom: 0; }
 .home .mem-section .note-example { color: var(--fg-2); }
 .home .mem-section .page-caption { margin: 0 var(--space-4); }
+/* Round 1: Learn's notes under its list start where the list's titles and rows do, as Memory's do (spacing only). */
+.home .learn > .page-caption { margin: 0 var(--space-4) var(--space-3); }
 .home .mem-erase-row { margin: 0; }
 .home .mem-erase.btn { color: var(--bad); }
 .home .mem-editing { gap: var(--space-2); padding: var(--space-2) var(--space-4); }
@@ -275,9 +280,11 @@
 .notch-chat .nc-top { display: flex; align-items: center; gap: 9px; min-height: 26px; }
 .notch-chat .nc-face, .notch-chat .nc-face.ff-mini { flex: none; width: 22px; }
 .notch-chat .nc-face .ff-orb, .notch-chat .ff-orb { --orb: 22px; --orb-gap: var(--hair); }
-.notch-chat .nc-hi { min-width: 0; flex: 0 1 auto; overflow-wrap: anywhere; color: var(--chat-fg); font: var(--w-strong) var(--t-body) / var(--lh-body) var(--font); letter-spacing: -.01em; }
-/* The project an ask goes to, quiet beside the hello; whichever of the two is last pushes the buttons to the right. */
-.notch-chat .nc-proj { min-width: 0; flex: 0 1 auto; overflow-wrap: anywhere; color: var(--chat-when); font: var(--t-caption) / var(--lh-caption) var(--font); }
+.notch-chat .nc-hi { flex: 0 1 auto; overflow-wrap: break-word; color: var(--chat-fg); font: var(--w-strong) var(--t-body) / var(--lh-body) var(--font); letter-spacing: -.01em; }
+/* The project an ask goes to, quiet beside the hello; whichever of the two is last pushes the buttons to the right. Round 2:
+   the hello never shrinks below its longest word, and the name takes only the room left, shortened to fit it
+   (notchChat.ts fitRowProject; its full name is in its title and for VoiceOver), so the row stays one line. */
+.notch-chat .nc-proj { min-width: 0; flex: 1 1 0; overflow-wrap: anywhere; color: var(--chat-when); font: var(--t-caption) / var(--lh-caption) var(--font); }
 .notch-chat .nc-hi:not(:has(+ .nc-proj)), .notch-chat .nc-proj { margin-right: auto; }
 .notch-chat .nc-stop { flex: none; display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 11px 0 9px; border: 0; border-radius: 999px; color: var(--chat-fg); background: var(--pill-stop); box-shadow: 0 0 0 1px var(--pill-stop-line) inset; font: var(--w-strong) var(--t-caption) / 1 var(--font); transition: transform var(--dur-release) var(--ease-out); }
 .notch-chat .nc-stop:hover { background: var(--pill-stop-hover); }

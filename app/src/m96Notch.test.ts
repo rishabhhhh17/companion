@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { initial, type HistoryItem, type Model } from "./model.ts";
 import type { ReviewCard } from "./review.ts";
 import { HOVER_H, HOVER_W, NAME_SHOWN_MAX, hoverAction, hoverGreeting, hoverPill, type HoverActionId } from "./notchMinimal.ts";
-import { CHAT, CHAT_MAX, chatAsk, chatBubbles, chatHolds, chatWhen, notchNext, notchView, outcome, takesKeys, type NotchEvent, type NotchView } from "./notchChat.ts";
+import { CHAT, CHAT_MAX, chatAsk, chatBubbles, chatClosesAway, chatHolds, chatWhen, notchNext, notchView, outcome, takesKeys, type NotchEvent, type NotchView } from "./notchChat.ts";
 import { LAYOUT_H } from "./notchQuick.ts";
 import { arrivalFrom } from "./home.ts";
 import { OPEN_R } from "./homeShape.ts";
@@ -117,6 +117,9 @@ describe("which state shows when", () => {
     ["opened", "settings", "home"], ["opened", "expand", "home"],
     ["pointing", "pressAction", "home"], ["pointing", "clickNotch", "home"], ["rest", "clickNotch", "home"],
     ["home", "esc", "rest"], ["home", "clickOutside", "rest"], ["home", "askKey", "home"],
+    // Founder round 1 (17 Nov 2026, "when I open the chat, I cannot close it fully"): the chat's own Close, and a second
+    // click on the notch, fold it back.
+    ["opened", "close", "rest"], ["opened", "clickNotch", "rest"], ["home", "close", "rest"],
   ];
   for (const [from, e, to] of steps) test(`${from} + ${e} = ${to}`, () => expect(notchNext(from, e)).toBe(to));
   test("Stop everything hides all, from every state", () => {
@@ -132,7 +135,9 @@ describe("which state shows when", () => {
     expect(main).toContain('keymap::Action::Card => open_card(app, "ask_key", true),');
     expect(island).toContain('!was_open && on && island && matches!(source, "notch_chat" | "ask_key")');
     // Esc in Home closes it; Stop everything closes it at once and the island goes back to the bare notch.
-    expect(read("./card.tsx")).toContain('if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); }');
+    // Changed on purpose (founder round 1): Esc is heard on the window while Home shows, so it closes wherever the keys are.
+    expect(read("./card.tsx")).toContain('if (e.key === "Escape" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); }');
+    expect(read("./card.tsx")).toContain('window.addEventListener("keydown", onEsc);');
     expect(main).toContain('home_stop_now("stop_everything")');
   });
 });
@@ -189,17 +194,22 @@ describe("the small chat: the recent news as bubbles", () => {
     const b = chatBubbles(x, P);
     // The newest CHAT_MAX (3) fit the chat at the usual text size: the older ones are in Home's History.
     expect(CHAT_MAX).toBe(3);
+    // Changed on purpose (founder round 1, 17 Nov 2026: the chat opened on an answer whose question was cut): tasks are cut
+    // whole, never one bubble of a pair. The newest task always shows with what waits; older ones only while they fit.
     expect(b.map((y) => [y.who, y.words])).toEqual([
-      ["squibby", S.m96.chat.failedCheck("npm test")], ["squibby", S.m96.chat.claude], ["squibby", S.m96.chat.review(2)],
+      ["you", "put the password check back"], ["squibby", S.m96.chat.failedCheck("npm test")], ["squibby", S.m96.chat.claude], ["squibby", S.m96.chat.review(2)],
     ]);
-    expect(chatBubbles(m({ history: x.history }), P).map((y) => y.words)).toEqual([S.m96.chat.proven(2), "put the password check back", S.m96.chat.failedCheck("npm test")]);
+    expect(chatBubbles(m({ history: x.history }), P).map((y) => y.words)).toEqual(["put the password check back", S.m96.chat.failedCheck("npm test")]);
   });
   test("only the newest few, never more than fit", () => {
     const many = Array.from({ length: 9 }, (_, i) => row({ id: i + 1, label: `task ${i}`, startedAt: at(10 + i, 0), endedAt: at(10 + i, 5) }));
     const b = chatBubbles(m({ history: many, review: batch(3) }), P, { hint: "Type a few words first." });
-    expect(b.length).toBeLessThanOrEqual(CHAT_MAX);
+    // Changed on purpose (founder round 1): the newest task's ask and answer stay together even when what waits fills the
+    // room, so at most the newest pair over CHAT_MAX.
+    expect(b.length).toBeLessThanOrEqual(CHAT_MAX + 1);
+    expect(b[0]!.who).toBe("you");
     expect(b.at(-1)!.words).toBe("Type a few words first.");
-    expect(b.some((y) => y.key === "sq:9")).toBe(true);   // the newest task's answer
+    expect(b.some((y) => y.words === "task 8")).toBe(true);   // the newest task's ask, with its answer after it
     expect(b.some((y) => y.words === "task 0")).toBe(false);
   });
   test("each outcome in plain words", () => {
@@ -223,7 +233,8 @@ describe("the small chat: the recent news as bubbles", () => {
   test("the bubbles that point somewhere say where: changes to review, Claude Code waiting, a failed check", () => {
     const x = m({ history: [row({ status: "not_done", proof: "failed", failedCheck: "npm test" })], review: batch(2), claudeWaiting: { project: P, message: "" } });
     const b = chatBubbles(x, P);
-    expect(b.map((y) => y.go ?? null)).toEqual(["now", "now", "review"]);
+    // Changed on purpose (round 1): the failed task's ask now shows above its answer.
+    expect(b.map((y) => y.go ?? null)).toEqual([null, "now", "now", "review"]);
     expect(chatBubbles(m({ history: [row()] }), P).every((y) => !y.go)).toBe(true);
   });
   test("the field says which project an ask goes to", () => {
@@ -291,5 +302,76 @@ describe("the look: the black, one lavender blue, words in strings.ts", () => {
     expect(chat).toContain('<Icon name="expand"');
     expect(chat).not.toMatch(/[⚙⤢↑]/);
     expect(read("./icons.tsx")).toMatch(/^ {2}expand: </m);
+  });
+});
+
+// Founder round 1 (17 Nov 2026): "when I open the chat, I cannot close it fully", and the chat showed an answer above a
+// question it never showed, and Working on it for a task that had finished.
+describe("round 1: the chat's order, what is live, and closing it", () => {
+  const two = [row({ id: 1, label: "fix the signup form", checkpoint: "cp_1", startedAt: at(11, 0), endedAt: at(11, 20) }), row({ id: 2, label: "make the button blue", checkpoint: "cp_2", startedAt: at(11, 30), endedAt: at(11, 35) })];
+  test("two finished tasks never start with an answer whose ask was cut", () => {
+    const b = chatBubbles(m({ history: two }), P);
+    expect(b[0]!.who).toBe("you");
+    expect(b.map((y) => y.words)).toEqual(["make the button blue", S.m96.chat.proven(2)]);
+    expect(chatBubbles(m({ history: two, review: batch(2) }), P).map((y) => y.words)).toEqual(["make the button blue", S.m96.chat.proven(2), S.m96.chat.review(2)]);
+  });
+  test("asks show in the order they were asked, not the order they ended", () => {
+    const slow = [row({ id: 1, label: "first ask", checkpoint: "cp_1", startedAt: at(11, 0), endedAt: at(12, 0), changed: 0 }), row({ id: 2, label: "second ask", checkpoint: "cp_2", startedAt: at(11, 10), endedAt: at(11, 20), changed: 0 })];
+    expect(chatBubbles(m({ history: slow }), P).map((y) => y.words)).toEqual(["second ask", S.m96.chat.proven(0)]);
+  });
+  test("no answer is ever first without its ask, for any number of tasks and waits", () => {
+    for (let n = 0; n <= 5; n++) for (const waits of [{}, { review: batch(2) }, { review: batch(2), claudeWaiting: { project: P, message: "" } }]) {
+      const hist = Array.from({ length: n }, (_, i) => row({ id: i + 1, label: `task ${i}`, checkpoint: `cp_${i}`, startedAt: at(10 + i, 0), endedAt: at(10 + i, 5) }));
+      const b = chatBubbles(m({ history: hist, ...waits }), P);
+      for (let i = 0; i < b.length; i++) if (b[i]!.key.startsWith("sq:") && b[i]!.key !== "sq:empty") expect(b[i - 1]?.who, `${n} ${JSON.stringify(waits)}`).toBe("you");
+    }
+  });
+  test("a finished task with its receipt and its History row says no Working on it and is not said twice", () => {
+    const task = { agent: "b1", project: P, checkpoint: "cp_2", label: "make the button blue", lines: [], costUsd: 0 };
+    const b = chatBubbles(m({ history: two, task, receipt: { ...undoable().receipt!, checkpoint: "cp_2" } }), P);
+    expect(b.map((y) => y.words)).not.toContain(S.m96.chat.working);
+    expect(b.filter((y) => y.words === "make the button blue").length).toBe(1);
+    // Before its History row came: still no Working on it once its receipt is here.
+    expect(chatBubbles(m({ task, receipt: { ...undoable().receipt!, checkpoint: "cp_2" } }), P).map((y) => y.words)).not.toContain(S.m96.chat.working);
+  });
+  test("the task at work keeps its bubbles' keys when it becomes a History row, so the words never animate in twice", () => {
+    const task = { agent: "b1", project: P, checkpoint: "cp_2", label: "make the button blue", lines: [], costUsd: 0 };
+    const live = chatBubbles(m({ task }), P).map((y) => y.key);
+    const after = chatBubbles(m({ history: [two[1]!] }), P).map((y) => y.key);
+    expect(live).toEqual(after);
+  });
+  test("a task at work in another project is said, so Stop and the greyed Send have a reason", () => {
+    const task = { agent: "b1", project: "/Users/me/other-shop", label: "fix it", lines: [], costUsd: 0 };
+    const b = chatBubbles(m({ task }), P);
+    expect(b.map((y) => y.words)).toEqual([S.m96.chat.workingIn("other-shop")]);
+    expect(chatBubbles(m({ task, receipt: undoable().receipt }), P).map((y) => y.words)).toEqual([S.m96.chat.empty("signup-page")]);
+    // Work the engine runs in another folder (Home shows none of it): named while its agent is busy, gone once it rests.
+    expect(chatBubbles(m({ away: { b2: "/Users/me/other-shop" }, agents: { b2: "working" } }), P).map((y) => y.words)).toEqual([S.m96.chat.workingIn("other-shop")]);
+    expect(chatBubbles(m({ away: { b2: "/Users/me/other-shop" }, agents: { b2: "idle" } }), P).map((y) => y.words)).toEqual([S.m96.chat.empty("signup-page")]);
+  });
+  test("a click elsewhere always folds the chat (nothing it holds waits for a tap), except words being typed in it", () => {
+    expect(chatClosesAway(true, false)).toBe(true);
+    expect(chatClosesAway(true, true)).toBe(false);
+    expect(chatClosesAway(false, false), "Close Home when I click another app off").toBe(false);
+    const card = read("./card.tsx");
+    expect(card).toMatch(/listen\("home-click-away", \(\) => \{ if \(chatOn\.current \? chatClosesAway\(/);
+    expect(card).toMatch(/listen\("home-pointer-left", \(\) => \{ if \(chatOn\.current \? chatClosesAway\(/);
+  });
+  test("the chat has its own Close, a quiet icon button with an existing drawing and words", () => {
+    const chat = read("./notchChat.tsx");
+    expect(chat).toContain('<Icon name="close"');
+    expect(chat).toContain("aria-label={C.close}");
+    expect(S.m96.chat.close).toBe("Close");
+  });
+  test("Flowflow's face is in the chat's top row only while it lives in the notch (the founder: not on there)", () => {
+    const chat = read("./notchChat.tsx"), panel = read("./islandPanel.tsx"), island = read("./island.tsx");
+    // Changed on purpose (round 2): the handle stays mounted for the whole drag so the let go is never lost; while it is
+    // pulled out only the face inside hides (data-out). Still never drawn on the edge.
+    expect(chat).toMatch(/\{tucked && <span className="nc-face-hold" data-tucked="" data-out=\{out\.dragging/);
+    expect(panel).toMatch(/\{tucked && <FlowMini className="ip-face nb-face"/);
+    expect(panel).toContain('data-out={out.dragging ? "" : undefined}');
+    // The notch's take line is words and the glow only: Flowflow itself is under the pointer.
+    const take = island.slice(island.indexOf('className="island-take"'), island.indexOf("</div>", island.indexOf('className="island-take"')));
+    expect(take).not.toContain("FlowMini");
   });
 });

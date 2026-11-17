@@ -4,7 +4,8 @@ import { describe, expect, test } from "bun:test";
 import { IslandPanel } from "../src/islandPanel.tsx";
 import { initial, reduce, type Model } from "../src/model.ts";
 import { S } from "../src/strings.ts";
-import { PROJECT, ev, renderHome, renderPage, runner, screen, settle } from "./render.tsx";
+import { PROJECT, act, ev, renderHome, renderPage, runner, screen, settle } from "./render.tsx";
+import { _resetForTests, startSettings } from "../src/settingsStore.ts";
 
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, ev(e) as never), from);
 const atRest = () => run([{ type: "auth.status", method: "api_key", source: "keychain" }, { type: "ui.folderShown", project: PROJECT }]);
@@ -33,7 +34,19 @@ describe("one glance in every state", () => {
     expect(panel.querySelector(".nb-pill")?.textContent).toBe(pill);
     expect(panel.querySelectorAll(".nb-pill svg, .nb-pill .ui-mtile").length).toBe(0);
     expect(panel.querySelectorAll("button").length).toBe(2);
-    expect(panel.querySelectorAll(".ip-face").length).toBe(1);
+    // Changed on purpose (founder round 1, 17 Nov 2026: "I don't want the Flowflow symbol to be on there"): the face shows
+    // in the row only while Flowflow lives in the notch (the m96 round 1 tests hold that); on the screen edge, the hello alone.
+    expect(panel.querySelectorAll(".ip-face").length).toBe(0);
+  });
+});
+
+describe("round 1: Flowflow's face in the notch's row only while it lives there", () => {
+  test("tucked into the notch, the face is the handle to drag it out; on the screen edge, the hello alone", async () => {
+    await renderPage(<IslandPanel m={atRest()} line="" shown />, { settings: { "character.lives": "notch" } });
+    await act(async () => { _resetForTests(); startSettings(); });
+    await settle();
+    expect(document.querySelectorAll(".island-panel .ip-face").length).toBe(1);
+    expect(document.querySelector(".island-panel .nb-hi")?.hasAttribute("data-tucked")).toBe(true);
   });
 });
 

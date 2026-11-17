@@ -79,21 +79,42 @@ export function swallowClick(dropAt: number | null, now: number): boolean { retu
 export function useDragOut(on: boolean) {
   const st = useRef<DragOut>(null);
   const dropAt = useRef<number | null>(null);
-  const go = (kind: "down" | "move" | "up" | "lost", e: { screenX: number; screenY: number; button?: number; pointerId?: number; target?: EventTarget | null }) => {
+  // Round 1 (the founder: "it does not make sense because it's always there"): from the moment the drag pulls Flowflow out
+  // until the let go, its face leaves the notch's row, so only one Flowflow is ever on screen.
+  const [dragging, setDragging] = useState(false);
+  const go = (kind: "down" | "move" | "up" | "lost", e: { screenX: number; screenY: number; button?: number; pointerId?: number; currentTarget?: EventTarget | null }) => {
     if (kind === "down" && (e.button ?? 0) !== 0) return;
     if (kind === "down") dropAt.current = null;
     const r = dragOutStep(st.current, { kind, x: e.screenX, y: e.screenY, on });
-    if (kind === "down" && r.s && e.pointerId !== undefined) (e.target as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
+    // Round 2: the capture sits on the handle that carries these handlers (never on the face drawn inside it, which hides
+    // while the drag holds), so the let go always comes back here.
+    if (kind === "down" && r.s && e.pointerId !== undefined) (e.currentTarget as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
     if (r.say === "drop_dock") dropAt.current = performance.now();
     st.current = r.s;
+    if (r.say === "untuck_drag") setDragging(true);
+    else if (r.say === "drop_dock" || !r.s) setDragging(false);
     if (r.say) void invoke(r.say).catch(() => {});
   };
+  // Round 2, the backstop: while the drag holds, a let go anywhere in this page ends it once, even if the capture was lost
+  // on the way (a second let go finds no drag and says nothing).
+  const goRef = useRef(go);
+  goRef.current = go;
+  useEffect(() => {
+    if (!dragging) return;
+    const up = (e: PointerEvent) => goRef.current("up", e);
+    const lost = (e: PointerEvent) => goRef.current("lost", e);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", lost);
+    return () => { window.removeEventListener("pointerup", up); window.removeEventListener("pointercancel", lost); };
+  }, [dragging]);
   return {
     onPointerDown: (e: React.PointerEvent) => go("down", e),
     onPointerMove: (e: React.PointerEvent) => go("move", e),
     onPointerUp: (e: React.PointerEvent) => go("up", e),
     onPointerCancel: (e: React.PointerEvent) => go("lost", e),
     onLostPointerCapture: (e: React.PointerEvent) => go("lost", e),
+    /** Flowflow is being pulled out right now: its face is hidden in the notch meanwhile (the handle stays, holding the drag). */
+    dragging,
     /** Call first in the face's onClick: true when that click ended a drag and must do nothing. */
     swallowed: () => { const w = swallowClick(dropAt.current, performance.now()); dropAt.current = null; return w; },
   };

@@ -185,6 +185,11 @@ fn drop_reveal(id: u64, i: usize) -> Result<(), String> {
     std::process::Command::new("/usr/bin/open").arg("-R").arg(&p).env_clear().env("PATH", "/usr/bin:/bin").stdin(std::process::Stdio::null()).spawn().map(|_| ()).map_err(|_| "toolMissing".to_string())
 }
 
+/// Round 2: More on the ring opens Home with the whole list, never with the keyboard (rule 9): the ring is in the
+/// character's non activating window, and the person's typing stays in the app they were using.
+#[tauri::command]
+fn drop_more(app: AppHandle) { open_card(&app, "drop", false); }
+
 /// Trim chosen on the ring: its two times are typed in Home, which opens for them (the character's window never takes the
 /// keyboard).
 #[tauri::command]

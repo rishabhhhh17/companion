@@ -580,8 +580,11 @@ describe("the bare notch (M46)", () => {
     expect(panel).toContain("const view = panelView(m, jobs, { note, status: notchStatusLine(homeStatus(m, project, now), project), kept });");
     for (const gone of ["greeting(", "S.panel.go", "ip-pill", "PANEL_DO.find", "PANEL_DO.ship", "PANEL_DO.settings"]) expect(panel, gone).not.toContain(gone);
     // Opened by itself (brief), only a question or a result: never the greeting, the line, a button or Add your key.
-    expect(panel).toContain('</div> : brief ? (');
-    expect(panel).toContain('view.kind === "questions" || view.kind === "result" ? live : null');
+    // Changed on purpose (round 2): brief draws the card alone only while there is one (briefNow); with none left it falls
+    // back to the row, never an empty panel.
+    expect(panel).toContain('</div> : briefNow ? (');
+    expect(panel).toContain('const hasLive = view.kind === "questions" || view.kind === "result";');
+    expect(panel).toContain('const briefNow = !!brief && hasLive;');
   });
   test("it never drops by itself for a start, a step or a cost: only a proven fix or a failure (resultPeekKey)", () => {
     expect(page).toContain("resultPeekKey(islandJobs(m))");

@@ -1114,6 +1114,31 @@ mod tests {
         assert!(main_body("fn drop_dock(").contains(".release(home_size())"));
     }
     #[test]
+    fn a_drag_out_of_the_notch_is_released_without_the_page() {
+        // Round 2: the watch lets a lost drag out of the notch go, through drop_dock itself, twice a second.
+        let back = main_body("fn notch_drag_backstop(");
+        assert!(back.contains("NSEvent::pressedMouseButtons() & 1 != 0"), "{back}");
+        assert!(back.contains("docking::notch_let_go_missed(DRAG_LIVE.load(Ordering::SeqCst), DRAG_FROM_NOTCH.load(Ordering::SeqCst), left_down)"), "{back}");
+        assert!(back.contains("drop_dock(app.clone());"), "{back}");
+        assert!(main_body("fn tick(").contains("notch_drag_backstop(app);"));
+        // An ordinary drag clears what a drag out of the notch left, so its own let go never takes the notch's path.
+        assert!(main_body("fn drag_dock(").contains("DRAG_FROM_NOTCH.store(false, Ordering::SeqCst);"));
+        // drop_dock clears it on every let go.
+        assert!(main_body("fn drop_dock(").contains("let from_notch = DRAG_FROM_NOTCH.swap(false, Ordering::SeqCst);"));
+    }
+    #[test]
+    fn no_press_in_the_notch_or_the_drop_ring_takes_the_keyboard() {
+        // Round 2 (rule 9): the notch's panel and the character's drop ring open Home only through commands that never
+        // make it the key window.
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src");
+        for f in ["islandPanel.tsx", "dropRing.tsx", "island.tsx", "notchChat.tsx"] {
+            let src = std::fs::read_to_string(root.join(f)).unwrap();
+            assert!(!src.contains("open_card_cmd"), "{f} reaches open_card_cmd, which takes the keyboard");
+        }
+        assert!(main_body("fn island_go(").contains("open_card_then(&app, \"notch_panel\", false,"));
+        assert!(main_body("fn drop_more(").contains("open_card(&app, \"drop\", false)"));
+    }
+    #[test]
     fn a_change_of_displays_puts_the_character_the_island_and_home_back_and_both_features_keep_their_wiring() {
         let main = crate::main_src();
         let tick = main_body("fn tick(");
@@ -2397,11 +2422,32 @@ mod m111_tests {
     }
     fn main_body(name: &str) -> String { let m = crate::main_src(); let at = m.find(name).unwrap_or_else(|| panic!("{name}")); m[at..at + m[at..].find("\n}\n").unwrap()].to_string() }
     #[test]
+    fn round_one_the_chat_and_home_always_close_and_a_fold_never_eats_a_click() {
+        // Founder round 1 (17 Nov 2026, "when I open the chat, I cannot close it fully"). Wiring in main.rs (a real Mac).
+        let click = main_body("fn island_click(");
+        assert!(click.contains("if CHAT_OPEN.load(Ordering::SeqCst) {") && click.contains("close_home_rolled(&a, json!({ \"source\": \"island_chat\" }))"), "{click}");
+        // A click on Flowflow while Home folds opens it again; a reopen during the fold works the chat out afresh.
+        assert!(main_body("fn toggle_home(").contains("if card_visible() && HOME_FOLDING.load(Ordering::SeqCst) == 0 {"));
+        let open = main_body("fn open_card_then(");
+        assert!(open.contains("let folding = HOME_FOLDING.swap(0, Ordering::SeqCst) != 0;") && open.contains("let was_open = HOME_OPEN.load(Ordering::SeqCst) && card_visible() && !folding;"), "{open}");
+        // The hover after a drag: decided by dragging() (a lost drop lets go), looked at again after it, and at the drop.
+        let settle = main_body("fn island_hover_settle(");
+        assert!(settle.contains("if dragging() {") && !settle.contains("if DRAG_LIVE.load(Ordering::SeqCst) { return; }"), "{settle}");
+        assert!(main_body("fn drop_dock(").contains("island_hover_settle();"));
+        // The take row only while Home is closed, and no "Let go to tuck" while Home's band hides it.
+        assert!(main_body("fn place_island(").contains("let take = !state.home_open && island::take_word("));
+        assert_eq!(main_body("fn untuck_drag(").matches("drag.set_tuck(home_set().island_show && !card_visible());").count(), 1);
+        assert!(main_body("fn drop_dock(").contains("settings_told(&a, &[\"character.lives\".to_string()]);"));
+    }
+    #[test]
     fn after_a_tuck_the_notch_says_where_it_went_for_a_moment() {
         // M111 review: a tuck by accident must never look like the character vanished.
         assert_eq!((take_word(TAKE_NONE), take_word(TAKE_HINT), take_word(TAKE_TUCKED), take_word(9)), (None, Some("take"), Some("tucked"), None));
         assert!((1500..=3000).contains(&TUCKED_SAY_MS), "long enough to read one short line, short enough to stay calm");
-        assert!(main_body("fn tuck_away(").contains("take_say(island::TAKE_TUCKED);"));
+        // Changed on purpose (founder round 1, 17 Nov 2026: "it should just go and tuck it", nothing of it on screen until
+        // there is news): the shrink up into the notch is the feedback; no row grows back out under the notch after it.
+        // A tuck by accident is gone too: a drag pulled out of the notch only tucks after leaving it (docking.rs armed).
+        assert!(!main_body("fn tuck_away(").contains("take_say(island::TAKE_TUCKED)"));
         // Pointing at the notch while it says so opens the usual row instead (the line asked for exactly that).
         assert!(main_body("fn island_hover_changed(").contains("if inside { take_said_clear(); }"));
     }

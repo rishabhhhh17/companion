@@ -5,6 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import { S } from "../src/strings.ts";
 import { PROJECT, act, app, emit, fireEvent, press, renderHome, runner, settle } from "./render.tsx";
+import { CATALOG } from "../src/practice.ts";
 
 const AGENT = "builder-1";
 const chatShown = () => document.querySelector("main.home")!.hasAttribute("data-chat");
@@ -29,7 +30,8 @@ describe("the small chat in Home", () => {
     expect(chat.querySelector(".nc-hi")?.textContent).toMatch(/^hey /);
     // Two small round buttons with real drawings, never emoji or text glyphs.
     const icons = [...chat.querySelectorAll(".nc-ico")];
-    expect(icons.map((b) => b.getAttribute("aria-label"))).toEqual([S.m96.chat.settings, S.m96.chat.expand]);
+    // Changed on purpose (founder round 1, 17 Nov 2026: "when I open the chat, I cannot close it fully"): a third, Close.
+    expect(icons.map((b) => b.getAttribute("aria-label"))).toEqual([S.m96.chat.settings, S.m96.chat.expand, S.m96.chat.close]);
     for (const b of icons) { expect(b.querySelector("svg")).toBeTruthy(); expect((b.textContent ?? "").trim()).toBe(""); }
     // The person's ask in their words, and Squibby's plain answer, under a small time line.
     expect([...chat.querySelectorAll(".nc-me")].map((b) => b.textContent)).toEqual(["fix the email check"]);
@@ -171,6 +173,78 @@ describe("the small chat in Home", () => {
     const b = document.querySelector<HTMLButtonElement>(".notch-chat button.nc-them");
     if (!b) throw new Error("no review bubble: " + document.querySelector(".notch-chat")?.textContent);
     await act(async () => { fireEvent.click(b); });
+    expect(chatShown()).toBe(false);
+    expect(app.invoked("home_expand").length).toBe(1);
+  });
+});
+
+// Founder round 1 (17 Nov 2026): "when I open the chat, I cannot close it fully". Every way out works, whatever is open.
+describe("round 1: the chat always closes", () => {
+  const away = { "home.closeOnClickAway": true };
+  const rec = { practice_list: { practices: [{ id: CATALOG[0]!.id, path: PROJECT, there: true, started: "2026-11-01" }], damaged: false } };
+  test("its own Close folds it back through the shell", async () => {
+    await renderHome();
+    await opened();
+    await press(S.m96.chat.close);
+    expect(app.invoked("close_card").length).toBe(1);
+  });
+  test("a click elsewhere closes it with a practice copy open as the project", async () => {
+    await renderHome({ settings: away, answers: rec });
+    await settle(150);
+    await opened();
+    expect(chatShown()).toBe(true);
+    await emit("home-click-away", null);
+    expect(app.invoked("close_card").length).toBe(1);
+  });
+  test("a click elsewhere closes it with Claude Code waiting in another project", async () => {
+    await renderHome({ settings: away });
+    await runner({ type: "hook.waiting", project: "/Users/me/other", waiting: true, message: "Claude needs your permission" });
+    await opened();
+    expect(chatShown()).toBe(true);
+    await emit("home-click-away", null);
+    expect(app.invoked("close_card").length).toBe(1);
+  });
+  test("a draft kept from before never holds it: only words typed in the field that has the keys", async () => {
+    await renderHome({ settings: away });
+    await opened();
+    const f = field()!;
+    await act(async () => { f.value = "make the button blue"; fireEvent.input(f); });
+    await emit("home-click-away", null);
+    expect(app.invoked("close_card").length).toBe(1);
+    await opened();
+    const g = field()!;
+    await act(async () => { g.focus(); g.value = "half typed"; fireEvent.input(g); });
+    await emit("home-click-away", null);
+    expect(app.invoked("close_card").length).toBe(1);
+  });
+  test("Esc closes it after a click on a bubble, with the keys nowhere in Home", async () => {
+    await renderHome();
+    await opened();
+    const bubble = document.querySelector(".notch-chat .nc-b")!;
+    await act(async () => { fireEvent.pointerDown(bubble); fireEvent.click(bubble); });
+    expect(document.activeElement === document.body || document.activeElement === null).toBe(true);
+    await act(async () => { fireEvent.keyDown(document.body, { key: "Escape" }); });
+    expect(app.invoked("close_card").length).toBe(1);
+  });
+  test("Esc that clears the words in the field does not also close", async () => {
+    await renderHome();
+    await opened();
+    const f = field()!;
+    await act(async () => { f.focus(); f.value = "oops"; fireEvent.input(f); });
+    await act(async () => { fireEvent.keyDown(f, { key: "Escape" }); });
+    expect(app.invoked("close_card").length).toBe(0);
+    expect(f.value).toBe("");
+  });
+  test("with a question to allow waiting, opening the chat goes straight to all of Home: the chat never paints", async () => {
+    await renderHome();
+    await runner({ type: "agent.state", agent: "a", state: "working" }, { type: "approval.request", approval: "ap_1", agent: "a", checkpoint: "cp_1", toolUseId: "t", risk: "network", title: "curl reaches the internet", expiresAt: "2999-01-01T00:00:00Z" });
+    let painted = false;
+    const watch = new MutationObserver(() => { if (document.querySelector(".notch-chat")) painted = true; });
+    watch.observe(document.body, { childList: true, subtree: true });
+    await opened();
+    await settle(30);
+    watch.disconnect();
+    expect(painted).toBe(false);
     expect(chatShown()).toBe(false);
     expect(app.invoked("home_expand").length).toBe(1);
   });

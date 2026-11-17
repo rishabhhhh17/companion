@@ -20,14 +20,16 @@ export type FixCheck = (o: { after: string; proof: FixProof }) => Promise<{ batc
 /** Problems that are about the checks, not a place in the code: the fix's own proof answers them. */
 const ABOUT_CHECKS = new Set(["checks_failed", "risky_with_failing_checks", "claimed_passed"]);
 
-/** One problem's answer. fixedBefore: a newer change had already taken it out (M57 feature 4). byFix: the files the fix
- *  itself changed (from the review's after version to the fix's after version). */
+/** One problem's answer. fixedBefore: a newer change or an earlier fix had already taken it out (M57 feature 4, M104).
+ *  byFix: the files the fix itself changed (from the review's after version to the fix's after version). A rule that looks
+ *  at the code (a line, an import, a table) always looks again, so a Try again that puts a problem back shows it Still
+ *  there; fixedBefore keeps Gone only for a problem about the change as a whole, which no rule can look at again. */
 export function outcomeOf(o: { kind: string; recheck: Recheck; state: RecheckState; byFix: ReadonlySet<string>; proof: FixProof; fixedBefore: boolean }): FixOutcome {
-  if (o.fixedBefore) return "gone";
   if (ABOUT_CHECKS.has(o.kind)) return o.proof === "passed" ? "gone" : o.proof === "failed" ? "still" : "unsure";
   if (!recheckHolds(o.recheck, o.state)) return "gone";
   // A rule that looks at the code itself (a line, an import, a table) and still finds it: still there.
   if (o.recheck.how !== "files") return "still";
+  if (o.fixedBefore) return "gone";
   // About the change as a whole: a rule can only tell whether its files are back as they were. Changed again by the fix:
   // the person looks. Not touched by the fix at all: nothing about it changed, so it is still there.
   return o.recheck.files.some((f) => o.byFix.has(f)) ? "unsure" : "still";

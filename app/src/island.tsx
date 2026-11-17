@@ -7,7 +7,7 @@ import { invoke, listen } from "./tauri.ts";
 import { DONE_WINGS_MS, ISLAND_MODES, SAVED_LINE_MS, wingMarkShown, islandLine, islandLineKind, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
 import { readyVersion } from "./updates.ts";
 import { CHEER_AT_MS, CHEER_FOR_MS, TUCK_MS, openness, springFor, springStep, tuckHoldMs, type Spring } from "./islandSpring.ts";
-import { latched, rowMarkShown } from "./notchQuick.ts";
+import { briefAtOpen, latched, rowMarkShown } from "./notchQuick.ts";
 import { reactionsOn } from "./reactions.ts";
 import { useModel } from "./useModel.ts";
 import { useMood } from "./useMood.ts";
@@ -413,8 +413,12 @@ function Island() {
   const take = shape.take === "take", said = shape.take === "tucked";
   const panelShown = parts.panel || held !== null;
   const briefRef = useRef(!shape.hover);
-  // Latched on the pointer's panel, not on the held one: holding is exactly when the pointer has gone.
-  briefRef.current = latched(briefRef.current, parts.panel, !shape.hover);
+  // Latched on the pointer's panel, not on the held one: holding is exactly when the pointer has gone. Round 2: decided
+  // when the panel opens and kept while it shows (notchQuick.ts briefAtOpen), so a question that opened by itself keeps
+  // its Allow and Don't allow when the pointer comes to rest on it.
+  const briefWas = useRef(false);
+  briefRef.current = briefAtOpen(briefRef.current, briefWas.current, parts.panel, !shape.hover);
+  briefWas.current = parts.panel;
   const helloRef = useRef<typeof hello>(null);
   helloRef.current = latched(helloRef.current, parts.panel, helloOn && !shape.hover ? hello : null);
   // The live mark in the notch's row hides while the panel says the same in words, except listening and looking (rule 5).
@@ -446,7 +450,7 @@ function Island() {
         <span className="island-step island-step-measure" ref={measure} aria-hidden="true">{S.home.steps.map((word) => <span key={word} className="island-step-word">{word}</span>)}</span>
         {/* M68: the word at rest, laid out but never shown, so the right wing is asked for as wide as it needs. */}
         <span className="island-rest-word island-step-measure" ref={restMeasure} aria-hidden="true">{rest?.word ?? ""}</span>
-        {(take || said) && <div className="island-take" role="status"><FlowMini className="ip-face nb-face" state={m.character} /><span>{take ? S.m111.take(characterName(nameSet)) : S.m111.inNotch(characterName(nameSet))}</span></div>}
+        {(take || said) && <div className="island-take" role="status"><span>{take ? S.m111.take(characterName(nameSet)) : S.m111.inNotch(characterName(nameSet))}</span></div>}
         <IslandPanel ref={panelRef} m={m} line={line} shown={panelShown} brief={briefRef.current} unseen={unseen} review={review && !hushed} reviewKey={reviewKey} hello={helloRef.current} kept={kept} onKeep={keep} lineKind={lineKind} />
       </span>
     </main>

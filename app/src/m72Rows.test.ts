@@ -68,7 +68,9 @@ describe("the callers", () => {
 describe("History (the walkthrough, item 9, and one list per screen)", () => {
   const card = read("./card.tsx"), marks = read("./savePointsRow.tsx");
   test("the opened row's Star and Name it, and the Undo question, sit right under their row in the list", () => {
-    expect(card).toContain('{picked?.id === h.id && h.checkpoint && project && !u && <li className="ui-mrow hist-extra-row"');
+    // Changed on purpose (round 2): only an undo that is asked or running holds Star and Name it back, never one that
+    // failed or finished (undoBusy).
+    expect(card).toContain('{picked?.id === h.id && h.checkpoint && project && !undoBusy(u) && <li className="ui-mrow hist-extra-row"');
     expect(card).toContain('{asking?.id === h.id && h.checkpoint && <li className="ui-mrow hist-extra-row">{undoAsk(h)}</li>}');
     expect(card).toContain("expanded={h.checkpoint && project ? sel === h.id : undefined}");
   });

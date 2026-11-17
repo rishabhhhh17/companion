@@ -47,6 +47,28 @@ describe("(2, 3) a practice open on Now: one next step above the fold, and Flowf
     expect(needMainFor(m, need(m), "/Users/me/other")).toBe("openLearn");
     expect(needMainFor(initial(), null, P)).toBe(null);
   });
+  // Founder round 1 (17 Nov 2026, screenshot 16): "Start the practice" and Stop showed at once while its check ran, and a
+  // second press sent a second check. While the practice's own step runs, only Stop shows.
+  test("while the practice's check runs there is no Start the practice, only the hero's Stop", () => {
+    const m = run([ev({ type: "ui.findProblem" }), ev({ type: "agent.state", agent: "point-1", state: "checking" })], practice());
+    expect(m.practice?.stage).toBe("start");
+    expect(needMainFor(m, need(m), P)).toBe(null);
+    // Pressed, before the engine says it is checking: still no second press.
+    const sent = run([ev({ type: "ui.findProblem" })], practice());
+    expect(needMainFor(sent, need(sent), P)).toBe(null);
+    // The key practice's pretend AI writing its file, the same.
+    const writing = { ...practice(), practice: { ...practice().practice!, pretend: "writing" } } as unknown as Model;
+    expect(needMainFor(writing, need(writing), P)).toBe(null);
+    // Once the check answered, the next step shows again.
+    expect(needMainFor(practice("found"), need(practice("found")), P)).toBe("practiceFix");
+  });
+  // Round 1: three wordings for starting a practice (Start, Start practice, Start the practice), and the hero's said Start
+  // for what the practice card on Learn calls Check my project. Opening a practice is one wording; its first check another.
+  test("one wording to start a practice, and the hero's first step says what Learn's card says", () => {
+    expect(S.homeNow.practiceStart).toBe("Start the practice");
+    expect(S.practiceStart).toBe("Start the practice");
+    expect(S.home.needMain.practiceStart).toBe(S.practiceFind);
+  });
   test("the page draws it as the gel main button, with words from the strings", () => {
     expect(card).toContain("needMainFor(m, needNow, project)");
     for (const k of ["practiceStart", "practiceFix", "openLearn"] as const) expect(S.home.needMain[k]).toMatch(/^[A-Z][a-z ]+$/);

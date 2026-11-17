@@ -18,6 +18,9 @@
 .home .bar-key .ui-key { min-width: var(--h-pill); min-height: var(--h-pill); padding: 0 var(--space-1); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font); color: var(--fg-2); background: var(--surface-1); box-shadow: var(--btn-key); }
 /* The tall Home: Close sits at the top right of the bar (style.css .places .close), so the first row keeps clear of it. */
 .home:not([data-side]) .bar > .bar-key { margin-inline-end: calc(var(--h-sm) + var(--space-1)); }
+/* The wide Home: Close sits at the bar's top right too (style.css .places .close), so the context line is cut before it,
+   never under it (the M104 review: "~/signup-pag" ran under the X). */
+.home[data-side] .bar { padding-inline-end: calc(var(--h-sm) + var(--space-2)); }
 /* The wide Home: the bar's places are only Stop and Close, so the context line takes the room up to the key. */
 .home[data-side] .bar > .bar-key { order: 0; }
 

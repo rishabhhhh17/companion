@@ -21,7 +21,7 @@ import { markSave } from "./commands.ts";
 import { backPlanStep, fixLadder, optionWords, stuckRung, tryCounter } from "./fixLadder.ts";
 import { lastWorkingTime, signInTurn, undoLimitsLine } from "./savePoints.ts";
 import { SaveMarksActions, SaveMarksLine } from "./savePointsRow.tsx";
-import { askedNoticeOf, askedNoticeParts, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, historyWords, historyFacts, isFixing, triesNote, notDoneReason, notDoneLine, plainPath, stateLabel, pointsOnScreen, pointsOnFound, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
+import { askedNoticeOf, askedNoticeParts, browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, historyWords, historyFacts, isFixing, triesNote, notDoneReason, notDoneLine, plainPath, stateLabel, pointsOnScreen, pointsOnFound, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly, undoBusy, undoSettled, UNDO_DONE_MS } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, Model, MemoryLine, Practice, Problem, UndoState } from "./model.ts";
 import { FIRST_PRACTICE, NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, practiceWithoutNode, pointFixRoute, practiceNotes, practiceOf, recordFrom, reviewFixRoute, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
@@ -37,6 +37,8 @@ import { CountUp, useHomeMotion } from "./smoothMotion.ts";
 import { JobLive } from "./jobLive.tsx";
 import { failCopy, failedStep, proofSentence, proofTicks, replayRows, runList } from "./runList.ts";
 import { FailLead, ProofTicks, Replay, RunRows } from "./runListView.tsx";
+import { RecheckList } from "./recheckList.tsx";
+import { stillOf } from "./fixRecheck.ts";
 import { ASKED_NOTICE_MS, arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
 import { jobStep, needMainWords, goLiveAnswer, reviewHeroSays, askRoute, blockerOf, blockLineFor, blockMainFor, fixOffered, MAIN_TOOL, heroCompact, homeFixRoute, jobLive, timeLine, reviewLead, aboutWorthACard, needMainFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
 import { notePress, orderWays, readCounts, type Counts, type Way } from "./usedOften.ts";
@@ -147,7 +149,7 @@ import { changeSize } from "./changeSize.ts";
 import { contentAtMs, fromOf } from "./homeShape.ts";
 // M96: the small chat out of the notch (notchChat.ts, notchChat.tsx).
 import { NotchChat } from "./notchChat.tsx";
-import { chatHolds } from "./notchChat.ts";
+import { chatClosesAway, chatHolds } from "./notchChat.ts";
 import { hoverGreeting } from "./notchMinimal.ts";
 import { resultChips, type ChipId } from "./resultChips.ts";
 /** How long a proven result keeps its landing attribute: long enough for the glow to play once (ui/homeFlow.css). */
@@ -362,6 +364,26 @@ function OnlineBox({ f, project, onClose, onCheckAgain, onLesson, dispatch, whyL
 // and the files it changed, and when on the right (the time today, else the day; history.ts historyDays). Undo is the
 // newest changing task's one action. A press on a row opens its save point's marks (Star, Name it) under the list. No
 // cost (F29). Empty: one row that says what will appear, with one action.
+/** Round 2: the hold to talk panel on Now always has a way out, except while it listens, writes the words down or
+ *  downloads (those end by themselves). needs_model offers Not now beside the download instead. */
+const VOICE_NO_CLOSE = ["listening", "transcribing", "downloading", "needs_model"];
+export const voiceHasClose = (stage: string): boolean => !VOICE_NO_CLOSE.includes(stage);
+/** How long a "typed" or "copied" line stays on Now before it clears itself (ms): the words landed, nothing to answer. */
+export const VOICE_SAID_MS = 4000;
+const VOICE_CLOSED = { type: "ui.voiceClosed" } as const;
+
+/** Round 2: an Undo that failed says why and always offers a next step: Try again asks the same question again (for the
+ *  same checkpoint), Close puts the line away. */
+function UndoFailed({ u, dispatch }: { u: UndoState; dispatch: (e: { type: string; [k: string]: unknown }) => void }) {
+  return (<>
+    <div className="line" role="alert">{u.note}</div>
+    <div className="row">
+      <button className="btn" type="button" onClick={() => dispatch(u.back ? { type: "ui.bringBackAsked" } : { type: "ui.undoAsked", checkpoint: u.checkpoint })}>{S.undoAgain}</button>
+      <button className="btn quiet" type="button" onClick={() => dispatch({ type: "ui.undoClosed" })}>{S.undoDismiss}</button>
+    </div>
+  </>);
+}
+
 function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = null, q, setQ, undoState: u, project, keepsMine, dispatch, focus, askedFocus = null, now, onAsk, onPractice, shotFor, reviewUndo = null, undoFor, askUndo }: { items: HistoryItem[]; reviews?: ReviewRowView[]; saved?: SavedRowView[]; asked?: AskedRowView[]; caught?: CaughtView | null; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; askedFocus?: string | null; now: number; onAsk?: () => void; onPractice?: () => void; shotFor?: (checkpoint: string) => string | undefined;
   /** M101: Put these files back on a review's row: the flow open now, how to draw it under a row, and the row's press. */
   reviewUndo?: ReviewUndo | null; undoFor?: (batch: string, idBase: string) => ReactNode; askUndo?: (batch: string) => void }) {
@@ -395,7 +417,7 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
             </div></ConfirmStep>
         )}
         {u!.stage === "working" && <div className="line" role="status">{S.undoWorking}</div>}
-        {u!.stage === "failed" && <div className="line" role="alert">{u!.note}</div>}
+        {u!.stage === "failed" && <UndoFailed u={u!} dispatch={dispatch} />}
         {u!.stage === "done" && <div className="line" role="status">{u!.yours?.length ? undoneExcept(u!.yours) : S.undone}{u!.recovered ? ` ${S.undoRecovered}` : ""}{u!.large ? ` ${S.undoLarge}` : ""}</div>}
       </div>); };
   // Tasks, reviews and (M77) saved copies in one list, newest first (a task by when it ended or started, a review by when
@@ -465,7 +487,7 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
               </Fragment>
           ); }
             // M77: a saved copy before a destructive command of the person's own AI tool, with Undo (the shadow copy, never git).
-            if (row.kind === "saved") { const x = row.x, l = savedRowLook(x, { running, undoing: !!u }); const backId = `${undoId}-saved-${x.id}`; return (
+            if (row.kind === "saved") { const x = row.x, l = savedRowLook(x, { running, undoing: undoBusy(u) }); const backId = `${undoId}-saved-${x.id}`; return (
               <Fragment key={`saved-${x.id}`}>
                 <ListRow rowId={`saved-${x.id}`} colour={x.undone ? "orange" : "blue"} icon={x.undone ? "undo" : "shield"} title={l.title} line={`${l.line} · ${agoWords(x.at, now)}`} fact={l.mark}
                   action={l.undo && project ? { id: backId, label: S.historyUndo, colour: "orange", ariaLabel: `${S.historyUndo}: ${l.title}`, onClick: () => dispatch({ type: "ui.undoAsked", checkpoint: x.checkpoint }) } : null} />
@@ -478,7 +500,7 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
                       </div></ConfirmStep>
                   )}
                   {u.stage === "working" && <div className="line" role="status">{S.undoWorking}</div>}
-                  {u.stage === "failed" && <div className="line" role="alert">{u.note}</div>}
+                  {u.stage === "failed" && <UndoFailed u={u} dispatch={dispatch} />}
                   {u.stage === "done" && <div className="line" role="status">{u.yours?.length ? undoneExcept(u.yours) : S.undone}{u.recovered ? ` ${S.undoRecovered}` : ""}{u.large ? ` ${S.undoLarge}` : ""}</div>}
                 </div></li>}
               </Fragment>
@@ -491,12 +513,12 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
               title={<>{task}<SaveMarksLine lastWorking={h.lastWorking} star={h.star} name={h.name} /></>}
               line={lineWords} fact={<time className="hist-time" dateTime={h.endedAt ?? h.startedAt}>{when(h)}</time>}
               onOpen={h.checkpoint && project ? () => setSel(sel === h.id ? null : h.id) : undefined} openLabel={h.checkpoint ? `${S.fix.star}, ${S.fix.nameIt}: ${task}` : undefined}
-              action={offers[i] === "undo" && !u ? { id: backId, label: S.historyUndo, colour: "orange", ariaLabel: `${S.historyUndo}: ${task}`, onClick: () => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint }) } : null}
+              action={offers[i] === "undo" && !undoBusy(u) ? { id: backId, label: S.historyUndo, colour: "orange", ariaLabel: `${S.historyUndo}: ${task}`, onClick: () => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint }) } : null}
               expanded={h.checkpoint && project ? sel === h.id : undefined} />
               {/* M72 (the walkthrough, item 9): the Undo question and the opened row's Star and Name it sit right under the
                   row they belong to, never at the foot of the page. */}
               {asking?.id === h.id && h.checkpoint && <li className="ui-mrow hist-extra-row">{undoAsk(h)}</li>}
-              {picked?.id === h.id && h.checkpoint && project && !u && <li className="ui-mrow hist-extra-row" role="group" aria-label={task}>
+              {picked?.id === h.id && h.checkpoint && project && !undoBusy(u) && <li className="ui-mrow hist-extra-row" role="group" aria-label={task}>
                 <SaveMarksActions star={h.star} name={h.name} subject={task} onMark={(mk) => void send(markSave(project, h.checkpoint!, mk))} />
                 {/* M88 (b): Share what my AI did, for a task that ended: the preview first, then Save. */}
                 {h.status !== "running" && sharing !== h.id && <div className="row"><button className="btn" type="button" aria-label={S.m88.share.buttonLabel(task)} onClick={() => setSharing(h.id)}>{S.m88.share.button}</button></div>}
@@ -554,11 +576,13 @@ function MemoryList({ title, scope, lines, project, eraseLabel }: { title: strin
       </ListGroup>
       {pending && <Toast text={S.memoryForgotten(pending.text)} action={S.memoryUndo} onAction={() => setPending(null)} onDone={commitForget} ms={FORGET_MS} />}
       {shownLines.length === 0 && <p className="page-caption">{S.screens.memoryEmpty}</p>}
-      {lines.length > 0 && !sure && <div className="row mem-erase-row"><Button id={eraseId} kind="quiet" className="mem-erase" onClick={() => setSure(true)}>{eraseLabel}</Button></div>}
+      {/* Round 2: Erase only beside notes that show, never beside the grey example. */}
+      {shownLines.length > 0 && !sure && <div className="row mem-erase-row"><Button id={eraseId} kind="quiet" className="mem-erase" onClick={() => setSure(true)}>{eraseLabel}</Button></div>}
       {sure && (
         <ConfirmStep className="row mem-ask" label={S.memoryEraseSure} back={eraseId} onCancel={() => setSure(false)}>
           <span className="line">{S.memoryEraseSure}</span>
-          <button className="btn danger" type="button" onClick={() => { void send(eraseMemory(project, scope)); setSure(false); }}>{S.memoryEraseYes}</button>
+          {/* Round 2: Erase covers a Forget still waiting, so that one is dropped unsent (never a late forget of a gone line). */}
+          <button className="btn danger" type="button" onClick={() => { waiting.current = null; setPending(null); void send(eraseMemory(project, scope)); setSure(false); }}>{S.memoryEraseYes}</button>
           <button className="btn" type="button" data-cancel onClick={() => setSure(false)}>{S.planCancel}</button>
         </ConfirmStep>
       )}
@@ -575,6 +599,16 @@ export function Card() {
   // shown, and whatever waiting state the press had set is closed, so nothing stays on "checking", "fixing" or "asking".
   // Every refusal is said, not only a group switched off (must fix 13).
   const explainRefusal = (e: unknown) => dispatch({ type: "app.notice", message: refusedLine(e) });
+  // M104: Try again on a fix's receipt: Fix it again for the same review, only for what is still there. The same gates as
+  // Fix it on the review card (the drive group on, Free's limit); its own question was answered by the first press.
+  const recheckRetry = () => {
+    const r = nowModel.current.receipt;
+    if (!r?.rechecked || r.retrying || !project) return;
+    if (!toolOn("drive")) { dispatch({ type: "app.notice", message: offLine() }); return; }
+    if (atFreeLimit(planNow(), nowModel.current.proUsage ?? null)) { dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: nowModel.current.proUsage?.resetsOn }); return; }
+    dispatch({ type: "ui.recheckRetry", batch: r.rechecked.batch });
+    void sendQuiet(reviewFix(project, r.rechecked.batch)).catch((e) => dispatch({ type: "ui.recheckRetryFailed", reason: refusalNotice(e) }));
+  };
   const sendOrExplain = (cmd: unknown, closed?: () => void): Promise<void> => sendQuiet(cmd).then(() => undefined, (e) => { closed?.(); explainRefusal(e); });
   // Where send's refusals go: this card's model (protocol.error), as if the engine had refused the command itself.
   useEffect(() => { refused = (ev) => dispatch(ev); return () => { refused = null; }; }, [dispatch]);
@@ -606,6 +640,26 @@ export function Card() {
   // move there.
   const [home, homeDispatch] = useReducer(homeReduce, undefined, homeStart);
   const show = (p: Panel) => shownOn(p, home.tab, m);
+  // Round 2: an Undo that finished with nothing left to answer clears itself after a short read, and one that failed or
+  // finished clears when the person goes to another place, so no Undone or error line stays up for good.
+  const undoNow = m.undo, undoDone = undoNow?.stage === "done" && undoSettled(undoNow);
+  useEffect(() => {
+    if (!undoDone) return;
+    const id = setTimeout(() => { if (undoSettled(nowModel.current.undo)) dispatch({ type: "ui.undoClosed" }); }, UNDO_DONE_MS);
+    return () => clearTimeout(id);
+  }, [undoDone, undoNow?.checkpoint]);
+  const voiceSaid = m.voice?.stage === "typed" || m.voice?.stage === "copied";
+  useEffect(() => {
+    if (!voiceSaid) return;
+    const id = setTimeout(() => { const st = nowModel.current.voice?.stage; if (st === "typed" || st === "copied") dispatch(VOICE_CLOSED); }, VOICE_SAID_MS);
+    return () => clearTimeout(id);
+  }, [voiceSaid, m.voice?.text]);
+  const tabWas = useRef(home.tab);
+  useEffect(() => {
+    if (tabWas.current === home.tab) return;
+    tabWas.current = home.tab;
+    if (undoSettled(nowModel.current.undo)) dispatch({ type: "ui.undoClosed" });
+  }, [home.tab]);
   const needNow = need(m);
   useEffect(() => {
     const a = document.activeElement as HTMLElement | null;
@@ -646,13 +700,17 @@ export function Card() {
   // key, so the press looked broken). Hold to talk itself, or the chat closing, puts it away.
   const [micSaid, setMicSaid] = useState<string | null>(null);
   const chatOn = useRef(false); chatOn.current = chat;
+  // Whether the small chat can hold what goes on now (notchChat.ts chatHolds), read as Home opens; set further down.
+  const chatHoldsNow = useRef<() => boolean>(() => true);
   const homeBox = useRef<HTMLTextAreaElement | null>(null), chatBox = useRef<HTMLTextAreaElement | null>(null);
   const box = useRef<RefObject<HTMLTextAreaElement | null>>({
     get current() { return chatOn.current ? chatBox.current : homeBox.current; },
     set current(el: HTMLTextAreaElement | null) { homeBox.current = el; },
   }).current;
   // Words in the ask box (or in a follow up's) are being typed: Home never closes on a click elsewhere then (home.ts).
-  const typingNow = (): boolean => !!box.current?.value.trim() || (document.activeElement instanceof HTMLInputElement && !!document.activeElement.value.trim());
+  // Round 1: only words in the field that has the keys. A draft put back from before (askbox.ts) is kept anyway, so it never
+  // holds Home or the chat open.
+  const typingNow = (): boolean => { const a = document.activeElement; return (a instanceof HTMLTextAreaElement || a instanceof HTMLInputElement) && !!a.value.trim(); };
   // The ask box's draft (askbox.ts): kept on this Mac as it is typed, put back when Companion starts again, cleared when it
   // is sent. Never kept off the record, and never when it looks like it holds a key or a password.
   const offNow = useRef(false);
@@ -993,6 +1051,9 @@ export function Card() {
   const practiceFind = () => {
     const e = practiceOf(nowModel.current.practice?.kind);
     if (!e || !project) return;
+    // Round 1: never a second check while one runs (a second problem.find was refused and cancelled the first one's panel).
+    const now = nowModel.current;
+    if (stopCan(now) || now.point?.stage === "checking" || now.practice?.pretend === "writing") return;
     if (e.find === "gate") { void send(checkShip(project)); return; }
     // M58 (feature 9): the key practice's pretend AI changes a file, then the review looks at once (no model, no cost).
     if (e.find === "review") { pressed(); dispatch({ type: "ui.practiceKeyWrite" }); void sendQuiet(practiceKey(project, "write")).catch((err) => dispatch({ type: "ui.practiceKeyRefused", reason: refusalNotice(err) })); return; }
@@ -1430,7 +1491,10 @@ export function Card() {
       const k = frontKindOf({ kind: (e.payload as { front?: unknown } | null)?.front });
       if (k) setFrontKind(k);
       homeDispatch({ type: "opened", keyboard });
-      setChat((e.payload as { chat?: unknown } | null)?.chat === true);
+      // Round 1: something that needs all of Home already waits (a question to allow, a plan): Home opens out at once, so the
+      // chat never paints for a moment and the shape never grows twice.
+      const small = (e.payload as { chat?: unknown } | null)?.chat === true;
+      if (small && !chatHoldsNow.current()) { setChat(false); void invoke("home_expand").catch(() => {}); } else setChat(small);
       // M66: Home grows out of the notch (homeStage.tsx), in the same update that set the place it opens on, so it never
       // shows blank or the place it showed last. The motion is the stage's; with reduced or Less motion it fades.
       // M26: opened by a keyboard shortcut (the shell says instant, island.rs animates_open), it is simply there.
@@ -1817,6 +1881,18 @@ export function Card() {
   // "Fixed. Checks pass." only over a real fix: a pass that changed nothing fixed nothing (must fix 7).
   const provenAt = receiptVerdict(m)?.kind === "proven" && !m.receipt!.gone ? m.receipt!.checkpoint : null;
   useEffect(() => { if (provenAt) void invoke("follow_say", { text: S.followDone }).catch(() => {}); }, [provenAt]);
+  // Round 1 (the founder: "when I open the chat, I cannot close it fully"): Esc closes Home (and so the small chat) wherever
+  // the keys are in it, also after a click on its plain part, which leaves them on the page itself, not in Home. Only while
+  // Home shows; a field, a menu or a choice that uses Esc itself stops it first (its own stopPropagation or preventDefault).
+  const escClose = useRef(() => {}); escClose.current = () => { box.current?.blur(); player.current.hush(); void invoke("close_card"); };
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !homeShown.current) return;
+      if (e.key === "Escape" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); }
+    };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, []);
   // Command comma opens Settings, as in every Mac app (Apple's menu bar guidance).
   const gearRef = useRef(gear); gearRef.current = gear;
   useEffect(() => {
@@ -1824,14 +1900,22 @@ export function Card() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  // Round 1: how many times the engine has said hello, so a list it could not answer yet is asked again (below).
+  const [hellos, setHellos] = useState(0);
+  useEffect(() => {
+    const off = listen("runner-event", (e) => { if ((e.payload as { type?: unknown } | null)?.type === "runner.hello") setHellos((n) => n + 1); });
+    return () => { off.then((f) => f()); };
+  }, []);
   // What each tab shows is asked for whenever it is the one showing (picked, or shown by itself), and again for a new folder:
   // the lessons (those that read the project need a chosen folder; the others, installing a tool or leaving a builder, do
   // not), what Companion knows, and the task history.
   useEffect(() => {
-    if (home.tab === "learn") { void sendQuiet(walkList(project || NO_PROJECT)); loadPractice(); if (needsMacCheck(m.doctor)) void sendQuiet(checkMac()); if (toolOn("tutor")) void sendQuiet(tutorList()); }
-    if (home.tab === "memory" && project) void sendQuiet(listMemory(project));
-    if (home.tab === "did" && project) void sendQuiet(listTasks(project));
-  }, [home.tab, project]);
+    // Round 1: a list the shell refused (the engine not connected yet, or restarting) is asked again when the engine says
+    // hello (`hellos`); Memory says so with its Try again instead of looking up what it knows for ever.
+    if (home.tab === "learn") { void sendQuiet(walkList(project || NO_PROJECT)).catch(() => {}); loadPractice(); if (needsMacCheck(m.doctor)) void sendQuiet(checkMac()).catch(() => {}); if (toolOn("tutor")) void sendQuiet(tutorList()).catch(() => {}); }
+    if (home.tab === "memory" && project) void sendQuiet(listMemory(project)).catch((err) => dispatch({ type: "protocol.error", failed: "memory.list", reason: err instanceof Error ? err.message : String(err) }));
+    if (home.tab === "did" && project) void sendQuiet(listTasks(project)).catch(() => {});
+  }, [home.tab, project, hellos]);
   // Node was installed while Home stayed open: coming back to Companion checks again, only on Learn and only while Node is
   // flagged missing.
   useEffect(() => {
@@ -1923,11 +2007,13 @@ export function Card() {
   }, []);
   const installUpdate = () => { if (!installAllowed(nowModel.current)) return; setUpdateNote(updateLine({ stage: "installing" }, "", true)); const prev = found.update; void invoke("install_update").catch((e) => { const r = afterInstallFailed(prev, String(e)); found.update = r.update; setUpdateNote(r.note || String(e)); }); };
   useEffect(() => {
-    const off = listen("home-click-away", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true, typingNow())) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
+    // Founder round 1 (17 Nov 2026, "when I open the chat, I cannot close it fully"): the small chat holds nothing that waits
+    // for a tap (chatHolds opens it out for that), so a click elsewhere always folds it, unless words are being typed in it.
+    const off = listen("home-click-away", () => { if (chatOn.current ? chatClosesAway(setting("home.closeOnClickAway") === true, typingNow()) : closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true, typingNow())) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
     // M66 step 5: the pointer left a Home that pointing opened. It folds back the same way, only when nothing on it waits for
     // the person (a question, an approval, words being typed); else it stays, and is the person's now (the shell asks once).
     // Step 6: and only with Close Home when I click another app on, as the shell also checks.
-    const offLeft = listen("home-pointer-left", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true, typingNow())) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
+    const offLeft = listen("home-pointer-left", () => { if (chatOn.current ? chatClosesAway(setting("home.closeOnClickAway") === true, typingNow()) : closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true, typingNow())) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
     return () => { off.then((f) => f()); offLeft.then((f) => f()); };
   }, []);
   // A task that has ended on a question needs the person, but nothing runs: no Stop, and the ask box stays.
@@ -2024,6 +2110,7 @@ export function Card() {
   const freshNotice = chat && !!m.notice && m.notice !== S.notConnectedNotice && m.notice !== chatAt.current?.notice;
   const freshResult = chat && !!m.receipt && m.receipt !== chatAt.current?.receipt;
   useEffect(() => { if (!chat || m.voice) setMicSaid(null); }, [chat, m.voice]);
+  chatHoldsNow.current = () => chatHolds(nowModel.current, { onboarded, vague: !!vague, noProject: !!noProjectFor, handoff: !!handoff, attached: attached.length, freshNotice: false, freshResult: false });
   useEffect(() => {
     if (chat && !chatHolds(m, { onboarded, vague: !!vague, noProject: !!noProjectFor, handoff: !!handoff, attached: attached.length, freshNotice, freshResult })) openOut();
   }, [chat, m, onboarded, vague, noProjectFor, handoff, attached, freshNotice, freshResult]);
@@ -2098,7 +2185,9 @@ export function Card() {
   // The words from hold to talk send through this, so they always go with the current folder and settings.
   const submitNow = useRef(submit); submitNow.current = submit;
   // The follow up box under a finished task's receipt: shown, sent, and sent by itself from hold to talk (auto send on).
-  followShown.current = show("receipt") && !!m.receipt && canFollowUp(m, project) && groups.on("followUp");
+  // M104 review: while a problem the review found is still there, Try again is the one next step, so the box is not offered.
+  const followHidden = !!m.receipt && !m.receipt.undone && stillOf(m.receipt.rechecked) > 0 && m.followUp !== "sending";
+  followShown.current = show("receipt") && !!m.receipt && canFollowUp(m, project) && groups.on("followUp") && !followHidden;
   useEffect(() => { if (!(canFollowUp(m, project) || m.followUp === "sending")) { setFollowText(""); followFromVoice.current = false; } }, [canFollowUp(m, project) || m.followUp === "sending"]);
   // A follow up asked by voice is answered out loud like any spoken question (Answer out loud); a typed one is not.
   // Try again is always a press, whatever words wait in the box.
@@ -2416,8 +2505,17 @@ export function Card() {
   // M69 step 3: over a proven or failed result the hero says the outcome once (homeRest.ts resultHero), at the same size as
   // every other state; the receipt under it then starts with what to do (Keep, Undo) instead of saying it again.
   const rcptVerdict = rcpt && !undone ? receiptVerdict(m) : null;
-  const resHero = mode === "result" && home.tab === "now" && rcpt && rcptVerdict && (rcptVerdict.proven || rcpt.proof === "failed")
-    ? resultHero({ project, label: m.task?.label ?? "", kind: rcptVerdict.proven ? "proven" : "failed", said: rcptVerdict.proven ? proofSentence(m, true) ?? rcptVerdict.line ?? "" : failLead?.why ?? "", flagged: !!rcpt.flags?.length })
+  // M104: a review's Fix it left one of its problems there: Try again and Undo sit together under the list.
+  const recheckStill = !!rcpt && !undone && stillOf(rcpt.rechecked) > 0;
+  // M104 review: Not fixed yet with one still there is a failed result too, so the hero says it once (how many are still
+  // there) and the receipt's own verdict line and the bar's "Undo is ready" step aside. A problem the rules could not check
+  // (Look at it) never lets the hero read as plainly fixed: it is flagged like Not what you asked for (M85).
+  const resHero = mode === "result" && home.tab === "now" && rcpt && rcptVerdict && (rcptVerdict.proven || rcpt.proof === "failed" || recheckStill)
+    // A review's fix that is not proven names the project ("signup-page is not fixed yet."), never its task words ("The
+    // what the review found is not fixed yet.").
+    ? resultHero({ project, label: rcpt.rechecked && !rcptVerdict.proven ? "" : m.task?.label ?? "", kind: rcptVerdict.proven ? "proven" : "failed",
+      said: rcptVerdict.proven ? proofSentence(m, true) ?? rcptVerdict.line ?? "" : recheckStill ? S.verdict.stillThere(stillOf(rcpt.rechecked)) : failLead?.why ?? "",
+      flagged: !!rcpt.flags?.length || !!rcpt.rechecked?.findings.some((f) => f.outcome === "unsure") })
     : null;
   // M69 step 3: the bar's context line says what the hero does not: when it was checked and that Undo is ready only while
   // the hero says neither (at rest and over a result it does), and in the tall Home the kind of project without its folder.
@@ -2506,12 +2604,12 @@ export function Card() {
             </div></ConfirmStep>
         )}
         {u.stage === "working" && <div className="line" role="status">{S.undoWorking}</div>}
-        {u.stage === "failed" && <div className="line" role="alert">{u.note}</div>}
+        {u.stage === "failed" && <UndoFailed u={u} dispatch={dispatch} />}
         {u.stage === "done" && <div className="line" role="status">{u.yours?.length ? undoneExcept(u.yours) : S.undone}</div>}
       </>) : null;
     // M71: Now's one list (homeRest.ts nowRows): the last fix and how its check went, then what happened since, at most
     // three rows, each in its meaning's colour. It fills the room under the lead, so Now never has a big empty gap.
-    const rows = nowRows({ fix: restFix, since: restFix ? restSince : [], practice: practiceRow, undo: fixUndo === "undo" && !u, now: clock, caught: weekOn && project ? m.caught ?? null : null });
+    const rows = nowRows({ fix: restFix, since: restFix ? restSince : [], practice: practiceRow, undo: fixUndo === "undo" && !undoBusy(u), now: clock, caught: weekOn && project ? m.caught ?? null : null });
     const act = (r: (typeof rows)[number]) => {
       if (r.act === "practice") beginPractice(FIRST_PRACTICE);
       else if (r.act === "open" && r.item) openRecent(r.item);
@@ -2716,8 +2814,7 @@ export function Card() {
         const t = e.target as HTMLElement;
         const hk = homeKey({ key: e.key, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, composing: composing(e) }, { inField: !(t === e.currentTarget || t.matches?.("button.ui-mrow-main, .ui-mrow-act")), places: navPlaces });
         if (hk && "go" in hk) { e.preventDefault(); pickTab(hk.go); return; }
-        if (hk && "rows" in hk) { if (moveRow(hk.rows)) e.preventDefault(); return; }
-        if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
+        if (hk && "rows" in hk) { if (moveRow(hk.rows)) e.preventDefault(); return; } }}>
       {/* M71: Home is one black surface; the rooms' light (data-element, RoomLight) is retired. */}
       <div className="inner" ref={inner}>
       {/* M96: the small chat out of the notch, only while Home is the small chat; everything else in Home stays laid out but
@@ -2733,7 +2830,7 @@ export function Card() {
           if (askKey({ key: e.key, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, ctrl: e.ctrlKey, composing: composing(e) }) !== "send") return;
           e.preventDefault(); submit();
         }}
-        onSettings={() => { openOut(); gear(); }} onExpand={() => { openOut(); pickTab("now"); }} />}
+        onSettings={() => { openOut(); gear(); }} onExpand={() => { openOut(); pickTab("now"); }} onClose={() => escClose.current()} />}
       {/* The wide Home (look.layout, M51): the places and the recent work in a list on the left, the work beside it. */}
       {side && <HomeSide places={sidePlaces({ learnOn: learnShown() })} tab={home.tab} waits={waitsOn} recent={sideRecent(project ? m.history : [])} now={clock}
         onPick={pickTab} onSettings={gear} onOpen={openRecent} review={reviewOn && !undoneHere ? m.review : null} onReview={openReview} counts={reviewOn && !undoneHere && reviewHead(m.review) ? { now: reviewHead(m.review)!.count } : undefined}
@@ -3377,8 +3474,13 @@ export function Card() {
             <div className="result-verdict" data-verdict={v.kind}><VerdictLine verdict={v} size="card" sub={said || putBackShown ? <>{said}{putBackShown && <span className="putback-note" role="status">{said ? " " : ""}{S.look.putBack}</span>}</> : undefined} /></div>
           ); })()}
           {/* M69: failing leads with what failed, named, and its line pointed at (as the review card does). */}
-          {failLead && <FailLead f={failLead} retryId="result-chip-fix" retry={retryCan && project && !chipFixAsk ? () => setChipFixAsk(true) : null} copy={<CopyButton text={failCopy(failLead)} label={S.fixRun.copyForAi} />}
-            heroSays={!!resHero} undo={undoCan(m, project) ? undoButton(S.fixRun.undoThis) : null} />}
+          {/* M104 review: with one still there, the review's Try again and Undo (under its list) are the only ones: the failed
+              step keeps Copy for my AI, never a second Try again or Undo that does something else. */}
+          {failLead && <FailLead f={failLead} retryId="result-chip-fix" retry={retryCan && project && !chipFixAsk && !recheckStill ? () => setChipFixAsk(true) : null} copy={<CopyButton text={failCopy(failLead)} label={S.fixRun.copyForAi} />}
+            heroSays={!!resHero && !recheckStill} undo={undoCan(m, project) && !recheckStill ? undoButton(S.fixRun.undoThis) : null} />}
+          {/* M104: a review's Fix it: each problem it was asked to fix, checked again by the rules. One still there makes the
+              result Not fixed yet (verdict.ts), and Try again fixes only what is left; Undo is in its usual place below. */}
+          {!undone && m.receipt.rechecked && <RecheckList r={m.receipt.rechecked} retrying={!!m.receipt.retrying} retry={project ? recheckRetry : null} undo={recheckStill && undoCan(m, project) ? undoButton(S.home.undoFix) : null} />}
           {/* M69 step 3: the before and after pair, as wide as the card, then what was checked. */}
           {m.receipt.visual?.image && !undone && m.undo?.stage !== "working" && <ShotPair before={m.receipt.visual.before} after={m.receipt.visual.image} caption={m.receipt.visual.caption} size="receipt" />}
           {/* The proof right under the verdict it backs (the review, 2 Nov 2026: at the card's foot, Tests pass was behind the
@@ -3398,10 +3500,11 @@ export function Card() {
               Inside the card (4.2): a secondary button, only when the result offers it (homeHero.ts undoCan). The
               receipt's own question follows on a press. "Put back as it was" shows for two seconds once it is done. */}
           {/* M69 (spec 3.4): beside it, Replay what Squibby did, from the steps this task already holds (runList.ts). */}
-          {resHero?.pill !== "proven" && ((undoCan(m, project) && !failLead) || replayRows(m).rows.length > 0) && (
+          {resHero?.pill !== "proven" && ((undoCan(m, project) && !failLead && !recheckStill) || replayRows(m).rows.length > 0) && (
             <div className="row result-actions">
-              {/* M72: after Stop, Undo what it did is in the lead (stoppedUndo), so it is not drawn here a second time. */}
-              {receiptVerdict(m)?.kind === "stopped" && undoCan(m, project) && !failLead ? (stoppedUndo ? null : undoMain()) : <>{undoCan(m, project) && !failLead && undoButton(m.receipt.wholePlan ? S.home.undoWholeFix : S.home.undoFix)}</>}
+              {/* M72: after Stop, Undo what it did is in the lead (stoppedUndo), so it is not drawn here a second time. M104:
+                  nor when a problem is still there after a review's Fix it (Undo is beside Try again). */}
+              {receiptVerdict(m)?.kind === "stopped" && undoCan(m, project) && !failLead ? (stoppedUndo ? null : undoMain()) : recheckStill ? null : <>{undoCan(m, project) && !failLead && undoButton(m.receipt.wholePlan ? S.home.undoWholeFix : S.home.undoFix)}</>}
               <Replay m={m} id={`${undoId}-replay`} />
             </div>
           )}
@@ -3446,7 +3549,7 @@ export function Card() {
               </div></ConfirmStep>
           )}
           {m.undo?.stage === "working" && <div className="line" role="status">{m.undo.back ? S.bringBackWorking : S.undoWorking}</div>}
-          {m.undo?.stage === "failed" && <div className="line" role="alert">{m.undo.note}</div>}
+          {m.undo?.stage === "failed" && <UndoFailed u={m.undo} dispatch={dispatch} />}
           {m.undo?.stage === "done" && <div className="line" role="status">{m.undo.back ? (m.undo.yours?.length ? S.bringBackExcept(m.undo.yours.length, fileNames(m.undo.yours)) : "") : m.undo.yours?.length ? undoneExcept(m.undo.yours) : S.undone}{m.undo.recovered ? ` ${S.undoRecovered}` : ""}{m.undo.large ? ` ${S.undoLarge}` : ""}{m.undo.putBack === "done" ? ` ${S.undoPutBackDone}` : ""}</div>}
           {m.undo?.stage === "done" && !!m.undo.yours?.length && !m.undo.putBack && project && (
             <div className="row"><button id={`${undoId}-back`} className="btn" type="button" onClick={() => dispatch({ type: "ui.putBackAsked" })}>{S.undoPutBack}</button></div>
@@ -3473,12 +3576,12 @@ export function Card() {
               </div></ConfirmStep>
           )}
           {m.explain && m.explain.checkpoint === m.receipt.checkpoint && <ExplainBox e={m.explain} key={m.explain.checkpoint} />}
-          {groups.on("followUp") && (canFollowUp(m, project) || m.followUp === "sending") && (
+          {groups.on("followUp") && (canFollowUp(m, project) || m.followUp === "sending") && (!followHidden && (
             <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project) && !chips.includes("fix") && !chipFixAsk} onSent={followSent} onRefused={followRefused}
               text={followText} setText={(t) => { setFollowText(t); if (!t) followFromVoice.current = false; }}
               listening={m.voice?.stage === "listening" && overReceipt.current && setting("talk.followUpByPointing") === true}
               answer={!!m.receipt.asks && !undone} />
-          )}
+          ))}
           {/* M66 (the shortlist, item 1): two or three fixed one tap chips, always last (resultChips.ts). Undo and Fix it only
               ask: their own question comes first, then the change runs with its safety copy and its receipt. */}
           {chips.length > 0 && (
@@ -3537,15 +3640,20 @@ export function Card() {
         <section className={`panel ${["error", "mic_refused", "blocked", "needs_mic", "needs_model"].includes(m.voice.stage) ? "amber" : ""}`} role="status" aria-label={S.voiceTitle}>
           <h2>{S.voiceTitle}</h2>
           <div className="line">{m.voice.message}{m.voice.stage === "downloading" && typeof m.voice.percent === "number" ? ` ${m.voice.percent}%` : ""}</div>
-          {m.voice.stage === "needs_model" && <div className="row"><button className="btn primary" type="button" onClick={() => void invoke("voice_download")}>{S.voiceDownload}</button></div>}
-          {["error", "mic_refused", "blocked", "needs_mic", "silent", "model_ready"].includes(m.voice.stage) && <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.voiceClosed" })}>{S.voiceClose}</button></div>}
+          {/* Round 2: every stage but listening, transcribing and downloading has a way out: Close, Not now beside the
+              download, and Open System Settings when the words need Accessibility to land where the person types. */}
+          {m.voice.stage === "needs_model" && <div className="row"><button className="btn primary" type="button" onClick={() => void invoke("voice_download")}>{S.voiceDownload}</button><button className="btn" type="button" onClick={() => dispatch({ type: "ui.voiceClosed" })}>{S.voiceNotNow}</button></div>}
+          {voiceHasClose(m.voice.stage) && <div className="row">
+            {m.voice.stage === "needs_access" && <button className="btn primary" type="button" onClick={() => void invoke("open_permission_page", { which: "accessibility" }).catch(() => {})}>{S.settingsOpenSystem}</button>}
+            <button className="btn" type="button" onClick={() => dispatch({ type: "ui.voiceClosed" })}>{S.voiceClose}</button></div>}
         </section>
       )}
 
       {show("point") && m.point && (
-        <section className={`panel ${m.point.stage === "found" ? "amber" : ""}`} role="status" aria-label={S.pointTitle}>
+        <section className={`panel ${m.point.stage === "found" ? "amber" : ""}`} role="status" aria-label={m.point.stage === "checking" ? S.pointChecking : S.pointTitle}>
           {/* Found: the hero above already says what broke (the audit, item 53), so the title is for VoiceOver only then. */}
-          <h2 className={m.point.stage === "found" && !m.practice ? "sr" : undefined}>{m.point.stage === "clear" ? S.screens.pass.title : S.pointTitle}</h2>
+          {/* Round 1: while it only checks, no "What's wrong" title (nothing was found yet); the hero says Checking. */}
+          {m.point.stage !== "checking" && <h2 className={m.point.stage === "found" && !m.practice ? "sr" : undefined}>{m.point.stage === "clear" ? S.screens.pass.title : S.pointTitle}</h2>}
           {m.point.stage === "checking" && <div className="line">{S.pointChecking}</div>}
           {/* M58 (UI 20): each line names the button that is really there, Look at my screen, or the ask box when it is off. */}
           {m.point.stage === "clear" && <div className="line">{S.screens.pass.clear(everydayOn ? S.everydayLookInstead : null)}</div>}

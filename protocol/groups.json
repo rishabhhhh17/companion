@@ -113,7 +113,7 @@
       "runner": ["secondlook.check"], "stays": ["sl_dismiss"] },
 
     { "id": "convert", "group": "files", "tried": "shell", "permissions": [], "settings": ["drop.on", "drop.saveTo"],
-      "commands": ["drop_now", "drop_pick", "drop_stop", "drop_close", "drop_reveal", "drop_trim"],
+      "commands": ["drop_now", "drop_pick", "drop_stop", "drop_close", "drop_reveal", "drop_trim", "drop_more"],
       "runner": [], "stays": ["drop_stop", "drop_close", "drop_reveal"] }
   ]
 }

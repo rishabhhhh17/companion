@@ -94,8 +94,9 @@ function ResultBox({ r, undo, explain, act }: { r: PracticeResult; undo: UndoSta
         {r.changedAt && <button className="btn" type="button" onClick={() => act.showChanged(r.changedAt!)}>{S.showChanged}</button>}
         <button className="btn" type="button" onClick={act.showResult}>{S.practiceShowResult}</button>
       </div>
-      {/* Undo is a quiet button, never the loudest on a win (the review of 5 Nov): it still asks first. */}
-      {r.changed.length > 0 && !mine && <div className="row"><button id={undoId} className="btn quiet" type="button" onClick={() => act.undoAsk(r.checkpoint)}>{S.undo}</button></div>}
+      {/* Undo is a quiet button, never the loudest on a win (the review of 5 Nov): it still asks first. Round 2: after an
+          Undo that failed it is back, as the way to try again. */}
+      {r.changed.length > 0 && (!mine || mine.stage === "failed") && <div className="row"><button id={undoId} className="btn quiet" type="button" onClick={() => act.undoAsk(r.checkpoint)}>{S.undo}</button></div>}
       {mine?.stage === "confirm" && (
         <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={act.undoCancel}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>{r.notesStay?.length ? <div>{S.guard.notesStay(r.notesStay)}</div> : null}
           <div className="row">

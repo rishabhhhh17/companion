@@ -100,6 +100,8 @@ fn drag_dock(app: AppHandle, window: tauri::WebviewWindow) {
     *DRAG.lock().unwrap_or_else(|e| e.into_inner()) = None;
     // While the person drags it nothing else moves it (F18 item 2).
     DRAG_AT.store(now() as u64, Ordering::SeqCst);
+    // Round 2: a drag of the character's own window is never a drag out of the notch, whatever an earlier one left.
+    DRAG_FROM_NOTCH.store(false, Ordering::SeqCst);
     DRAG_LIVE.store(true, Ordering::SeqCst);
     let _ = app.run_on_main_thread(move || {
         let Some(mtm) = MainThreadMarker::new() else { return };
@@ -113,8 +115,9 @@ fn drag_dock(app: AppHandle, window: tauri::WebviewWindow) {
         let Some(win) = with_panels(|d, _| { let f = d.frame(); set_frame_moving(d, f, None, None, &DOCK_MOVES); from_appkit(f, ph) }) else { return };
         let mut drag = docking::Drag::begin((m.x, ph - m.y), win, list);
         drag.set_dock_when(docking::DockWhen::from_value(&setting_now("character.dockWhen")));
-        // M111: let go over the notch, it tucks in (only while the notch shows).
-        drag.set_tuck(home_set().island_show);
+        // M111: let go over the notch, it tucks in (only while the notch shows). Round 1: never while Home is open, whose band
+        // hides the notch's "Let go to tuck" line: a drop near the top then docks to the top edge as before.
+        drag.set_tuck(home_set().island_show && !card_visible());
         *DRAG.lock().unwrap_or_else(|e| e.into_inner()) = Some(drag);
         // M111, the bubbles bug: Home opened beside the character (the notch off) is never left where it was.
         tied_close(docking::Change::DragBegan);
@@ -203,9 +206,24 @@ fn drop_dock(app: AppHandle) {
         DRAG_LIVE.store(false, Ordering::SeqCst);
         DRAG_AT.store(0, Ordering::SeqCst);
         if landed.is_some() { place_told(&a); }
+        // Round 1: pulled out of the notch and landed on the screen, the pages hear it no longer lives in the notch (its
+        // face leaves the notch's row and the chat's top row; Settings shows On an edge).
+        if from_notch && landed.as_ref().is_some_and(|l| l.how != docking::Landing::Tuck) { settings_told(&a, &["character.lives".to_string()]); }
+        // Round 1: a hover that changed while the drag held is decided now, so the notch's row is never left drawn.
+        island_hover_settle();
     });
 }
 
+
+/// Round 2, the backstop (tick, twice a second): a drag out of the notch whose page lost the let go (docking.rs
+/// notch_let_go_missed) is let go here, exactly as `drop_dock`: snapped and saved, or tucked again over the notch, and the
+/// notch's "Let go to tuck" row cleared. Reads only whether the left button is held, never anything else. Main thread.
+fn notch_drag_backstop(app: &AppHandle) {
+    let left_down = NSEvent::pressedMouseButtons() & 1 != 0;
+    if !docking::notch_let_go_missed(DRAG_LIVE.load(Ordering::SeqCst), DRAG_FROM_NOTCH.load(Ordering::SeqCst), left_down) { return; }
+    log("drag_let_go_missed", json!({ "from": "notch" }));
+    drop_dock(app.clone());
+}
 
 // ---------- M111: Flowflow tucked into the notch (the rules are in docking.rs, tested) ----------
 
@@ -276,8 +294,8 @@ fn tuck_away(app: &AppHandle, why: &str) {
         let _ = a.run_on_main_thread(move || if TUCK_GEN.load(Ordering::SeqCst) == gen && tucked() { with_panels(|d, _| d.orderOut(None)); });
     });
     settings_told(app, &["character.lives".to_string()]);
-    // The notch says for a moment where it went, so a tuck by accident never looks like it vanished (the M111 review).
-    take_say(island::TAKE_TUCKED);
+    // Founder round 1 (17 Nov 2026): the shrink up into the notch is the feedback, and then nothing of it shows until there
+    // is news. No row grows back out under the notch (it drew Flowflow again, so the tuck looked like it went nowhere).
     log("tucked", json!({ "why": why }));
 }
 
@@ -342,7 +360,7 @@ fn untuck_drag(app: AppHandle, window: tauri::WebviewWindow) {
         let _ = a.emit_to("dock", "dock-tuck", json!({ "on": false, "calm": reduce_motion(), "drag": true }));
         let mut drag = docking::Drag::begin(p, win, list);
         drag.set_dock_when(docking::DockWhen::from_value(&setting_now("character.dockWhen")));
-        drag.set_tuck(home_set().island_show);
+        drag.set_tuck(home_set().island_show && !card_visible());
         *DRAG.lock().unwrap_or_else(|e| e.into_inner()) = Some(drag);
         log("untuck_drag", json!({ "from": "notch" }));
     });

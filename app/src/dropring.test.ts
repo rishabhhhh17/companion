@@ -97,7 +97,9 @@ describe("the ring on the page", () => {
     expect(ring).toContain("onKeyDown={(e) => onKey(e, drop)}");
   });
   test("More opens the whole list in Home", () => {
-    expect(ring).toContain('invoke("open_card_cmd")');
+    // Changed on purpose (round 2): More opens Home without the keyboard (drop_more, rule 9), never open_card_cmd.
+    expect(ring).toContain('invoke("drop_more")');
+    expect(ring).not.toContain("open_card_cmd");
     expect(S.drop.more).toBeTruthy();
   });
 });

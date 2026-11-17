@@ -268,6 +268,19 @@ describe("a click elsewhere closes Home, unless something there needs the person
     expect(closesOnClickAway(initial(), false, true, false)).toBe(true);
     expect(card).toMatch(/home-click-away[^\n]*closesOnClickAway\([^\n]*typingNow\(\)/);
   });
+  // Founder round 1 (17 Nov 2026): a practice copy merely open (or done, or failed, or in another folder) held Home open for
+  // good, so neither Home nor the chat ever closed on a click elsewhere. Only a practice under way still holds it.
+  test("a practice only holds Home while it is under way (a lesson, a fix, its checks after), never one merely open or done", () => {
+    const pr = (stage: string, project = "/Users/me/shop") => ({ ...initial(), practice: { kind: "signup", stage, project } } as unknown as Model);
+    for (const st of ["start", "found", "done", "failed", "blocked"]) expect(closesOnClickAway(pr(st), false), st).toBe(true);
+    expect(closesOnClickAway(pr("start", "/Users/me/other"), false)).toBe(true);
+    for (const st of ["lesson", "fixing", "proving"]) expect(closesOnClickAway(pr(st), false), st).toBe(false);
+    // A question still holds it, with a practice open or not.
+    expect(closesOnClickAway({ ...pr("start"), approvals: run([...task(), approval()]).approvals }, false)).toBe(false);
+  });
+  test("a draft kept from before is not typing: only words in the box that has the keys hold Home", () => {
+    expect(card).toMatch(/const typingNow = \(\): boolean => \{ const a = document\.activeElement;/);
+  });
   test("the card asks before it closes, and closes the way Esc does", () => {
     expect(card).toMatch(/listen\("home-click-away", [^\n]*closesOnClickAway\(/);
     expect(card).toMatch(/home-click-away[^\n]*player\.current\.hush\(\);[^\n]*invoke\("close_card"\)/);

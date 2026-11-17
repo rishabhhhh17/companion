@@ -155,6 +155,11 @@ export const rowMarkShown = (mode: IslandMode, mark: WingMark): boolean =>
  *  to another view (or to nothing) in the frame the pointer leaves (M70 step 4). */
 export const latched = <T>(prev: T, shown: boolean, now: T): T => (shown ? now : prev);
 
+/** Round 2: whether the panel opened by itself (`brief`) is decided once, the moment it opens, and kept until it closes.
+ *  The shell reports the pointer resting on a panel that opened by itself (hover after HOVER_IN_MS), and following that
+ *  turned a question's Allow and Don't allow into the greeting row right under the pointer that was about to press them. */
+export const briefAtOpen = (prev: boolean, wasShown: boolean, shown: boolean, selfNow: boolean): boolean => (shown && !wasShown ? selfNow : prev);
+
 /** The quick actions for the state, at most QUICK_MAX, in their fixed slots. None while a question waits or a fresh result
  *  shows (those cards are the panel), while a job runs, or while nothing can run (the engine stopped or not ready). Ask
  *  comes first, after Pick a project when there is none.

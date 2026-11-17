@@ -119,7 +119,7 @@ export function DropRing({ drop }: { drop: Drop }) {
             style={{ transform: `translate(${spots[i].x}px, ${spots[i].y}px)` }}
             onPointerEnter={() => setAim(i)} onPointerLeave={() => setAim((c) => (c === i ? null : c))} onBlur={() => setAim((c) => (c === i ? null : c))}
             onFocus={() => { setAim(i); if (a !== "close" && a !== "more") d({ type: "focus", i }); }}
-            onClick={() => (a === "close" ? close(s, d) : a === "more" ? void invoke("open_card_cmd") : choose(drop, a, false))}>
+            onClick={() => (a === "close" ? close(s, d) : a === "more" ? void invoke("drop_more").catch(() => {}) : choose(drop, a, false))}>
             {a === "close" ? <Icon name="close" size={18} /> : a === "more" ? <Icon name="more" size={20} /> : showsWord(a) ? <span className="drop-word" aria-hidden="true">{w.short}</span> : <ActionGlyph kind={actionIcon(a)} />}
           </button>
         );

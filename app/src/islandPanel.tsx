@@ -122,7 +122,8 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
     : view.kind === "result" ? (
       // M69 (spec 3.13): a mini receipt. A small tick or dot for the verdict (M70 step 4: no character), the fix in its own
       // words, how it was proven, the after picture, then Keep (folds the panel back), Undo (asked in Home) and See proof.
-      // No key hints (rule 9).
+      // No key hints (rule 9). Round 2: Undo and See proof open Home as every other press here does (island_go), never with
+      // the keyboard (rule 9).
       <div className="ip-result ip-receipt" data-tone={view.job.tone} data-armed={cardOk(view.job.key, now) ? "yes" : undefined} role="group" aria-label={view.verdict.say}>
         <div className="ip-receipt-head">
           <span className="ip-dot" data-tone={view.job.tone} aria-hidden="true">{view.verdict.proven && <Icon name="tick" size={10} />}</span>
@@ -131,8 +132,8 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
         </div>
         <div className="ip-actions">
           {view.mini.keep && <Button kind="primary" size="sm" tabIndex={tab} label={S.fixRun.keepLabel} onClick={click(view.job.key, () => onKeep?.(view.job.key))}>{S.fixRun.keep}</Button>}
-          {view.canUndo && <Button size="sm" tabIndex={tab} onClick={click(view.job.key, () => void invoke("open_card_cmd", { then: PANEL_DO.undo }).catch(() => {}))} label={S.home.undoFix}>{S.resultChips.undo}</Button>}
-          <Button kind="quiet" size="sm" tabIndex={tab} onClick={click(view.job.key, () => void invoke("open_card_cmd").catch(() => {}))}>{S.home.seeProof}</Button>
+          {view.canUndo && <Button size="sm" tabIndex={tab} onClick={click(view.job.key, () => void invoke("island_go", { then: PANEL_DO.undo }).catch(() => {}))} label={S.home.undoFix}>{S.resultChips.undo}</Button>}
+          <Button kind="quiet" size="sm" tabIndex={tab} onClick={click(view.job.key, () => void invoke("island_go").catch(() => {}))}>{S.home.seeProof}</Button>
         </div>
       </div>
     )
@@ -144,6 +145,10 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   // M111: tucked into the notch, the face can be dragged out onto the screen (a click still opens the chat).
   const tucked = useSetting("character.lives") === "notch";
   const out = useDragOut(tucked);
+  // Round 1 (the founder: "I don't want the Flowflow symbol to be on there"): the face only while Flowflow lives in the
+  // notch, as the handle to drag it out, and hidden the moment it is pulled out; otherwise the hello alone. Round 2: the
+  // button keeps the drag (useDragOut captures on it), and the face inside it only hides (data-out, notch.css), so the
+  // let go is never lost.
   const who = characterName(useSetting("character.name"));
   const openChat = () => { if (out.swallowed()) return; if (ready()) void invoke("island_chat").catch(() => {}); };
   // Every press but Stop opens Home at a place (island_go); Stop stops, as Home's own Stop does.
@@ -152,27 +157,34 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
     if (action.go === null) { void invoke("send_command", { cmd: stopAgent() }).catch(() => {}); return; }
     void invoke("island_go", action.go).catch(() => {});
   };
+  // Round 2: a question or a result is drawn whenever the panel holds one, brief or not; brief with nothing left to show
+  // (answered while the pointer rests) falls back to the row, never an empty panel.
+  const hasLive = view.kind === "questions" || view.kind === "result";
+  const briefNow = !!brief && hasLive;
   return (
-    <div className="island-panel" ref={ref} data-layout={!brief && !hello && full ? layout : undefined} data-shown={shown ? "yes" : undefined} data-size={compact ? "compact" : undefined} data-brief={brief ? "yes" : undefined} data-armed={ready() ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
+    <div className="island-panel" ref={ref} data-layout={!briefNow && !hello && full ? layout : undefined} data-shown={shown ? "yes" : undefined} data-size={compact ? "compact" : undefined} data-brief={briefNow ? "yes" : undefined} data-armed={ready() ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
       {hello ? <div className="ip-hello" role="status" aria-label={hello.say}>
-        <FlowMini className="ip-agent" state="idle" still={!shown} />
+        {/* Round 2: the face only while Flowflow lives in the notch, as on the hover row; on an edge the line alone. */}
+        {tucked && <FlowMini className="ip-agent" state="idle" still={!shown} />}
         <p className="ip-hello-line" aria-hidden="true"><b>{hello.greet}</b>{hello.fact && <span>{hello.fact}</span>}</p>
-      </div> : brief ? (
+      </div> : briefNow ? (
         // Opened by itself, only a question or a result that matters (island.tsx); never the greeting or a button.
-        view.kind === "questions" || view.kind === "result" ? live : null
+        live
       ) : <>
       {/* M96: one row out of the notch. The face and the hello are one button that opens the small chat; the one pill does
           the moment's one action. The line M93 drew (hoverLine) is what VoiceOver hears and the pill's tooltip, never a row. */}
       <div className="nb-row" role="group" aria-label={S.m93.say(greet, hline?.words ?? null)}>
-        <button className="nb-hi" type="button" tabIndex={tab} aria-label={S.m96.openChat(greet)} onClick={openChat} data-tucked={tucked ? "" : undefined} title={tucked ? S.m111.tucked(who) : undefined}
+        <button className="nb-hi" type="button" tabIndex={tab} aria-label={S.m96.openChat(greet)} onClick={openChat} data-tucked={tucked ? "" : undefined} data-out={out.dragging ? "" : undefined} title={tucked ? S.m111.tucked(who) : undefined}
           onPointerDown={out.onPointerDown} onPointerMove={out.onPointerMove} onPointerUp={out.onPointerUp} onPointerCancel={out.onPointerCancel} onLostPointerCapture={out.onLostPointerCapture}>
-          <FlowMini className="ip-face nb-face" state={m.character} still={!shown} />
+          {tucked && <FlowMini className="ip-face nb-face" state={m.character} still={!shown} />}
           <span className="nb-greet" title={greet}>{greet}</span>
         </button>
         <button className="nb-pill" type="button" tabIndex={tab} data-act={action.id} aria-label={action.id === "stop" ? stopSay : pill.dot ? `${pill.words}. ${S.m96.waits}` : undefined} title={action.id === "stop" ? keyHint("stop", S.look.stopKeys) : hline?.words ?? undefined} onClick={act}>
           {pill.dot && <span className="nb-dot" aria-hidden="true" />}{pill.words}
         </button>
       </div>
+      {/* Round 2: a question or a result in the panel stays pressable here too, under the row. */}
+      {hasLive && live}
       </>}
     </div>
   );

@@ -57,6 +57,11 @@ fn on() -> bool { true }
 fn is_false(b: &bool) -> bool { !*b }
 impl Default for Prefs { fn default() -> Self { Prefs { last_screen: String::new(), per_screen: BTreeMap::new(), come_to: true, same_everywhere: None, free: BTreeMap::new(), tucked: false } } }
 
+/// Round 2: a drag out of the notch whose let go never reached the shell (the page lost the pointer on the way): the
+/// button is up while the drag still holds. The watch then lets it go itself, once, exactly as `drop_dock` would. Only a
+/// drag out of the notch: an ordinary drag of the character's own window always hears its own let go.
+pub fn notch_let_go_missed(live: bool, from_notch: bool, left_down: bool) -> bool { live && from_notch && !left_down }
+
 impl Prefs {
     /// Reads `dock.json`. Never loses more than it must: an entry that cannot be read (an edge this version does not
     /// know, a position that is not a number) drops only itself, a position out of range is pulled back to the nearest
@@ -432,6 +437,10 @@ pub struct Drag {
     moved: bool,
     /// M111: the notch is there to take it (island.show on): a let go over it tucks it.
     tuck: bool,
+    /// Founder round 1 (17 Nov 2026: pulled out of the notch, "it does not make sense because it's always there"): a drag
+    /// that began over the notch (pulled out of it) only counts as over it once the pointer has left it, so a short pull
+    /// never says "Let go to tuck" at once or tucks it straight back.
+    armed: bool,
 }
 
 impl Drag {
@@ -440,14 +449,17 @@ impl Drag {
     pub fn begin(pointer: (f64, f64), window: Rect, screens: Vec<Screen>) -> Drag {
         let ok = |v: f64| if v.is_finite() { v } else { 0.0 };
         let offset = (ok(pointer.0 - window[0]), ok(pointer.1 - window[1]));
-        Drag { offset, size: (window[2], window[3]), screens, pointer, frame: window, last_press: None, done: false, trail: vec![(pointer.0, pointer.1, mono_ms())], near_since: None, rested: false, when: DockWhen::Pushed, moved: false, tuck: false }
+        Drag { offset, size: (window[2], window[3]), screens, pointer, frame: window, last_press: None, done: false, trail: vec![(pointer.0, pointer.1, mono_ms())], near_since: None, rested: false, when: DockWhen::Pushed, moved: false, tuck: false, armed: false }
     }
     /// Letting go near an edge sticks only when pushed, thrown or kept there (`Pushed`, the usual), or always (`Near`).
     pub fn set_dock_when(&mut self, when: DockWhen) { self.when = when; }
     /// M111: whether the notch can take it (the island shows).
-    pub fn set_tuck(&mut self, on: bool) { self.tuck = on; }
+    /// Armed at once when the drag began away from the notch; one that began over it arms once the pointer leaves it.
+    pub fn set_tuck(&mut self, on: bool) { self.tuck = on; self.armed = on && !self.over_zone(); }
+    /// The pointer is over the notch's tuck zone now, whatever the drag's state.
+    fn over_zone(&self) -> bool { screen_near(&self.screens, self.pointer).is_some_and(|s| over_tuck(s, self.pointer)) }
     /// M111: the pointer is over the notch and the notch can take it: the notch glows and says so, and it shrinks toward it.
-    pub fn over_notch(&self) -> bool { self.tuck && !self.done && screen_near(&self.screens, self.pointer).is_some_and(|s| over_tuck(s, self.pointer)) }
+    pub fn over_notch(&self) -> bool { self.tuck && self.armed && !self.done && self.over_zone() }
     /// Where the window goes for the pointer at `p`: the same offset, kept inside the work area of the display under the
     /// pointer (or the nearest one). Pushed into an edge the window stops there and the pointer goes on: that is the press.
     /// None once it was let go.
@@ -461,6 +473,7 @@ impl Drag {
         self.pointer = p;
         self.frame = f;
         self.moved = true;
+        if self.tuck && !self.armed && !self.over_zone() { self.armed = true; }
         // Only samples from before now and from the last 400 ms (a sample timed after `t` came from another clock).
         self.trail.retain(|s| s.2 <= t && t - s.2 <= 400);
         self.trail.push((p.0, p.1, t));
@@ -521,7 +534,7 @@ impl Drag {
         if !self.moved { return None; }
         let s = screen_near(&self.screens, self.pointer)?.clone();
         // M111: let go over the notch, it tucks in.
-        if self.tuck && over_tuck(&s, self.pointer) { return Some(Let { screen: s, how: Landing::Tuck, pointer: self.pointer, frame: self.frame }); }
+        if self.tuck && self.armed && over_tuck(&s, self.pointer) { return Some(Let { screen: s, how: Landing::Tuck, pointer: self.pointer, frame: self.frame }); }
         let (x, y) = self.pointer;
         let near = free_on(&s, self.size, x, y).is_none();
         let goes_in = match self.when { DockWhen::Near => near, DockWhen::Pushed => (near && self.rests(t)) || self.pushes_hard(&s, t) };
@@ -1291,6 +1304,13 @@ mod tests {
         assert!(drag_holds(true, 10_000, 10_000 + 5_000), "held still mid drag: still a drag");
         assert!(!drag_holds(true, 10_000, 10_000 + DRAG_LOST_MS), "a let go that never arrived stops counting");
     }
+    #[test]
+    fn a_drag_out_of_the_notch_is_let_go_by_the_shell_when_the_page_never_says() {
+        assert!(notch_let_go_missed(true, true, false), "the button is up and the page said nothing: let go");
+        assert!(!notch_let_go_missed(true, true, true), "still held: keep following");
+        assert!(!notch_let_go_missed(true, false, false), "an ordinary drag hears its own let go");
+        assert!(!notch_let_go_missed(false, true, false), "already let go");
+    }
 }
 
 #[cfg(test)]
@@ -1348,6 +1368,44 @@ mod m111_tests {
             let (_, l) = drag_to(&s, (cx, s.frame[1] + 4.0), false);
             assert!(matches!(l.unwrap().how, Landing::Edge(Edge::Top, _)), "{}", s.id);
         }
+    }
+
+    #[test]
+    fn home_beside_a_free_place_faces_away_from_its_nearest_edge_and_never_covers_it() {
+        // Round 1: with the notch off, Home opened beside a character let go in the middle of the screen used the saved
+        // edge (Right) and was clamped on top of it. main.rs card_spot passes the nearest edge for a free place.
+        let work = [0.0, 33.0, 1512.0, 949.0];
+        for home in [[20.0, 400.0, 132.0, 94.0], [1360.0, 400.0, 132.0, 94.0], [700.0, 60.0, 132.0, 94.0], [700.0, 860.0, 132.0, 94.0]] {
+            let card = card_frame(home, (600.0, 640.0), work, nearest_edge(home, work));
+            assert!(!overlaps(card, home), "{home:?} -> {card:?}");
+        }
+        assert!(crate::main_src().contains("p.free.contains_key(id)).then(|| list.iter().find(|s| s.id == id).map(|s| docking::nearest_edge(home, s.work)))"));
+    }
+
+    #[test]
+    fn a_drag_pulled_out_of_the_notch_never_tucks_back_until_it_has_left_it() {
+        // Founder round 1 (17 Nov 2026): pulled out of the notch, the drag began inside the tuck zone, so the notch said
+        // "Let go to tuck" at once and a short pull tucked it straight back.
+        let s = notched();
+        let cx = s.frame[2] / 2.0;
+        let start = (cx - 100.0, 50.0);
+        assert!(over_tuck(&s, start), "the face in the hover row is on the tuck zone");
+        let mut d = Drag::begin(start, [start.0 - 66.0, start.1 - 47.0, 132.0, 94.0], vec![s.clone()]);
+        d.set_tuck(true);
+        assert!(!d.over_notch(), "not at once");
+        d.follow_at((cx - 90.0, 60.0), 10);
+        d.follow_at((cx - 80.0, 40.0), 20);
+        assert!(!d.over_notch(), "moved, still inside: no hint");
+        let l = d.release_at(HOME, 3_000).unwrap();
+        assert_ne!(l.how, Landing::Tuck, "a short pull never tucks it back");
+        // Out of the zone, then back over the notch: now it tucks.
+        let mut d = Drag::begin(start, [start.0 - 66.0, start.1 - 47.0, 132.0, 94.0], vec![s.clone()]);
+        d.set_tuck(true);
+        d.follow_at((cx, 300.0), 10);
+        assert!(!d.over_notch());
+        d.follow_at((cx, 10.0), 20);
+        assert!(d.over_notch(), "back over the notch after leaving it");
+        assert_eq!(d.release_at(HOME, 3_000).unwrap().how, Landing::Tuck);
     }
 
     #[test]

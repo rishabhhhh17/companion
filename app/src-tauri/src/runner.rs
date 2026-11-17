@@ -222,7 +222,13 @@ pub fn join_launch_notices(hotkeys: Option<String>, wipe: Option<String>) -> Opt
 /// Remember the latest sticky event of each type. Returns true if it was kept.
 pub fn remember(map: &mut BTreeMap<String, Value>, v: &Value) -> bool {
     match v.get("type").and_then(Value::as_str) {
-        Some(t) if STICKY.contains(&t) => { map.insert(t.to_string(), v.clone()); true }
+        Some(t) if STICKY.contains(&t) => {
+            // Round 2: replay goes by type name, not by time, so "the engine is up" and "the engine is down" replace each
+            // other: a page that loads late hears only the latest of the two, never an old hello after the engine stopped.
+            match t { "runner.hello" => { map.remove("app.runner_down"); } "app.runner_down" => { map.remove("runner.hello"); } _ => {} }
+            map.insert(t.to_string(), v.clone());
+            true
+        }
         _ => false,
     }
 }
@@ -992,6 +998,34 @@ mod tests {
         }
     }
     #[test]
+    fn m104_a_fix_receipt_names_each_problem_checked_again_with_known_words_only() {
+        // M104: the shared fixtures (read by the runner's suite and the pages too). The shell passes receipts through as they
+        // are; here it checks the shape it may log or forward: the review's batch, each problem's own sentence, one of three
+        // outcomes, and no other field (never code or a file's contents).
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let lines: Vec<Value> = events.lines().filter(|l| l.contains("\"id\":\"m104e")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(lines.len(), 3);
+        let mut outcomes = Vec::new();
+        for e in lines.iter().filter(|e| e["type"] == "receipt") {
+            let r = e["rechecked"].as_object().unwrap();
+            for k in r.keys() { assert!(["batch", "findings"].contains(&k.as_str()), "{k}"); }
+            let batch = r["batch"].as_str().unwrap();
+            assert!(batch.starts_with("rv_") && batch.len() == 13, "{batch}");
+            let findings = r["findings"].as_array().unwrap();
+            assert!(!findings.is_empty() && findings.len() <= 20);
+            for f in findings {
+                for k in f.as_object().unwrap().keys() { assert!(["say", "outcome"].contains(&k.as_str()), "{k}"); }
+                assert!(f["say"].as_str().is_some_and(|s| !s.is_empty() && s.chars().count() <= 400 && !s.contains("sk_live")));
+                let o = f["outcome"].as_str().unwrap();
+                assert!(["gone", "still", "unsure"].contains(&o), "{o}");
+                outcomes.push(o.to_string());
+            }
+        }
+        assert_eq!(outcomes, ["gone", "gone", "unsure", "still", "gone"]);
+        let list = lines.iter().find(|e| e["type"] == "tasks.list").unwrap();
+        assert_eq!(list["tasks"][0]["still"].as_u64(), Some(1));
+    }
+    #[test]
     fn m79_the_weekly_summary_passes_only_for_the_chosen_project_and_its_events_and_the_package_findings_read() {
         // M79: the shared fixtures (read by the runner's suite and the pages too).
         let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");
@@ -1340,6 +1374,19 @@ mod tests {
         assert!(remember(&mut m, &json!({"type":"runner.hello","sdk":"1"})));
         assert!(remember(&mut m, &json!({"type":"auth.status","method":"none"})));
         assert_eq!(m.len(), 2);
+    }
+    #[test]
+    fn a_page_that_loads_late_hears_only_the_latest_of_engine_up_and_engine_down() {
+        // Round 2: replay is in type order, so the two must never both be kept.
+        let ends = |m: &BTreeMap<String, Value>| m.values().filter_map(|v| v["type"].as_str()).filter(|t| *t == "runner.hello" || *t == "app.runner_down").map(String::from).collect::<Vec<_>>();
+        let mut m = BTreeMap::new();
+        remember(&mut m, &json!({"type":"runner.hello","sdk":"1"}));
+        remember(&mut m, &json!({"type":"auth.status","method":"none"}));
+        remember(&mut m, &json!({"type":"app.runner_down","reason":"keeps stopping"}));
+        assert_eq!(ends(&m), vec!["app.runner_down"], "up then down: down");
+        assert!(m.contains_key("auth.status"), "the rest stays");
+        remember(&mut m, &json!({"type":"runner.hello","sdk":"1"}));
+        assert_eq!(ends(&m), vec!["runner.hello"], "down then up again: up");
     }
     #[test]
     fn the_shell_and_the_engine_agree_on_the_plan_lines() {

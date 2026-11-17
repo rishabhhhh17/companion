@@ -106,3 +106,15 @@
    word is its own box, and a word wider than the row may still break inside it. */
 .home .hist .hist-cmd { font: inherit; font-family: var(--font-code); overflow-wrap: anywhere; }
 .home .hist .hist-cmd .hist-word { display: inline-block; max-width: 100%; }
+/* M104: a review's Fix it receipt, each problem checked again by the rules. One tag column, the sentence beside it; still
+   there first. Same spacing as the flags panel above it, no new colour (the tags carry the meaning). */
+.home .panel.receipt > .receipt-recheck { display: grid; gap: var(--space-2); margin: 0 0 var(--space-3); }
+.home .panel.receipt .receipt-recheck-title { margin: 0; color: var(--fg); font: 600 var(--t-body) / var(--lh-body) var(--font); }
+.home .panel.receipt .receipt-recheck-sum { margin: 0; }
+/* The tags share one column (each row is a subgrid of the list), so every sentence starts at the same place. */
+.home .panel.receipt .receipt-recheck-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: baseline; gap: var(--space-2) var(--space-3); margin: 0; padding: 0; list-style: none; }
+.home .panel.receipt .receipt-recheck-list > li { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: baseline; column-gap: var(--space-3); }
+.home .panel.receipt .receipt-recheck-list .ui-mtag { margin: 0; justify-self: start; }
+.home .panel.receipt .receipt-recheck-say { color: var(--fg); font: var(--t-body) / var(--lh-body) var(--font); overflow-wrap: anywhere; }
+.home .panel.receipt .receipt-recheck-acts { align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.home .panel.receipt > .result-more + .receipt-recheck, .home .panel.receipt > .result-actions + .receipt-recheck { margin-top: var(--space-3); }

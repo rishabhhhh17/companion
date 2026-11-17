@@ -182,6 +182,8 @@ export const S = {
     noProject: "Choose a project to start",
     checkedAgo: (ago: string) => `Checked ${ago}`,
     failedAgo: (ago: string, rung?: string | null) => `${failedCheckWords(rung)} ${ago}`,
+    // M104: a review's Fix it whose checks passed, but the rules still find one of its problems.
+    stillAgo: (ago: string) => `Checked again ${ago}: a problem is still there`,
     // Under a result whose browser check stopped at a sign in page.
     signInRest: "Sign in to check the rest.",
     lastWas: (headline: string, ago: string) => `Last task: ${headline}, ${ago}`,
@@ -216,7 +218,7 @@ export const S = {
     chooseMine: "Choose my project",
     startNewFrom: "Start a new project from this",
     // Something waits on another place (homeHero.ts needMainFor): its next step as the main button on Now.
-    needMain: { practiceStart: "Start the practice", practiceFix: "Fix it", openLearn: "Open the practice" } as Record<"practiceStart" | "practiceFix" | "openLearn", string>,
+    needMain: { practiceStart: "Check my project", practiceFix: "Fix it", openLearn: "Open the practice" } as Record<"practiceStart" | "practiceFix" | "openLearn", string>,
     // What a practice open in this folder says under its name on Now, one line per stage (homeHero.ts heroWords).
     // M71: a practice ready on Now, said as the practice itself, from its own title.
     practiceOn: (title: string) => `${title}, on a practice copy.`,
@@ -303,6 +305,9 @@ export const S = {
   undoPutBackDone: `Put back. Your own versions are saved in ${PRODUCT_S} recovery folder.`,
   undoYes: "Yes, undo it",
   undoNo: "Keep the changes",
+  /** Round 2: an Undo that failed always has a next step: ask it again, or put the line away. */
+  undoAgain: "Try again",
+  undoDismiss: "Close",
   undoWorking: "Putting your project back…",
   undoRecovered: "Files you had changed were saved aside first.",
   undoLarge: "Some very large files were left as they are.",
@@ -475,6 +480,8 @@ export const S = {
     failedLine: "A check failed.",
     failedThenStopped: "A check failed, and then you stopped it.",
     failedThenLimit: (where: string) => `A check failed, and then it stopped at ${where}.`,
+    // M104: the checks passed, but a problem the review found is still there when the rules look again.
+    stillThere: (n: number) => (n === 1 ? "One problem the review found is still there." : `${n} problems the review found are still there.`),
     stopped: "Stopped",
     // M58 (the shortlist, item 9): a stopped run is never a fix, and the line says so.
     stoppedChanged: "It changed files before you stopped it. Nothing was checked. This run does not count as a fix.",
@@ -1155,6 +1162,8 @@ export const S = {
   voiceWaitsLanguage: "Your words wait here, because sending by itself only works in English for now. Press Start when they look right.",
   voiceUse: "Use these words",
   voiceClose: "Close",
+  /** Round 2: beside the speech model's download, for anyone who does not want it now. */
+  voiceNotNow: "Not now",
   showMe: "Show me",
   pointTitle: "What's wrong",
   pointChecking: "Checking your project as it is. Nothing is changed.",
@@ -1614,7 +1623,7 @@ export const S = {
   practiceLessonWords: "This lesson tells you each step in words. It does not look at your screen and uses no Claude.",
   practiceNeedsNode: "Needs Node",
   practiceState: { notStarted: "Not started", inProgress: "In progress", done: "Done" },
-  practiceStart: "Start",
+  practiceStart: "Start the practice",
   practiceContinue: "Continue",
   practiceStartOver: "Start over",
   practiceStartOverSure: "Start over? Your copy goes to the Trash, where you can put it back, and a fresh copy is made in a new folder.",
@@ -3404,6 +3413,7 @@ export const S = {
     filesChangedSince: (n: number) => (n === 1 ? "1 file changed since." : `${n} files changed since.`),
     problem: (name: string) => `${name} has a problem.`,
     failedAgo: (ago: string, rung?: string | null) => `${failedCheckWords(rung)} ${ago}.`,
+    stillAgo: (ago: string) => (ago ? `Checked again ${ago}: a problem is still there.` : "Checked again: a problem is still there."),
     foundNow: "Its own checks found it just now.",
     checksPass: (name: string) => `${name}'s checks pass.`,
     checksPassLine: "Its own checks ran just now. Nothing was fixed.",
@@ -3461,7 +3471,7 @@ export const S = {
     // A project with no fixes yet: the practice offer in the Last fix card's place.
     practiceTitle: "Practice on a sample project",
     practiceLine: "It can't touch anything real. Takes about a minute.",
-    practiceStart: "Start practice",
+    practiceStart: "Start the practice",
     noFixesTitle: "No fixes here yet",
     noFixesLine: "Your first fix shows up here with its proof.",
     // The review card's head (spec 3.3). Fixed sentences per kind: no model writes them, and none names a value or a tool.
@@ -3609,6 +3619,20 @@ export const S = {
   // M69 step 2, Fix it and proof (the YC benchmark spec 3.4 and 3.13): the run list while it works, the receipt's proof
   // ticks, the failing lead, Replay what Squibby did, and the notch's mini receipt. Every number is from the engine's own
   // events; a check that never said how long it took says no time.
+  // M104, fixed and proven, finding by finding: the receipt of a review's Fix it, each problem checked again by the rules.
+  fixRecheck: {
+    title: "What the review found, checked again",
+    gone: "Gone",
+    still: "Still there",
+    unsure: "Look at it",
+    unsureLine: "The fix changed this, but no rule can check this kind of problem. Look at it once.",
+    summaryGone: (n: number) => (n === 1 ? "Checked again by the rules: it is gone." : `Checked again by the rules: all ${n} are gone.`),
+    summaryUnsure: (n: number) => (n === 1 ? "Checked again by the rules. One needs your eyes." : `Checked again by the rules. ${n} need your eyes.`),
+    summaryStill: (still: number, all: number) => `Checked again by the rules: ${still} of ${all} still there.`,
+    tryAgain: "Try again",
+    tryAgainHelp: "Fixes only what is still there.",
+    trying: "Fixing what is still there",
+  },
   fixRun: {
     label: "What it is doing",
     counter: (n: number, of: number) => `${n} of ${of}`,
@@ -4211,6 +4235,10 @@ export const S = {
       history: "What happened lately",
       empty: (project: string) => (project ? `Ask me anything about ${project}${project.endsWith("…") ? "" : "."}` : "Pick a project, or ask me anything."),
       working: "Working on it.",
+      // Round 1: a task at work in another project, named, so the chat's Stop and its greyed Send have a reason.
+      workingIn: (project: string) => `Working in ${project}${project.endsWith("…") ? "" : "."}`,
+      // Round 1 (the founder: "when I open the chat, I cannot close it fully"): the chat's own Close.
+      close: "Close",
       // Only proof says done (rule 14): a finished task whose checks did not all pass is said as what its proof says.
       unchecked: (n: number | null) => (!n ? "Finished, not checked yet." : n === 1 ? "Finished, not checked yet. It changed 1 file." : `Finished, not checked yet. It changed ${n} files.`),
       partial: "Finished. Some checks passed and some did not run.",

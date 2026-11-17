@@ -36,7 +36,7 @@ const reviewsAfter = (reviews: readonly ReviewRowView[], after: string | null): 
 
 export type RestInput = {
   project: string;
-  status: Pick<HomeStatus, "kind" | "ago" | "failed">;
+  status: Pick<HomeStatus, "kind" | "ago" | "failed" | "still">;
   history: readonly HistoryItem[];
   reviews?: readonly ReviewRowView[];
   /** The engine says the files changed since the version its last check passed on (tasks.list sinceCheck). */
@@ -53,7 +53,7 @@ export function restHero(i: RestInput): RestHero {
   const name = nameOf(i.project);
   if (!name || i.status.kind === "noProject") return { pill: null, first: S.homeNow.noProject, second: S.homeNow.noProjectLine };
   const proven = lastProven(i.history);
-  if (i.status.kind === "failing") return { pill: "failed", first: S.homeNow.problem(name), second: i.status.ago ? S.homeNow.failedAgo(i.status.ago, i.status.failed) : S.homeNow.foundNow };
+  if (i.status.kind === "failing") return { pill: "failed", first: S.homeNow.problem(name), second: i.status.still ? S.homeNow.stillAgo(i.status.ago) : i.status.ago ? S.homeNow.failedAgo(i.status.ago, i.status.failed) : S.homeNow.foundNow };
   if (i.status.kind === "works" || i.status.kind === "changed") {
     const ago = i.status.ago || agoWords(proven ? at(proven) : null, i.now);
     if (i.status.kind === "works") return { pill: "passed", first: S.homeNow.fine(name), second: S.homeNow.proven(ago) };

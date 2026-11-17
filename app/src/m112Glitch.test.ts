@@ -105,7 +105,9 @@ describe("the glitch: nothing is cut by a window's edge", () => {
     expect(chatAskFull("")).toBe(S.m96.chat.ask);
     const tsx = readFileSync(new URL("./notchChat.tsx", import.meta.url), "utf8");
     // The tooltip has the whole name; VoiceOver reads the whole name, never the shortened words.
-    expect(tsx).toContain('<span className="nc-proj" title={C.project(name)}><span aria-hidden="true">{shown}</span><span className="sr">{name}</span></span>');
+    // Changed on purpose (round 2): the shown name is fitted to the row's room (fit ?? shown) and the element is measured
+    // (ref); the tooltip and VoiceOver still have the whole name.
+    expect(tsx).toContain('<span className="nc-proj" ref={projRef} title={C.project(name)}><span aria-hidden="true">{fit ?? shown}</span><span className="sr">{name}</span></span>');
     expect(tsx).toMatch(/placeholder=\{ask\} aria-label=\{askFull\}/);
   });
 });

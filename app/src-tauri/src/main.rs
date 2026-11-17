@@ -274,7 +274,10 @@ fn card_spot(mtm: MainThreadMarker, d: &NSPanel, h: f64) -> Option<(Rect, f64)> 
     // M66 step 6: with no island, Home's window sits here at the widest size it may take (Settings' width in the tall Home),
     // so opening Settings never squeezes it; with the island, the body at the size in force, as the page draws it.
     let w = if on.is_some() { size.w } else { home_sizes(&hs).iter().map(|s| s.w).fold(0.0, f64::max) };
-    let spot = island::card_spot(on.as_ref(), home, &list, |id| with_prefs(|p| choice(p, id).0), (w, h.clamp(size.min_h, size.max_h)))?;
+    // Round 1: let go in the middle of the screen (a free place), Home opens on the side away from the nearest edge, as
+    // apply_dock places it, so it never covers the character.
+    let edge_of = |id: &str| with_prefs(|p| p.free.contains_key(id)).then(|| list.iter().find(|s| s.id == id).map(|s| docking::nearest_edge(home, s.work))).flatten().unwrap_or_else(|| with_prefs(|p| choice(p, id).0));
+    let spot = island::card_spot(on.as_ref(), home, &list, edge_of, (w, h.clamp(size.min_h, size.max_h)))?;
     Some((spot, ph))
 }
 
@@ -565,7 +568,8 @@ fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
     // marks still show, and the pointer still opens it (island.rs `mode`). Only the front app's id is read (rule 7).
     let state = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); s.home_open = HOME_OPEN.load(Ordering::SeqCst); s.quiet = quiet() || companion_hidden(); *s };
     // M111: Flowflow dragged over the notch: the notch grows the pointer's row to say it will take it.
-    let take = island::take_word(ISLAND_TAKE.load(Ordering::SeqCst)).is_some();
+    // Round 1: never while Home is open, whose band hides the take row (an unseen island would sit over Home's top).
+    let take = !state.home_open && island::take_word(ISLAND_TAKE.load(Ordering::SeqCst)).is_some();
     let mode = if take { island::Mode::Peek } else { island::mode(state) };
     let look = if take { island::take_look(&d) } else { island::look_sized(&d, mode, f64::from(state.panel), f64::from(state.wing), f64::from(state.pw)) };
     let look = if ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion() && !state.quiet { island::cheered(&d, mode, look) } else { look };
@@ -752,9 +756,21 @@ fn island_hover_changed(inside: bool) {
     if let Some(a) = APP.get() { let _ = a.emit_to("card", "home-hover", json!({ "on": nudge && !card_visible() })); }
     island_hover_settle();
 }
+/// Round 1: a look at the hover is already asked for after the drag (island_hover_settle), so a drag never piles them up.
+static SETTLE_AFTER_DRAG: AtomicBool = AtomicBool::new(false);
 fn island_hover_settle() {
     // M111: Flowflow carried over the notch is not the pointer resting on it: nothing opens (the drop forgets the hover).
-    if DRAG_LIVE.load(Ordering::SeqCst) { return; }
+    // Round 1: the drag as `dragging()` sees it (a drop that never came lets go after DRAG_LOST_MS), and the hover is looked
+    // at again once it is over, so a row the pointer left during the drag is never left drawn (drop_dock also asks).
+    if dragging() {
+        if !SETTLE_AFTER_DRAG.swap(true, Ordering::SeqCst) {
+            if let Some(app) = APP.get() {
+                let a = app.clone();
+                std::thread::spawn(move || { std::thread::sleep(Duration::from_millis(docking::DRAG_QUIET_MS + 5)); let _ = a.run_on_main_thread(|| { SETTLE_AFTER_DRAG.store(false, Ordering::SeqCst); island_hover_settle(); }); });
+            } else { SETTLE_AFTER_DRAG.store(false, Ordering::SeqCst); }
+        }
+        return;
+    }
     let t = now() as u64;
     let (shown, wait) = { let mut h = ISLAND_HOVER.lock().unwrap_or_else(|e| e.into_inner()); (h.at(t), h.wait_ms(t)) };
     // 2 Nov 2026 (island.pointOpens): resting on the notch opens Home itself, the usual; Status line keeps the peek. A
@@ -1080,8 +1096,10 @@ fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<se
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         HOME_CLOSE_GEN.fetch_add(1, Ordering::SeqCst);   // a close still rolling up is called off
-        HOME_FOLDING.store(0, Ordering::SeqCst);         // and with it the fold (M66 step 5: else the watch stood still)
-        let was_open = HOME_OPEN.load(Ordering::SeqCst) && card_visible();
+        // Round 1: a Home folding away is not open: opened again it is worked out afresh (the chat or all of Home, where
+        // from), as any opening is.
+        let folding = HOME_FOLDING.swap(0, Ordering::SeqCst) != 0;   // and with it the fold (M66 step 5: else the watch stood still)
+        let was_open = HOME_OPEN.load(Ordering::SeqCst) && card_visible() && !folding;
         // M70: the small panel the island shows now, read before the hover is forgotten, so Home grows on from it.
         let from = if was_open { None } else {
             let st = *ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner());
@@ -1260,8 +1278,20 @@ fn toggle_card(app: AppHandle) { toggle_home(app, "character"); }
 /// Clicking the island in the notch opens Home at once (F18), and never closes it (2 Nov 2026: pointing may have opened it
 /// a moment before, and the click that meant to open it must not close it). Home closes by Esc, Close or a click elsewhere.
 /// Never with the keyboard (rule 9): Home takes it only when the person clicks into it.
+/// Round 1 (the founder: "when I open the chat, I cannot close it fully"): with the small chat open, a second click on the
+/// notch folds it back. Pointing never opens the chat (island.rs opens_small), so that click never meant to open it.
 #[tauri::command]
-fn island_click(app: AppHandle) { open_card(&app, "island", false); }
+fn island_click(app: AppHandle) {
+    if CHAT_OPEN.load(Ordering::SeqCst) {
+        let a = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if CHAT_OPEN.load(Ordering::SeqCst) && card_visible() && HOME_FOLDING.load(Ordering::SeqCst) == 0 { close_home_rolled(&a, json!({ "source": "island_chat" })); card_closed_hush(&a); }
+            else { open_card(&a, "island", false); }
+        });
+        return;
+    }
+    open_card(&app, "island", false);
+}
 
 /// M70: a press in the notch's small panel (Ask, Review changes, Check my project, Check before going live, Undo last change,
 /// the gear, Open). Home opens at that place, never with the keyboard (rule 9: the keys move only when the person clicks into
@@ -1350,7 +1380,8 @@ fn home_stop_now(why: &str) {
 fn toggle_home(app: AppHandle, source: &'static str) {
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
-        if card_visible() {
+        // Round 1: a click while Home folds away opens it again (the fold is called off), never closes it a second time.
+        if card_visible() && HOME_FOLDING.load(Ordering::SeqCst) == 0 {
             close_home_rolled(&a, json!({ "source": source }));
             card_closed_hush(&a);
         } else {
@@ -1532,7 +1563,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, island_go, island_chat, home_expand, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, home_geom, home_folded, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_labels, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, update_note_take, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, untuck_drag, untuck, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start, save_report, report_status, report_activate, point_paste, open_in_editor, save_notes, save_receipt, numbers_mail, open_notes_file, ai_tools_find, handoff_prompt, handoff_put_in, peekout_want, peekout_state]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, island_go, island_chat, home_expand, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, home_geom, home_folded, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_labels, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, update_note_take, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, untuck_drag, untuck, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, drop_more, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start, save_report, report_status, report_activate, point_paste, open_in_editor, save_notes, save_receipt, numbers_mail, open_notes_file, ai_tools_find, handoff_prompt, handoff_put_in, peekout_want, peekout_state]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }

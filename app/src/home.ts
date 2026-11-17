@@ -60,6 +60,8 @@ export type Need = { key: string; tab: Tab; why: string; question?: boolean; mus
 
 const WALK_NEEDS = ["step", "already", "asking", "help"];
 const PRACTICE_NEEDS = ["start", "found", "failed", "blocked", "done"];
+/** A practice whose own step is under way: its lesson, its fix, or its checks after. */
+const practiceUnderWay = (m: Model): boolean => ["lesson", "fixing", "proving"].includes(m.practice?.stage ?? "");
 const SHOWME_NEEDS = ["needs_permission", "pointing", "pointing_roughly", "your_turn_miss", "window_changed", "error", "not_sure"];
 // Show me during a lesson: the pointer is the lesson's own step, but these say why no pointer came, so they are new.
 const SHOWME_PROBLEMS = ["needs_permission", "your_turn_miss", "window_changed", "error", "not_sure"];
@@ -190,8 +192,12 @@ export function tabKey(t: Tab, key: string): Tab | null {
  *  the screen, Prompt help or the error explainer, the microphone, a "are you sure", the first run (which sends people
  *  to other apps to get a key or sign in), or words being typed in the ask box (`typing`). */
 export function closesOnClickAway(m: Model, onboarding: boolean, on = true, typing = false): boolean {
-  if (!on || onboarding || typing || need(m)) return false;
-  if (m.walk || m.practice || m.showme || m.teach || m.ph || m.eh || m.sl || m.voice) return false;
+  if (!on || onboarding || typing) return false;
+  // Founder round 1 (17 Nov 2026): a practice merely open, done or failed (or in another folder) held Home open for good. It
+  // is kept as it is when Home closes, so only a practice under way (a lesson, its fix, its checks after) holds Home.
+  const n = need(m);
+  if (n && !n.key.startsWith("practice:")) return false;
+  if (m.walk || practiceUnderWay(m) || m.showme || m.teach || m.ph || m.eh || m.sl || m.voice) return false;
   if (m.point?.stage === "checking" || m.diagram?.stage === "asking") return false;
   if (m.undo?.stage === "confirm" || m.bisect?.undoStage === "confirm") return false;
   return true;

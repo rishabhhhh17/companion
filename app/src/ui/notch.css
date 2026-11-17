@@ -68,4 +68,7 @@
 @media (prefers-reduced-motion: reduce) { .island-take { animation-name: ip-fade; } }
 /* Tucked, Flowflow's face in the notch can be dragged out onto the screen: a grab cursor says so. */
 .island-panel button.nb-hi[data-tucked], .notch-chat .nc-face-hold[data-tucked] { cursor: grab; }
+/* Round 2: while Flowflow is pulled out, its face in the notch hides but its handle stays, holding the drag to its let go. */
+.island-panel button.nb-hi[data-out] .nb-face, .notch-chat .nc-face-hold[data-out] .nc-face { visibility: hidden; }
+.island-panel button.nb-hi[data-out], .notch-chat .nc-face-hold[data-out] { cursor: grabbing; }
 .island:is([data-take], [data-said]) .island-panel { visibility: hidden; opacity: 0; }

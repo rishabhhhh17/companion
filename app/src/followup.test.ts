@@ -177,7 +177,8 @@ describe("following up by voice", () => {
     const closed = main.slice(main.indexOf("fn home_closed()"), main.indexOf("\n}\n", main.indexOf("fn home_closed()")));
     expect(closed).toContain('if let Some(a) = APP.get() {');
     expect(closed).toContain('let _ = a.emit_to("card", "closed", json!({}));');
-    expect(card).toContain('followShown.current = show("receipt") && !!m.receipt && canFollowUp(m, project) && groups.on("followUp");');
+    // Changed on purpose (M104 review): while a problem the review found is still there, Try again is the one next step.
+    expect(card).toContain('followShown.current = show("receipt") && !!m.receipt && canFollowUp(m, project) && groups.on("followUp") && !followHidden;');
   });
   test("a follow up sent by itself goes through the same checks as the Send button", () => {
     const now = card.slice(card.indexOf("sendFollowNow.current = () => {"), card.indexOf("};", card.indexOf("sendFollowNow.current = () => {")));

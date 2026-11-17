@@ -72,7 +72,7 @@ export const RESULT_PEEK_MS = 4000;
  *  happening, so nothing is said twice. */
 export const panelNote = (line: string, jobs: JobCard[]): string => (jobs.length ? "" : line);
 
-/** What the panel's buttons ask Home to do when it opens (main.rs open_card_cmd, arrival.rs): ask Undo's own question
+/** What the panel's buttons ask Home to do when it opens (main.rs island_go, arrival.rs): ask Undo's own question
  *  on the result (Home's receipt asks "are you sure" first). M69 (F29): no button opens the key, nobody adds one. */
 export const PANEL_DO = { undo: { do: "undo" } } as const;
 

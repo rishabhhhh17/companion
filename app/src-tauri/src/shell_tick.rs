@@ -57,6 +57,8 @@ fn tick(app: &AppHandle) {
         gaze_recompute(); follow_wake();
         log("shown_after_full_screen", json!({}));
     }
+    // Round 2: a drag out of the notch whose let go the page lost is let go here.
+    notch_drag_backstop(app);
     // M46: rest (a call, or Low Power Mode) and whether the island may open by itself.
     rest_tick(app, mtm);
     // M90: a call starting or ending, and Stop's hold ending, for Flowflow peeking out of the notch.

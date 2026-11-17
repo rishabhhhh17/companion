@@ -3,7 +3,7 @@
 // how the project is, the one main button that status picks, the working card's four steps, which quiet buttons the top
 // bar has, and when Undo and Stop show. Plain code, tested in homeHero.test.ts; card.tsx only draws what this decides. Fun
 // comes from the motion, the size and the character, never from the words (rule 16).
-import { activityNow, canFollowUp, canRetry, receiptUndone, cardWorking, type About, characterWords, historyFacts, isFixing, receiptVerdict, type HistoryItem, type LiveFile, type Model, type ProofLine } from "./model.ts";
+import { activityNow, canFollowUp, canRetry, receiptUndone, cardWorking, type About, characterWords, historyFacts, isFixing, receiptFacts, receiptVerdict, type HistoryItem, type LiveFile, type Model, type ProofLine } from "./model.ts";
 import { verdictOf, type Tone, type Verdict } from "./verdict.ts";
 import { need, type Need, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
@@ -105,6 +105,9 @@ export function sayFor(m: Pick<Model, "receipt" | "research" | "rescue">, h: Her
 export type NeedMain = "practiceStart" | "practiceFix" | "openLearn";
 export function needMainFor(m: Model, n: Need | null, project: string): NeedMain | null {
   if (!n || n.question || n.tab === "now" || !project) return null;
+  // Founder round 1 (17 Nov 2026, screenshot 16): while anything runs (the practice's check, its pretend AI writing, a task),
+  // the lead has only its Stop, never the practice's next step beside it (a second press sent a second check).
+  if (stopCan(m) || m.point?.stage === "checking" || m.practice?.pretend === "writing") return null;
   if (m.practice && n.key.startsWith("practice:")) {
     // M71 (the founder's screenshot, 5 Nov 2026: a practice on Now with no button): a practice in another folder still has
     // its next step on Now, which opens it on Learn.
@@ -128,7 +131,7 @@ export function needMainWords(m: Pick<Model, "practice">, n: NeedMain): string {
 /** Undo shows only when the result offers it (the last task changed files, and no Undo put them back since, unless they
  *  were brought back), nothing is being undone, and a folder is open (M45: the verdict's offer, so an Undo of one task from
  *  "which task broke it" hides it too). */
-export const undoCan = (m: Model, project: string): boolean => receiptVerdict(m)?.offer === "undo" && (!m.undo || broughtBackIdle(m)) && !!project;
+export const undoCan = (m: Model, project: string): boolean => receiptVerdict(m)?.offer === "undo" && (!m.undo || broughtBackIdle(m) || m.undo.stage === "failed") && !!project;
 /** Bring back left some files as the person changed them, and its line (with Put those back too) is still up: nothing runs,
  *  so Undo may show again. */
 const broughtBackIdle = (m: Model): boolean => !!m.undo && m.undo.back === true && m.undo.stage === "done" && m.undo.putBack !== "confirm" && m.undo.putBack !== "working";
@@ -175,16 +178,18 @@ const samePlace = (a: string, b: string): boolean => a.replace(/\/+$/, "") === b
 
 /** The project's last check: the result on Home now, else the newest finished row of History. Its verdict is M45's, whole. */
 /** `failed` (M72): the rung of the check that failed, from this task's own steps or the task log, so the page names it. */
-export function lastResult(m: Pick<Model, "receipt" | "task" | "teach" | "history">, project: string): { verdict: Verdict; at: string | null; failed?: string } | null {
+export function lastResult(m: Pick<Model, "receipt" | "task" | "teach" | "history">, project: string): { verdict: Verdict; at: string | null; failed?: string; still?: number } | null {
   if (m.receipt && m.task && (!m.task.project || m.task.project === project)) {
     const v = receiptVerdict(m);
     const at = m.receipt.wholePlan?.last ?? m.receipt.checkpoint;
     const row = m.history.find((h) => h.checkpoint === at);
     const failed = m.task.proof?.steps.find((x) => x.status === "failed")?.rung ?? row?.failedCheck;
-    if (v) return { verdict: v, at: row?.endedAt ?? null, ...(failed ? { failed } : {}) };
+    // M104: a review's Fix it that left one of its problems there (the rules looked again).
+    const still = receiptFacts(m)?.stillThere ?? 0;
+    if (v) return { verdict: v, at: row?.endedAt ?? null, ...(failed ? { failed } : {}), ...(still ? { still } : {}) };
   }
   const done = recentOf(m.history.filter((h) => h.status !== "running"))[0];
-  return done ? { verdict: verdictOf(historyFacts(done)), at: done.endedAt ?? done.startedAt, ...(done.failedCheck ? { failed: done.failedCheck } : {}) } : null;
+  return done ? { verdict: verdictOf(historyFacts(done)), at: done.endedAt ?? done.startedAt, ...(done.failedCheck ? { failed: done.failedCheck } : {}), ...(done.still ? { still: done.still } : {}) } : null;
 }
 
 export type StatusKind = "works" | "changed" | "failing" | "unchecked" | "noProject";
@@ -195,7 +200,9 @@ export type MainAct = "fix" | "shipCheck" | "check" | "folder" | "carryOn" | "ex
  *  check was proven, a cross only when one failed, the status dot otherwise. */
 export type HomeStatus = { kind: StatusKind; verdict: Verdict; sub: string; ago: string; main: MainAct;
   /** M72: the rung of the check that failed, when known (a failing status names it). */
-  failed?: string };
+  failed?: string;
+  /** M104: the checks passed, but a problem the review found is still there after its Fix it. */
+  still?: number };
 const said = (v: Verdict, headline: string): Verdict => ({ ...v, headline, say: S.verdict.say(headline, v.line) });
 /** The status dot, for a project nothing has proven yet: never a tick, never a colour. */
 const dot = (headline: string): Verdict => ({ kind: "noChange", headline, line: null, say: headline, tone: "plain", icon: "wait", offer: null, proven: false });
@@ -232,7 +239,7 @@ export function homeStatus(m: Pick<Model, "receipt" | "task" | "teach" | "histor
   // The engine says the files changed since the version its last check passed on (must fix 11): never "works" over them.
   if (last?.verdict.proven && m.sinceCheck?.changed && samePlace(m.sinceCheck.project, project)) return { kind: "changed", verdict: dot(S.home.changedSince(name)), sub: S.home.checkedAgo(ago), ago, main: "check" };
   if (last?.verdict.proven) return { kind: "works", verdict: said(last.verdict, S.home.works(name)), sub: S.home.checkedAgo(ago), ago, main: "shipCheck" };
-  if (last?.verdict.kind === "failed") return { kind: "failing", verdict: said(last.verdict, S.home.failing(name)), sub: S.home.failedAgo(ago, last.failed), ago, main: "fix", ...(last.failed ? { failed: last.failed } : {}) };
+  if (last?.verdict.kind === "failed") return { kind: "failing", verdict: said(last.verdict, S.home.failing(name)), sub: last.still && !last.failed ? S.home.stillAgo(ago) : S.home.failedAgo(ago, last.failed), ago, main: "fix", ...(last.failed ? { failed: last.failed } : {}), ...(last.still && !last.failed ? { still: last.still } : {}) };
   // A browser check that stopped at a sign in page (M58): the page says what the last task was, once, and what is left. It is
   // not "Not checked yet / Last task: Fixed, not fully proven" (the same words twice), and never proven.
   if (last && !last.verdict.proven && m.task?.proof?.steps.some((x) => x.needs === "signIn")) return { kind: "unchecked", verdict: dot(last.verdict.headline), sub: S.home.signInRest, ago, main: "check" };

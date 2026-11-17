@@ -6,7 +6,7 @@ import { initial, reduce, type HistoryItem, type Model } from "./model.ts";
 import type { ReviewCard } from "./review.ts";
 import { GEAR_DO, LAYOUT_H, QUICK_DO, QUICK_MAX, QUICK_SLOTS, panelLayout, quickActions, quickFact, quickGo, quickGreeting, quickLabel, factLines, type PanelLayout } from "./notchQuick.ts";
 import { islandJobs, miniReceipt, panelView } from "./islandPanel.ts";
-import { latched, rowMarkShown } from "./notchQuick.ts";
+import { briefAtOpen, latched, rowMarkShown } from "./notchQuick.ts";
 import { openness } from "./islandSpring.ts";
 import { receiptVerdict } from "./model.ts";
 import { arrivalFrom } from "./home.ts";
@@ -315,7 +315,14 @@ describe("M70 step 4: the small panel says something useful at once, and leaves 
     expect(latched(true, true, false)).toBe(false);
     expect(latched(true, false, false)).toBe(true);
     expect(latched<string | null>("a", false, null)).toBe("a");
-    expect(page).toContain("briefRef.current = latched(briefRef.current, parts.panel, !shape.hover);");
+    // Changed on purpose (round 2): brief is decided when the panel opens and kept while it shows (briefAtOpen), so a
+    // self-opened question keeps its buttons once the pointer rests on it.
+    expect(page).toContain("briefRef.current = briefAtOpen(briefRef.current, briefWas.current, parts.panel, !shape.hover);");
+    expect(briefAtOpen(false, false, true, true), "opened by itself").toBe(true);
+    expect(briefAtOpen(true, true, true, false), "the pointer then rests on it: still brief").toBe(true);
+    expect(briefAtOpen(false, false, true, false), "opened by the pointer").toBe(false);
+    expect(briefAtOpen(false, true, true, true), "the pointer leaves an open hover panel: not brief mid way").toBe(false);
+    expect(briefAtOpen(true, true, false, false), "closing keeps what it showed while it fades").toBe(true);
     expect(page).toContain("brief={briefRef.current}");
     expect(page).toContain("hello={helloRef.current}");
   });

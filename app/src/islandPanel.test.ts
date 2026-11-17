@@ -49,7 +49,9 @@ describe("the panel under the notch shows the work, not a character", () => {
     expect(win).toContain('Some("undo") => Some(serde_json::json!({ "do": "undo" })),');
     expect(win).toContain('return ok.then(|| serde_json::json!({ "set": id }));');
     const view = read("./islandPanel.tsx");
-    expect(view).toContain('invoke("open_card_cmd", { then: PANEL_DO.undo })');
+    // Changed on purpose (round 2): through island_go, never with the keyboard (rule 9).
+    expect(view).toContain('invoke("island_go", { then: PANEL_DO.undo })');
+    expect(view).not.toContain("open_card_cmd");
     expect(view).not.toContain("PANEL_DO.key");
     expect(view).not.toContain("openSettingsWindow");
   });
@@ -107,7 +109,7 @@ describe("the hover panel shows only what is live (F28, 4.3)", () => {
     const mini = view.slice(view.indexOf('view.kind === "result" ?'), view.indexOf("// Every press but Stop opens Home"));
     for (const hint of ["⌘", "↵", "keyHint", "kbd"]) expect(mini, hint).not.toContain(hint);
     expect(view).toContain("{view.canUndo && <Button size=\"sm\" tabIndex={tab} onClick={click(view.job.key,");
-    expect(view).toContain('<Button kind="quiet" size="sm" tabIndex={tab} onClick={click(view.job.key, () => void invoke("open_card_cmd").catch(() => {}))}>{S.home.seeProof}</Button>');
+    expect(view).toContain('<Button kind="quiet" size="sm" tabIndex={tab} onClick={click(view.job.key, () => void invoke("island_go").catch(() => {}))}>{S.home.seeProof}</Button>');
     // M69 (F29): no Add your key. One main button in the panel: Keep on a proven result.
     expect(view).not.toContain("S.home.addKey");
     expect(view.match(/kind="primary"/g)?.length).toBe(1);
@@ -248,7 +250,7 @@ describe("a self opened panel is armed after a moment (M46)", () => {
     const view = read("./islandPanel.tsx");
     expect(view).toContain("const openedAt = useRef<number | null>(null);");
     expect(view).toContain('data-armed={ready() ? "yes" : undefined}');
-    for (const b of ['<Button size="sm" className="ip-yes" tabIndex={tab} onClick={click(j.key, () => void invoke("island_click").catch(() => {}))}>', '<div className="ip-result ip-receipt" data-tone={view.job.tone} data-armed={cardOk(view.job.key, now) ? "yes" : undefined}', 'onClick={click(view.job.key, () => void invoke("open_card_cmd", { then: PANEL_DO.undo }).catch(() => {}))}']) expect(view, b).toContain(b);
+    for (const b of ['<Button size="sm" className="ip-yes" tabIndex={tab} onClick={click(j.key, () => void invoke("island_click").catch(() => {}))}>', '<div className="ip-result ip-receipt" data-tone={view.job.tone} data-armed={cardOk(view.job.key, now) ? "yes" : undefined}', 'onClick={click(view.job.key, () => void invoke("island_go", { then: PANEL_DO.undo }).catch(() => {}))}']) expect(view, b).toContain(b);
     expect(view).toContain("const click = (key: string, f: () => void) => () => { if (!ready() || !cardOk(key, Date.now())) return; f(); };");
     expect(view).toContain("const keys = jobs.map((j) => j.key).join(\" \");");   // every card's first sight, not only questions'
     expect(read("./style.css")).toContain(".island-panel button.ip-job:not([data-armed]) { cursor: default; }");

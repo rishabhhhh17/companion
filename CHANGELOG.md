@@ -2,6 +2,28 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Smoother notch and fewer stuck screens: 18 Nov 2026
+
+- **Pulling Flowflow out of the notch always lets go.** Drag its face out of the notch or the small chat, and when you let go it lands where you dropped it, snaps to an edge, or tucks back in over the notch. Before, it could stay stuck under the pointer.
+- **No Flowflow in the hello unless it lives in the notch.** The line that drops from the notch when you start or come back shows Flowflow's face only while it is tucked there.
+- **A question under the notch keeps its buttons.** If a question opens by itself and you move the pointer onto it, Allow and Don't allow stay right where they were.
+- **The notch never takes your typing.** Undo and See proof on the small result under the notch, and More on the file drop ring, open Home without moving your keyboard out of the app you are in.
+- **The small chat's top line stays one line.** A long project name is shortened to fit, and your name never breaks in the middle.
+- **Undo always has a way forward.** If an Undo fails you get Try again and Close, every other Undo comes back, and Star and Name it work again. "Undone." clears itself after a few seconds.
+- **Hold to talk never leaves you stuck.** Every message has Close, the speech download has Not now, and the Accessibility message opens System Settings. A "typed" note clears by itself.
+- **Forget then Erase in Memory** no longer shows a false error, and Erase is not offered next to the example line.
+- **A window that opens late** no longer shows the engine as running when it has stopped.
+
+## Fixed and proven, problem by problem: 18 Nov 2026
+
+- **After Fix it, each problem is checked again.** When Squibby fixes what a review found, the result now lists every problem from that review with what the same rules found when they looked again: Gone, Still there, or Look at it.
+- **A problem still there is never called proven.** Even when the build and tests pass, if the key is still in the code the result says "Not fixed yet. One problem the review found is still there." History says the same, and it does not count as one of your free fixes.
+- **Try again fixes only what is left.** Try again and Undo sit right under the list. Try again asks the fix only for the problems still there.
+- **Honest about what a rule can't see.** A worry like "this changes how people sign in" can't be checked by a rule, so it says Look at it, never Gone.
+- **No extra cost.** The check reads a few files Squibby already keeps for Undo. No second review, nothing sent anywhere.
+- **Said once, one next step.** Not fixed yet is said once at the top, Try again and Undo are the only buttons beside it, and a result with something to look at says "but check these first" instead of calling it fixed.
+- **A problem that comes back is caught.** If Try again puts a removed key back, it shows as Still there again, and the next Try again asks for it.
+
 ## Catch AI tools reaching for your saved logins: 17 Nov 2026
 
 - **If your AI tool goes for your passwords, you hear about it.** An AI tool can pick up hidden instructions from a web page or a file it read. Squibby now notices when your own AI tool is about to read the Mac's Keychain, a .env file, a key, or a login file like ~/.aws/credentials, and tells you in plain words why that matters.

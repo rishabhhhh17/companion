@@ -830,10 +830,11 @@ export class ReviewService {
     // A project reviewed by the rules alone (the key practice's copy) never gets a model fix, whatever the page sent: the
     // practice's own fixed move (practice.key) is its Fix it. Refused before the plan gate, so nothing is counted or spent.
     if (this.deps.rulesOnly?.(cmd.project) === true) { fail(PRACTICE_FIX); return; }
-    this.said(rec.batch, "fix");
     // M104: the review is kept (it was deleted here before), so the task can check each problem again when it ends, and
-    // Try again on its receipt is Fix it again for what is still there. A press again while it runs is not a second fix.
+    // Try again on its receipt is Fix it again for what is still there. A press again while it runs is not a second fix,
+    // and is not written to the review's History row either.
     if (this.fixing.has(cmd.batch)) { fail(FIX_RUNNING); return; }
+    this.said(rec.batch, "fix");
     // Only the problems not taken out yet are asked for (all of them on the first press).
     const open = rec.words.reasons.filter((_, i) => !rec.fixed.has(i));
     const words = open.length && open.length < rec.words.reasons.length ? { ...rec.words, reasons: open } : rec.words;
@@ -861,7 +862,8 @@ export class ReviewService {
         const changed = async (a: string) => new Set([...(await store.diff(a, after)).map((c) => c.file), ...(await store.envChanged(a, after))]);
         const changedSinceBefore = await changed(rec.batch.from), byFix = await changed(rec.batch.to);
         const outcomes: FixOutcome[] = rec.rechecks.map((t, i) => outcomeOf({ kind: rec.kinds[i] ?? "", recheck: t, state: { text, changedSinceBefore, migrations }, byFix, proof, fixedBefore: rec.fixed.has(i) }));
-        outcomes.forEach((o, i) => { if (o === "gone") rec.fixed.add(i); });
+        // Gone is marked; one a rule finds again (put back by this fix) is open again, so Try again asks for it.
+        outcomes.forEach((o, i) => { if (o === "gone") rec.fixed.add(i); else if (o === "still") rec.fixed.delete(i); });
         const findings = findingsOf(says.slice(0, outcomes.length), outcomes);
         if (!stillCount(findings) && this.reviewed.get(rec.batch.id) === rec) this.reviewed.delete(rec.batch.id);
         return { batch: rec.batch.id, findings };

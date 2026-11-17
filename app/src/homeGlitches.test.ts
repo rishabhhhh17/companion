@@ -14,7 +14,9 @@ describe("opening Home again while it folds back", () => {
     const open = fnBody("open_card_then");
     const gen = open.indexOf("HOME_CLOSE_GEN.fetch_add(1, Ordering::SeqCst);");
     expect(gen).toBeGreaterThan(-1);
-    expect(open.indexOf("HOME_FOLDING.store(0, Ordering::SeqCst);")).toBeGreaterThan(gen);
+    // Changed on purpose (round 1): the fold is called off with a swap, so the open also knows Home was folding (a reopen
+    // then works the chat out afresh instead of counting Home as already open).
+    expect(open.indexOf("HOME_FOLDING.swap(0, Ordering::SeqCst)")).toBeGreaterThan(gen);
   });
   test("the watch sets the click through from what the window really does now, never from a value it kept", () => {
     const watch = fnBody("watch_home");

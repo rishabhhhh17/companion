@@ -8,6 +8,7 @@ import { NO_PROJECT, SETTINGS_LESSON_ID } from "./commands.ts";
 import { gateFinding, isExpected, keyPracticeReduce, practiceOf } from "./practice.ts";
 import { activityWords } from "./activity.ts";
 import { redact } from "../../runner/src/redact.ts";
+import { recheckedOf, stillOf, type Rechecked } from "./fixRecheck.ts";
 import { S, PRODUCT } from "./strings.ts";
 import { withKeys } from "./keys.ts";
 import { webLink } from "./links.ts";
@@ -63,7 +64,11 @@ export type Receipt = { proof?: string; checkpoint: string; changed: { file: str
   undoSafety?: string; back?: boolean; backPartly?: boolean; fixKept?: boolean; earlierUndone?: boolean;
   // A plan's whole fix (must fix 7): its steps, and the last step's own undo point (its picture is made for that one). The
   // receipt's checkpoint is then the first step's, so Undo puts back the whole fix.
-  wholePlan?: { steps: number; last: string } };
+  wholePlan?: { steps: number; last: string };
+  /** M104: a review's Fix it: each problem that review found, checked again by its rules (fixRecheck.ts). */
+  rechecked?: Rechecked;
+  /** M104: Try again was pressed for what is still there. */
+  retrying?: boolean };
 // checkpoint: the undo point it began with (a task that changes files; a read only look has none).
 // files (M55, live progress): each file the agent's own tools really changed so far, in the order they first changed, with
 // how each changed over the whole task (agent.file). The receipt stays the whole list, with what commands changed too.
@@ -71,7 +76,7 @@ export type LiveFile = { file: string; kind: "added" | "modified" | "deleted" };
 export type Task = { agent: string; project?: string; checkpoint?: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState; files?: LiveFile[] };
 // undone (M45): an Undo put the project back to before this task (the engine's task log says so). back: Bring the fix back
 // then put its files back again (undone stays set).
-export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string; failedCheck?: string };
+export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string; failedCheck?: string; still?: number };
 export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
 export type DriveProgress = { index: number; total: number; title: string; status: string; completed: number; finished?: { status: string; completed: number; total: number }; whole?: PlanWhole };
 /** What a plan's steps did so far, added up from each step's receipt (must fix 7): the first step's undo point, every file
@@ -161,6 +166,13 @@ export type Practice = {
 // yours: files Undo left alone because the person changed them. putBack: the separate, confirmed "Put those back too" for them.
 // back (M45): this is "Bring the fix back", a restore of the Undo's own safety copy, not an Undo.
 export type UndoState = { stage: "confirm" | "working" | "done" | "failed"; checkpoint: string; back?: true; note?: string; recovered?: number; large?: number; yours?: string[]; putBack?: "confirm" | "working" | "done" | "failed"; putBackNote?: string };
+/** Round 2: an undo that holds the other Undo buttons back: one asked, running, or putting files back. One that failed or
+ *  finished is only a line to read: every Undo, Star and Name it stays pressable beside it. */
+export const undoBusy = (u: UndoState | null | undefined): boolean => !!u && (u.stage === "confirm" || u.stage === "working" || u.putBack === "confirm" || u.putBack === "working");
+/** Round 2: a finished undo with nothing left to answer (no files of yours to put back) clears itself after this long (ms),
+ *  and a failed or finished one clears when the person leaves the page, so no line stays forever. */
+export const UNDO_DONE_MS = 6000;
+export const undoSettled = (u: UndoState | null | undefined): boolean => !!u && (u.stage === "failed" || (u.stage === "done" && !u.yours?.length && !u.putBack));
 export type DiagramState = { stage: "asking" | "shown" | "none"; ask?: string; project?: string; reason?: string; caption?: string; brokenReason?: string };
 // fromProject: made by the runner from this project's own setting names, not a lesson file.
 export type LessonItem = { id: string; title: string; app: string; goal: string; status?: "draft" | "tried"; needsProject?: boolean; fromProject?: boolean; steps: number; saved: boolean };
@@ -591,6 +603,14 @@ function reduceOne(m: Model, e: Ev): Model {
   // put back from the card itself keeps the card, to show its result until Close.
   if (e.type === "review.undone" && e.ok === true && m.review && e.batch === m.review.batch && !(hadUndo?.where === "card" && hadUndo.batch === e.batch)) m = { ...m, review: reviewReduce(m.review, { type: "ui.reviewDismissed", batch: e.batch }) };
   if (typeof e.type === "string" && (e.type.startsWith("ui.reviewUndo") || e.type === "review.undoPlan" || e.type === "review.undone")) return m;
+  // M104: Try again on a fix's receipt, for what is still there (Fix it again for the same review). Refused: it stops
+  // waiting and says why; the new task's own start replaces the receipt as any task does.
+  if (e.type === "ui.recheckRetry") return m.receipt?.rechecked && e.batch === m.receipt.rechecked.batch && !m.receipt.retrying ? { ...m, receipt: { ...m.receipt, retrying: true } } : m;
+  if ((e.type === "ui.recheckRetryFailed" || (e.type === "protocol.error" && e.failed === "review.fix") || e.type === "plan.limit" || e.type === "app.stop_everything") && m.receipt?.retrying) {
+    const reason = typeof e.reason === "string" && e.reason ? e.reason.slice(0, 500) : null;
+    m = { ...m, receipt: { ...m.receipt, retrying: false }, ...(reason && e.type !== "plan.limit" ? { notice: reason } : {}) };
+    if (e.type === "ui.recheckRetryFailed") return m;
+  }
   const hadReview = m.review ?? null;
   const rv = reviewReduce(hadReview, e);
   if (rv !== hadReview) m = { ...m, review: rv };
@@ -1168,7 +1188,7 @@ function reduceRest(m: Model, e: Ev): Model {
       if (e.inPlan === true && m.drive && !m.drive.finished && typeof e.checkpoint === "string") m = { ...m, drive: { ...m.drive, whole: addPlanStep(m.drive.whole, e) } };
       // A new receipt is built fresh, so undone, back, fixKept and undoSafety start cleared: this is the only place they are.
       // What the engine said about the files since the last check is older than this result: it is asked again.
-      return { ...m, sinceCheck: undefined, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, ...(typeof e.askWords === "number" ? { askWords: e.askWords } : {}), commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e), ...endOf(e), ...(e.claimedPassed === true ? { claimedPassed: true } : {}), ...flagsOf((e as { flags?: unknown }).flags), ...notesStayOf(e) } };
+      return { ...m, sinceCheck: undefined, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, ...(typeof e.askWords === "number" ? { askWords: e.askWords } : {}), commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e), ...endOf(e), ...(e.claimedPassed === true ? { claimedPassed: true } : {}), ...flagsOf((e as { flags?: unknown }).flags), ...notesStayOf(e), ...rechecked(e as { rechecked?: unknown }) } };
     }
     // With no folder chosen, Settings asks for the settings for every project (the stand in project): only those are read
     // from it (settingsStore.ts), never a project's memory for the Memory tab.
@@ -1731,15 +1751,18 @@ export function receiptFacts(m: Pick<Model, "receipt" | "task" | "teach">): Fact
     missing: [],
     canBringBack: !!r.undoSafety,
     turnOpen: !!(m.teach && m.teach.checkpoint === r.checkpoint && teachOpen(m.teach)),
+    ...(stillOf(r.rechecked) ? { stillThere: stillOf(r.rechecked) } : {}),
   };
 }
+/** M104: the receipt's rechecked part, when it is of its known shape. */
+const rechecked = (e: { rechecked?: unknown }): { rechecked?: Rechecked } => { const r = recheckedOf(e.rechecked); return r ? { rechecked: r } : {}; };
 export const receiptVerdict = (m: Pick<Model, "receipt" | "task" | "teach">): Verdict | null => { const f = receiptFacts(m); return f ? verdictOf(f) : null; };
 /** Did an Undo put the last task's files back (not counting Put my fix back on a turn)? Bring back leaves this true too: the
  *  picture, Show me what changed and the turn belong to the files as they were checked. */
 export const receiptUndone = (r: Receipt | null | undefined): boolean => !!r?.undone && !r.fixKept;
 
 /** A What I did row as facts. "running" is not a verdict: callers check it first. */
-export function historyFacts(h: Pick<HistoryItem, "status" | "proof"> & Partial<Pick<HistoryItem, "changed" | "undone" | "back">>): Facts {
+export function historyFacts(h: Pick<HistoryItem, "status" | "proof"> & Partial<Pick<HistoryItem, "changed" | "undone" | "back" | "still">>): Facts {
   const s = h.status;
   const ended: Facts["ended"] = s === "done" ? "done" : s === "needs_you" ? "needsYou" : s === "interrupted" ? "stopped"
     : s === "error_max_budget_usd" || s === "daily_limit" || s === "error_max_turns" ? "limit" : "failed";
@@ -1748,7 +1771,8 @@ export function historyFacts(h: Pick<HistoryItem, "status" | "proof"> & Partial<
   const p = h.proof;
   // An unknown count (an older log, or a task cut short) may still have changed files: it is never said as "Nothing was
   // changed", and an Undo of it is an Undo (the engine's log marks it too).
-  return { proof: p === "passed" || p === "partial" || p === "failed" ? p : "none", ended, limit, failWhy, undone: !!h.undone, back: !!h.back, changed: h.changed ?? 1, missing: [] };
+  const still = typeof h.still === "number" && Number.isInteger(h.still) && h.still > 0 ? h.still : 0;
+  return { proof: p === "passed" || p === "partial" || p === "failed" ? p : "none", ended, limit, failWhy, undone: !!h.undone, back: !!h.back, changed: h.changed ?? 1, missing: [], ...(still ? { stillThere: still } : {}) };
 }
 
 // Let me try the next one: only for a receipt that made the same change twice, once (the engine keeps no second offer),
