@@ -653,6 +653,16 @@ pub fn dock_value(p: &crate::docking::Prefs, key: &str) -> Option<Value> {
         _ => return None,
     })
 }
+/// M111: where the character lives, as Settings shows it: in the notch only while the notch is there to hold it
+/// (docking::tucked_in), so Settings never says In the notch while it is on the screen edge (the M111 review).
+pub fn lives_value(p: &crate::docking::Prefs, island_on: bool) -> Value { json!(if crate::docking::tucked_in(p, island_on) { "notch" } else { "edge" }) }
+/// The same, changed: tucking keeps every place, so the edge comes back to where it was, and needs no display. In the
+/// notch is refused while the notch is off (None: the row says it could not change); On the screen edge always works.
+pub fn lives_with(p: &crate::docking::Prefs, v: &Value, island_on: bool) -> Option<crate::docking::Prefs> {
+    let tucked = match v.as_str()? { "notch" => true, "edge" => false, _ => return None };
+    if tucked && !island_on { return None; }
+    Some(crate::docking::Prefs { tucked, ..p.clone() })
+}
 /// A place dragged off the step is shown on the nearest one, so Undo after a reset needs more to put the character back
 /// exactly where it was: the position's Undo value, the fraction along the edge as dock.json keeps it. None when the
 /// place is on its step (Undo then sends the shown value, as for every other setting).
@@ -739,6 +749,7 @@ pub fn snapshot(r: &Registry, f: &File, project: Option<&str>, w: &Wrapped, prob
         if d.runner_store() { usual.insert(d.key.clone(), d.default.clone()); continue; }
         let v = match d.store.as_str() {
             "settings" => value_of(r, f, &d.key, project),
+            "dock" if d.key == "character.lives" => Some(lives_value(&w.dock, crate::homeset::read(r, f).island_show)),
             "dock" => dock_value(&w.dock, &d.key),
             "presentation" => presentation_value(&w.presentation, &d.key),
             "keys" => Some(keys_value(&w.keys)),
@@ -1528,6 +1539,45 @@ mod tests {
         assert_eq!(line["values"], json!({ "ph.useProjectInfo": false, "ph.handBack": "copy" }));
     }
 
+    #[test]
+    fn where_flowflow_lives_reads_and_writes_tucked_in_dock_json_and_keeps_its_place() {
+        use crate::docking::{Edge, Landing, Prefs};
+        let mut p = Prefs::default();
+        assert_eq!(lives_value(&p, true), json!("edge"));
+        p.land("a", Landing::Edge(Edge::Left, 0.25));
+        let t = lives_with(&p, &json!("notch"), true).unwrap();
+        assert!(t.tucked);
+        assert_eq!(lives_value(&t, true), json!("notch"));
+        assert_eq!(t.per_screen, p.per_screen, "the place is kept");
+        let back = lives_with(&t, &json!("edge"), true).unwrap();
+        assert_eq!(back, p, "round trip: exactly as before");
+        assert!(lives_with(&p, &json!("roof"), true).is_none());
+        assert!(lives_with(&p, &json!(true), true).is_none());
+        // Works before any display is known (the launch), unlike the edge and position.
+        assert!(lives_with(&Prefs::default(), &json!("notch"), true).unwrap().tucked);
+        let d = registry().get("character.lives").unwrap();
+        assert_eq!((d.store.as_str(), d.default.clone()), ("dock", json!("edge")));
+        assert_eq!(dock_input(d, &json!("notch")), Ok(json!("notch")));
+    }
+    #[test]
+    fn settings_never_says_in_the_notch_while_the_notch_is_off() {
+        use crate::docking::Prefs;
+        // M111 review: dock.json says tucked, but with the notch off the character is on the screen edge, so that is shown.
+        let t = Prefs { tucked: true, ..Default::default() };
+        assert_eq!(lives_value(&t, false), json!("edge"));
+        // Picking In the notch with the notch off changes nothing (the row says it could not change); the edge always works.
+        assert!(lives_with(&Prefs::default(), &json!("notch"), false).is_none());
+        assert!(!lives_with(&t, &json!("edge"), false).unwrap().tucked);
+        // Only through lives_with, which knows about the notch: the plain dock change refuses it.
+        assert!(dock_with(&Prefs::default(), "character.lives", &json!("notch")).is_none());
+        assert_eq!(dock_value(&t, "character.lives"), None);
+        // What every page is told reads the notch from settings.json.
+        let w = Wrapped { dock: t.clone(), presentation: Default::default(), keys: crate::keymap::Map::DEFAULT, voice: Default::default(), ph_apps: json!({ "apps": {} }), rules: Ok(None) };
+        assert_eq!(snapshot(registry(), &File::default(), None, &w, &[], &[])["values"]["character.lives"], json!("notch"));
+        let mut off = File::default();
+        set(registry(), &mut off, "island.show", &json!(false), None).unwrap();
+        assert_eq!(snapshot(registry(), &off, None, &w, &[], &[])["values"]["character.lives"], json!("edge"));
+    }
     #[test]
     fn the_characters_place_is_read_and_changed_on_the_display_it_is_on_in_dock_json() {
         use crate::docking::{Edge, Prefs};

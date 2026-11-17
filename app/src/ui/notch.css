@@ -56,3 +56,16 @@
 @keyframes ip-fade { from { opacity: 0; } }
 /* M96: no border on the one row: it is the notch grown down, the same black (the faint edge stays on the cards). */
 .island:has(.island-panel[data-layout][data-shown]):not([data-drop="over"]) .island-shape { box-shadow: none; }
+
+/* ---------- M111: the notch says it will take Flowflow (a drag over it) ---------- */
+/* The pointer's own row grows out of the notch (island.rs take_look) with one line, and the notch's black takes a soft
+   lavender glow inside its edge (inset: the window is exactly the shape, and the camera housing has no pixels). */
+.island[data-take] .island-shape { box-shadow: inset 0 0 0 1px var(--tuck-line), inset 0 -12px 24px -8px var(--tuck-glow); }
+.island-take { position: absolute; top: var(--row); left: 0; right: 0; height: 42px; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--chat-fg); font: 500 13px / 1.2 var(--font); letter-spacing: -.01em; white-space: nowrap; pointer-events: none; animation: ip-rise var(--dur-notch-row) var(--ease-out) both; }
+.island-take .nb-face, .island-take .nb-face.ff-mini { flex: none; width: 24px; height: 24px; }
+.island-take .ff-orb { --orb: 24px; --orb-gap: var(--hair); height: auto; }
+.island-take .ip-face { display: block; overflow: hidden; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .island-take { animation-name: ip-fade; } }
+/* Tucked, Flowflow's face in the notch can be dragged out onto the screen: a grab cursor says so. */
+.island-panel button.nb-hi[data-tucked], .notch-chat .nc-face-hold[data-tucked] { cursor: grab; }
+.island:is([data-take], [data-said]) .island-panel { visibility: hidden; opacity: 0; }

@@ -20,6 +20,7 @@ import { useMood } from "./useMood.ts";
 import { useFlight } from "./dockFlight.ts";
 import { roamFrom, type Roam } from "./roam.ts";
 import { usePeek } from "./peek.ts";
+import { useTuck } from "./tuck.ts";
 import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { S } from "./strings.ts";
 import { setting, startSettings, useSetting } from "./settingsStore.ts";
@@ -33,6 +34,7 @@ import { labelShows, posesKept, thinkingShows } from "./dockStates.ts";
 import { DUR } from "./motionTokens.ts";
 import "./style.css";
 import "./ui/chrome.css";
+import "./ui/tuck.css";
 
 // The live drawing (and the three.js it needs) is loaded only when asked for: with character.live off, nothing of it is fetched.
 const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((m) => ({ default: m.FlowflowView })));
@@ -74,6 +76,8 @@ function Dock() {
   const dropMark = drop.s.hover ? "over" : drop.s.menu?.at === "dock" ? "menu" : undefined;
   // Peeking from past the edge (peek.ts): only a lean toward the screen, as data.
   const peek = usePeek();
+  // M111: over the notch while dragged it shrinks toward it; let go there it shrinks up into it (tuck.ts).
+  const tuck = useTuck();
   // M46: rest. The shell's (a call with Quiet during calls, Low Power Mode), or tucked past the edge: it holds still.
   const shellRest = useRest();
   // The live water (M20): a handle to move it from here, the window's speed felt as jelly lag, and in Lively the eyes
@@ -275,7 +279,7 @@ function Dock() {
     wasDone.current = state === "done";
   }, [state]);
   return (
-    <main className="dock" data-drop={dropMark} data-character={charLook}>
+    <main className="dock" data-drop={dropMark} data-character={charLook} data-tuck={tuck.look ?? undefined} data-calm={tuck.calm || reduced ? "" : undefined}>
       <button ref={button} className="character" type="button" style={{ ...skinVars(SKIN), "--char-scale": String(SIZE_SCALE[sizeOf(sizeSet)]) } as React.CSSProperties} data-character={charLook} data-flow={flow.ready && !orb ? "on" : undefined} data-live={live ? "on" : undefined} data-state={state} data-motion={live ? undefined : motionFor(state, reduced)} data-pose={orb ? undefined : pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={orb ? undefined : react?.r} data-mood={mood ?? undefined}
         data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark} data-peek={peek.pose} data-peek-edge={peek.edge}
         aria-label={spoken}

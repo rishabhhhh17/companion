@@ -106,8 +106,10 @@ fn setting_change(app: &AppHandle, key: &str, value: &Value, asked: Option<&str>
             // A valid value, or for the position Undo's exact place after a reset (settings.rs dock_input).
             let v = settings::dock_input(d, value)?;
             // Nothing to change it on yet (no display known): said as a setting that could not be changed.
-            let next = with_prefs(|p| settings::dock_with(p, key, &v)).ok_or("other")?;
-            if key == "character.comeTo" { come_to_set(app, next.come_to); } else { place_set(app, next); }
+            // M111: where it lives knows about the notch (In the notch is refused while the notch is off).
+            let island_on = home_set().island_show;
+            let next = with_prefs(|p| if key == "character.lives" { settings::lives_with(p, &v, island_on) } else { settings::dock_with(p, key, &v) }).ok_or("other")?;
+            if key == "character.comeTo" { come_to_set(app, next.come_to); } else if key == "character.lives" { lives_set(app, next); } else { place_set(app, next); }
             Ok(one)
         }
         "presentation" => {

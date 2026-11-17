@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Tuck the character into the notch: 16 Nov 2026
+
+- **Drag it onto the notch and it tucks away.** As you bring Squibby over the notch, the notch glows softly and says "Let go to tuck Squibby in", and Squibby shrinks a little toward it. Let go and it shrinks up into the notch and is gone from your screen. Move away instead and nothing changes.
+- **It still lives in the notch.** Point at the notch and its face is there in the small row, and in the chat. The notch still lights up for news. Stop everything, the listening and looking lights, and hiding from screen sharing work exactly as before.
+- **It says where it went.** Right after you tuck it, the notch says for a moment "Squibby is in the notch. Point here to see it." While it is tucked, Settings dims the edge settings and says why. Turning the notch off brings it back for good, so turning the notch on later never hides it by surprise.
+- **No wandering while it is tucked.** It never goes beside a window and never peeks from an edge. Restarting the Mac or plugging in a display never brings it back by itself.
+- **Three ways to bring it back.** Drag its face out of the notch onto the screen, press the small Bring Squibby out button beside Settings in the chat, or pick On an edge in Settings, Where the character lives. It comes back to the edge and place it had before. With the notch turned off it always stays on the screen.
+- **Fixed: the bubbles beside it now go with it.** The two little bubbles that trail the character used to hang back where it had been when you dragged it, when it landed on an edge, or when it peeked. Now they move with it in the same moment and swing smoothly round to their side when you change direction. Home, when it opens beside the character with the notch turned off, closes as soon as you pick the character up instead of being left behind.
+
 ## Put these files back, on the review card: 16 Nov 2026
 
 - **One button takes back what another AI tool changed.** On the card that explained a change by Cursor, Codex, Claude Code or any other tool, Put these files back puts only the files that change touched back the way they were. Nothing else in your project moves, and it is never the whole project.

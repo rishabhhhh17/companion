@@ -13,6 +13,8 @@ export const LOOK_HOLD = 3;
 /** M83: how long worried's sweat drop takes to slide down once (seconds). */
 export const SWEAT_S = 1.8;
 export const FOLLOW_HOLD = 1.4;
+/** M111: how long after its window stops (or it lands at an edge) the bubbles stay carried with the orb while it settles. */
+export const CARRY_AFTER_S = 0.45;
 /** M60 (2 Nov 2026, the orb): the orb's radius (world units; the frame is 2.2 high). The renderer draws it at this size. */
 export const ORB_RADIUS = 0.656;
 /** The body's widest reach from its centre (world units): the orb, with a little room to breathe and squash. */
@@ -103,6 +105,10 @@ export class FlowflowEngine {
   readonly face: Face;
   readonly droplets = new Droplets();
   readonly followers = new Followers();
+  /** M111: until when (engine time) the bubbles are carried with the orb. */
+  private carryUntil = -Infinity;
+  /** M111: a firm landing at an edge: the bubbles go to the open side in that same frame, as the orb does. */
+  private landNow = false;
   private ff: FollowerFrame = { mood: "rest", orb: ORB_RADIUS, cx: 0, cy: 0, tx: TRAIL.free[0], ty: TRAIL.free[1], ux: 0, uy: -1, bob: false, time: 0, minX: -1.6, maxX: 1.6, minY: -1.1, maxY: 1.1 };
   readonly surface: Surface = { side: null, at: 1, cling: 0, press: 0 };
   private pressSpring = new Spring(0, 0); private pressTo = 0;
@@ -197,7 +203,7 @@ export class FlowflowEngine {
    *  behind like jelly. A speed of nothing lets it catch up, and it squashes and wobbles as it settles. */
   push(vx: number, vy: number): void {
     if (!Number.isFinite(vx) || !Number.isFinite(vy)) return;
-    if (vx === 0 && vy === 0) { this.pushing = false; this.body.setTarget(this.hx, this.hy); return; }
+    if (vx === 0 && vy === 0) { if (this.pushing) this.carryUntil = this.time + CARRY_AFTER_S; this.pushing = false; this.body.setTarget(this.hx, this.hy); return; }
     this.pushing = true;
     const lx = Math.max(-PUSH_MAX, Math.min(PUSH_MAX, -vx * PUSH_PER)), ly = Math.max(-PUSH_MAX, Math.min(PUSH_MAX, vy * PUSH_PER));
     this.body.setTarget(lx, ly);
@@ -223,7 +229,7 @@ export class FlowflowEngine {
   /** firm: it goes there at once and stays, no spring-back wobble (gone in at an edge, M51). */
   press(amount: number, firm = false): void {
     this.pressTo = Number.isFinite(amount) ? Math.max(0, Math.min(1, amount)) : 0;
-    if (firm) { this.pressSpring.x = this.pressTo; this.pressSpring.v = 0; }
+    if (firm) { this.pressSpring.x = this.pressTo; this.pressSpring.v = 0; this.carryUntil = this.time + CARRY_AFTER_S; this.landNow = true; }
   }
 
   /** The pointer left, or the window lost focus: the eyes and the body drift back. */
@@ -350,7 +356,8 @@ export class FlowflowEngine {
     this.credit += (this.mode === "lively" && !this.pinned ? look.droplets : 0) * Math.min(2, this.body.pose.speed) * 0.9 * d;
     if (this.credit >= 1) { this.credit -= 1; const p = this.body.pose; this.emitDroplet(-p.dirX * BODY_RADIUS * 0.6, -p.dirY * BODY_RADIUS * 0.6 + 0.2, 0.4); }
     this.droplets.update(d, this.body.pose.x, this.body.pose.y);
-    this.followers.update(d, this.followFrame());
+    // M111: while its window moves, and a moment after, the bubbles go with the orb in the same frame.
+    if (this.pushing || this.time < this.carryUntil) { this.followers.carry(d, this.followFrame(), this.landNow); this.landNow = false; } else this.followers.update(d, this.followFrame());
     for (let i = this.followers.takePop(); i >= 0; i = this.followers.takePop()) {   // a bubble popped: a little spray from where it was
       if (this.pinned) continue;
       const fl = this.followers;
@@ -385,6 +392,8 @@ export class FlowflowEngine {
   /** M60: where the orb's centre rests above the frame's middle now. */
   get restY(): number { return this.surface.side === "below" || this.surface.side === "bottom" ? REST_Y_FLAT : REST_Y; }
 
+  /** M111: what the bubbles follow this frame (tests). */
+  followFrameNow(): FollowerFrame { return this.followFrame(); }
   private followFrame(): FollowerFrame {
     const f = this.ff, p = this.body.pose, base = this.behavior.base, sf = this.surface;
     f.mood = MOOD[base] ?? "rest";

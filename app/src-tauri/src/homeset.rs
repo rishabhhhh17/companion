@@ -194,7 +194,8 @@ mod wiring {
         let applied = body("fn home_setting_applied(");
         for k in ["\"island.show\" | \"island.display\" | \"home.size\"", "\"island.peekOnHover\" | \"island.openDelay\" | \"island.closeDelay\"", "\"home.closeOnClickAway\""] { assert!(applied.contains(k), "{k}"); }
         let change = body("fn setting_change(");
-        assert!(change.contains("if key == \"character.comeTo\" { come_to_set(app, next.come_to); } else { place_set(app, next); }"));
+        // M111 (changed on purpose): Where Flowflow lives has its own path, which tucks or brings it out.
+        assert!(change.contains("if key == \"character.comeTo\" { come_to_set(app, next.come_to); } else if key == \"character.lives\" { lives_set(app, next); } else { place_set(app, next); }"));
         let set = body("fn place_set(");
         assert!(set.contains("save_prefs();") && set.contains("apply_dock(mtm, \"setting\", false)"));
         // The overlay is told the settings with each pointer and each sketch, so less motion reaches it too.

@@ -628,6 +628,8 @@ export const S = {
     "character.name": `What ${PRODUCT_S} character is called.`,
     "character.follow": "Still only follows while listening or pointing.",
     "character.dockWhen": "Pushed in hard, thrown at it, or held there two seconds. Playing near it leaves it where it is.",
+    // M111
+    "character.lives": "In the notch, it stays off your screen and shows when you point at the notch.",
     "sound.on": "A soft tone when a fix is proven, a tap when work stops.",
     "voice.on": "Hold the talk key and ask out loud.",
     "prompt.on": "Rewrite a prompt in any app with its key, then paste it back. Also the error key.",
@@ -666,6 +668,7 @@ export const S = {
     "character.motion": { followMac: "Follow Mac", less: "Less" },
     "character.follow": { eyes: "Eyes only", drop: "With a ring", off: "Not at all" },
     "character.dockWhen": { pushed: "Push or hold", near: "Let go near" },
+    "character.lives": { edge: "On an edge", notch: "In the notch" },
     "showme.askWorked": { everyStep: "Every step", whenUnsure: "When unsure" },
     "point.guesses": { softRing: "Dashed ring", wordsOnly: "Words only" },
     "point.everydayWhy": { reasonsAndQuestion: "Full", reasons: "Short", off: "Off" },
@@ -2510,6 +2513,7 @@ export const S = {
     "character.edge": { label: "Screen edge", help: "Which edge of the screen the character lives on, on the display it is on now. You can also drag it to any edge or corner.", also: ["Edge for the character on this display", "place", "move", "corner", "side", "position"], options: { left: "Left", right: "Right", top: "Top", bottom: "Bottom" } },
     "character.position": { label: "Position along that edge", help: "0 is the top or left end of the edge, 100 the bottom or right end. The character always keeps clear of the notch and of Home.", also: ["place", "move", "height", "corner"] },
     "character.sameEverywhere": { label: "Same place on every display", help: "On, a display where you have not placed the character yet gets this display's edge and position. Displays where you placed it keep their own.", also: ["monitor", "screens", "external", "place"] },
+    "character.lives": { label: "Where the character lives", help: "On the screen edge, the usual, the character sits on an edge of your screen. In the notch, it has no window of its own: point at the notch to see it, and the notch still lights up for news. You can also drag the character onto the notch to tuck it in, and drag it out of the notch to bring it back. With the notch turned off, it stays on the screen edge.", also: ["notch", "tuck", "hide", "away", "off screen", "dock", "bring out", "always on screen"], options: { edge: "On the screen edge", notch: "In the notch" } },
     "character.comeTo": { label: "Come to what it is about", help: `When ${PRODUCT} points at something in a window, the character moves next to that window, never on top of it. It goes back to its place when you are done.`, also: ["move", "follow", "character", "roam"] },
     "character.linger": { label: "Stay beside a window for", help: "How long the character waits by a window after its ring or answer goes away. It goes back at once when the window or app changes, or on Stop everything.", also: ["wait", "come to", "go home", "delay"] },
     "character.motion": { label: "Motion", help: `Less motion makes the character appear in place instead of flying, and stops ${PRODUCT_S} own animations. It changes only ${PRODUCT}, never the rest of your Mac.`, also: ["animation", "reduce motion", "accessibility", "fly", "move"], options: { followMac: "Follow my Mac", less: "Less motion" } },
@@ -4131,6 +4135,17 @@ export const S = {
       off: `${PRODUCT} is not running.`,
       notReady: "Fixing is not switched on for this Mac yet. Checking your project still works.",
     },
+  },
+  // M111: tucking Flowflow into the notch (docs/milestones/M111-tuck-into-notch.md).
+  m111: {
+    // The character's own name (character.name, or the product's): never "Flowflow" (M72 item 7).
+    take: (name: string) => `Let go to tuck ${name} in`,
+    bringOut: (name: string) => `Bring ${name} out`,
+    tucked: (name: string) => `${name} is tucked into the notch. Drag it out, or press Bring ${name} out.`,
+    // Said in the notch for a moment right after a tuck, so a tuck by accident never looks like it vanished (M111 review).
+    inNotch: (name: string) => `${name} is in the notch. Point here to see it.`,
+    // Under the rows that place it on the screen edge, while it lives in the notch.
+    edgeOff: (name: string) => `Not used while ${name} is in the notch`,
   },
   // M94: What Squibby saved you. Counts of real events from this project's own history only: never a guess, never an
   // estimate of time, tokens or money, and never an amount (F29, M69). No streak, no praise (rule 16).

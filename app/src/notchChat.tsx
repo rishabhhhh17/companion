@@ -10,6 +10,10 @@ import { Icon } from "./icons.tsx";
 import type { Model } from "./model.ts";
 import { chatAsk, chatBubbles, chatProject, chatWhen, type Bubble } from "./notchChat.ts";
 import { S } from "./strings.ts";
+import { invoke } from "./tauri.ts";
+import { useSetting } from "./settingsStore.ts";
+import { useDragOut } from "./tuck.ts";
+import { characterName } from "./companion.ts";
 
 type Props = {
   m: Model; project: string; greet: string; now: number;
@@ -32,6 +36,10 @@ type Props = {
 
 export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk, stop, onStop, onBubble, onMic, onSend, onKeyDown, onInput, onFocus, onSettings, onExpand }: Props) {
   const C = S.m96.chat;
+  // M111: tucked into the notch, Flowflow's face can be dragged out onto the screen, and one small button brings it out.
+  const tucked = useSetting("character.lives") === "notch";
+  const out = useDragOut(tucked);
+  const who = characterName(useSetting("character.name"));
   const bubbles = chatBubbles(m, project, { hint });
   const when = chatWhen(m, project, now);
   // Which project an ask goes to: Return starts a task there (the M96 review).
@@ -43,10 +51,14 @@ export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk,
   return (
     <section className="notch-chat" aria-label={C.label}>
       <div className="nc-top">
-        <FlowMini className="nc-face" state={m.character} />
+        <span className="nc-face-hold" data-tucked={tucked ? "" : undefined} title={tucked ? S.m111.tucked(who) : undefined}
+          onPointerDown={out.onPointerDown} onPointerMove={out.onPointerMove} onPointerUp={out.onPointerUp} onPointerCancel={out.onPointerCancel} onLostPointerCapture={out.onLostPointerCapture}>
+          <FlowMini className="nc-face" state={m.character} />
+        </span>
         <span className="nc-hi" title={greet}>{greet}</span>
         {name && <span className="nc-proj" title={C.project(name)}>{name}</span>}
         {stop && <button type="button" className="nc-stop" aria-label={stop.label} title={stop.title} onClick={onStop}><Icon name="stop" size={12} />{C.stop}</button>}
+        {tucked && <button type="button" className="nc-ico nc-out" aria-label={S.m111.bringOut(who)} title={S.m111.bringOut(who)} onClick={() => void invoke("untuck").catch(() => {})}><Icon name="bringOut" size={14} /></button>}
         <button type="button" className="nc-ico" aria-label={C.settings} title={C.settings} onClick={onSettings}><Icon name="gear" size={14} /></button>
         <button type="button" className="nc-ico" aria-label={C.expand} title={C.expand} onClick={onExpand}><Icon name="expand" size={13} /></button>
       </div>

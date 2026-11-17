@@ -1,0 +1,18 @@
+/* M111: tucking the character into the notch, on the character's own page (dock.tsx). Colours and times are tokens. */
+/* M111: Flowflow and the notch (tuck.ts). Over the notch while dragged it shrinks a little toward it; let go there it
+   shrinks up into it on a short spring (--dur-tuck), and comes back out the same way. With Reduce Motion or Less motion
+   (data-calm, from the shell) only a fade. Individual scale and translate, so they never undo a lean the page sets. */
+.dock .character { transform-origin: top center; transition: scale var(--dur-2) var(--ease-spring), translate var(--dur-2) var(--ease-spring); }
+.dock[data-tuck="take"] .character { scale: .82; translate: 0 -8px; }
+.dock[data-tuck="take"][data-calm] .character { scale: none; translate: none; }
+.dock[data-tuck="in"] .character { scale: .2; translate: 0 -70px; opacity: 0; transition: scale var(--dur-tuck) var(--ease-spring), translate var(--dur-tuck) var(--ease-spring), opacity var(--dur-tuck) var(--ease-exit); }
+.dock[data-tuck="in"][data-calm] .character { opacity: 0; scale: none; translate: none; transition: opacity var(--dur-tuck-fade) linear; }
+.dock[data-tuck="out"] .character { animation: tuck-out var(--dur-tuck) var(--ease-spring) both; }
+.dock[data-tuck="out"][data-calm] .character { animation: tuck-fade var(--dur-tuck-fade) linear both; }
+.dock[data-tuck] .dock-label { opacity: 0; }
+@keyframes tuck-out { from { scale: .2; translate: 0 -70px; opacity: 0; } to { scale: 1; translate: 0 0; opacity: 1; } }
+@keyframes tuck-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .dock[data-tuck] .character { scale: none; translate: none; transition: opacity var(--dur-tuck-fade) linear; }
+  .dock[data-tuck="out"] .character { animation: tuck-fade var(--dur-tuck-fade) linear both; }
+}

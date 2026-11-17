@@ -52,7 +52,7 @@ fn tick(app: &AppHandle) {
         gaze_recompute(); follow_wake();
         log("hidden_for_full_screen", json!({}));
     } else if show && HIDDEN_BY_US.swap(false, Ordering::SeqCst) {
-        with_panels(|d, c| { d.orderFrontRegardless(); c.orderFrontRegardless(); });
+        with_panels(|d, c| { dock_front(d); c.orderFrontRegardless(); });
         island_show(true);
         gaze_recompute(); follow_wake();
         log("shown_after_full_screen", json!({}));
@@ -67,6 +67,7 @@ fn tick(app: &AppHandle) {
     let sig = signature(&screens_now(mtm));
     // The island and Home go back on their display too, and Home is placed again if it is open.
     let res = { let mut g = SIG.lock().unwrap(); if *g != sig { *g = sig; true } else { false } }; if res {
+        tied_close(docking::Change::Displays);
         apply_dock(mtm, "screens_changed", false);
         place_island(mtm, false, "screens_changed");
         // M66: Home's window goes with it, and a Home that was open closes without motion (its display changed under it).

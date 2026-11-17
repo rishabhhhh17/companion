@@ -113,3 +113,7 @@ Also in `docs/research/technical_research.md` section 20, item 41.
 ## Shots
 
 Served from `app/dist` with a stand in for the app, headless Chromium at 2x, in the session's scratch folder (not committed): `m96shots/out/` (1-rest, 2a to 2g the row in each state including no name and a very long name, 3a to 3d the chat, opened by a click, by the ask key, empty, and opened out), and `m96shots/built-vs-mock.png`, the three built states on the mock's own screen. Not shot on the real notch in this step: that needs the built app running and a person's pointer on the notch.
+
+## Later, 16 Nov 2026: M111
+
+While the character is dragged over the notch, the notch grows this same 330 by 42 row (`island.rs` `take_look`) to say it will take it, with a soft inset lavender glow on its black (`--tuck-line`, `--tuck-glow`, kept apart from the four lavender parts above). While tucked, the face in this row and in the small chat can be dragged out onto the screen, and the chat's top row gains one Bring out button beside Settings. See `docs/milestones/M111-tuck-into-notch.md`.

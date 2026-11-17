@@ -74,6 +74,11 @@ export const FOLLOWERS = 2;
 export const FOLLOWER_RADII: readonly [number, number] = [0.17, 0.1];
 /** One slow turn round the orb while it works (seconds). */
 export const ORBIT_SECONDS = 9;
+/** M111 review: how fast carried bubbles swing round to their new side (seconds; about three of these to arrive). */
+export const CARRY_EASE_S = 0.04;
+/** and never faster than this round the orb (world units a second: 0.2 a frame at 60 a second), so a side change is
+ *  a short swing, never a jump. */
+export const CARRY_SPEED = 12;
 /** How far out they sit: from the orb's rim to each, and how much further out the second trails (world units). */
 const GAP = 0.03, OUT = 0.07;
 /** How far round the orb the second sits from the first (radians): together they make an arc round it. */
@@ -140,7 +145,7 @@ export class Followers {
       this.sx[i].x = this.gx[i]; this.sy[i].x = this.gy[i]; this.sz[i].x = this.gz[i]; this.sr[i].x = FOLLOWER_RADII[i];
       this.sx[i].v = this.sy[i].v = this.sz[i].v = this.sr[i].v = 0;
     }
-    this.copy(); this.still = true;
+    this.copy(); this.still = true; this.ox = f.cx; this.oy = f.cy;
   }
 
   update(dt: number, f: FollowerFrame): void {
@@ -167,7 +172,7 @@ export class Followers {
       still = rest(this.sz[i], this.gz[i]) && still; still = rest(this.sr[i], FOLLOWER_RADII[i]) && still;
     }
     this.still = still;
-    this.copy();
+    this.copy(); this.ox = f.cx; this.oy = f.cy;
     if (rising) for (let i = 0; i < FOLLOWERS; i++) {
       const at = RISE_S + i * POP_GAP, t = this.popT - at;
       if (t >= 0 && t - dt < 0) this.popped |= 1 << i;   // it pops this frame
@@ -176,6 +181,39 @@ export class Followers {
     }
   }
 
+  /** Where they should sit for this frame (their aim), without moving them: for tests and for carrying them. */
+  aimFor(f: FollowerFrame): { x: number[]; y: number[] } {
+    const gx = [...this.gx], gy = [...this.gy], gz = [...this.gz];
+    this.aim(f, f.mood, f.bob);
+    const out = { x: [...this.gx], y: [...this.gy] };
+    for (let i = 0; i < FOLLOWERS; i++) { this.gx[i] = gx[i]!; this.gy[i] = gy[i]!; this.gz[i] = gz[i]!; }
+    return out;
+  }
+
+  /** M111 (the founder: "the bubbles beside it don't go"): carried with the orb while its window moves. Each frame they
+   *  move by exactly the orb's own move, so they never hang back, and swing to where they aim round it on a short ease
+   *  (CARRY_EASE_S, about 120 ms to arrive), so a change of drag direction never jumps them to the other side in one frame
+   *  (the M111 review). `atOnce`: a firm landing at an edge, where the orb itself settles in that same frame. A rise and
+   *  pop under way plays on as usual. */
+  carry(dt: number, f: FollowerFrame, atOnce = false): void {
+    if (this.popT >= 0) { this.update(dt, f); return; }
+    if (!(dt > 0) || !Number.isFinite(dt)) return;
+    if (f.mood === "orbit") this.angle += (dt * 2 * Math.PI) / ORBIT_SECONDS;
+    const dx = Number.isFinite(this.ox) ? f.cx - this.ox : 0, dy = Number.isFinite(this.oy) ? f.cy - this.oy : 0;
+    this.aim(f, f.mood, f.bob);
+    const k = atOnce ? 1 : 1 - Math.exp(-dt / CARRY_EASE_S), most = atOnce ? Infinity : CARRY_SPEED * dt;
+    for (let i = 0; i < FOLLOWERS; i++) {
+      const x = this.sx[i].x + dx, y = this.sy[i].x + dy, ex = (this.gx[i] - x) * k, ey = (this.gy[i] - y) * k;
+      const l = Math.hypot(ex, ey), c = l > most ? most / l : 1;
+      this.sx[i].x = x + ex * c; this.sy[i].x = y + ey * c; this.sz[i].x += (this.gz[i] - this.sz[i].x) * k;
+      this.sr[i].x = FOLLOWER_RADII[i];
+      this.sx[i].v = this.sy[i].v = this.sz[i].v = this.sr[i].v = 0;
+    }
+    this.copy(); this.moving = true; this.still = false; this.ox = f.cx; this.oy = f.cy;
+  }
+
+  /** Where the orb's centre was on the last frame they were moved, so carrying moves them by the orb's own move. */
+  private ox = NaN; private oy = NaN;
   private copy(): void { for (let i = 0; i < FOLLOWERS; i++) { this.x[i] = this.sx[i].x; this.y[i] = this.sy[i].x; this.z[i] = this.sz[i].x; this.r[i] = Math.max(0, this.sr[i].x); } }
 
   /** Where each is heading for a mood (gx, gy, gz), kept inside the box. */

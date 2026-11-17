@@ -2,8 +2,9 @@
 // place, on a page's main level or in that page's section of More options, and search finds every one of them; the main
 // levels stay short; the rows that own two keys write them as the spec says; and the words follow the copy rules (3.11).
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { REGISTRY } from "../../protocol/settings.ts";
-import { AT_REST, atRestOf, atRestWrites, CHILD_OF, FIRST_PAGE, HAIRLINE_BEFORE, HIDDEN_OPTIONS, MAIN, mainKeys, MORE_SECTIONS, moreKeys, PAGES, placeOf, ROW_OWNS, SIDEBAR, type Fixed, type PageId } from "./settingsPages.ts";
+import { AT_REST, atRestOf, atRestWrites, CHILD_OF, EDGE_ROWS, livesOff, FIRST_PAGE, HAIRLINE_BEFORE, HIDDEN_OPTIONS, MAIN, mainKeys, MORE_SECTIONS, moreKeys, PAGES, placeOf, ROW_OWNS, SIDEBAR, type Fixed, type PageId } from "./settingsPages.ts";
 import { LINE_MAX, moreWords, rowLine } from "./settingsPage.tsx";
 import { searchSettingsFor } from "./settingsSearch.ts";
 import { wordsOf } from "./settingsRows.ts";
@@ -52,7 +53,8 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
     // More options, so it stays at ten.
     // M71 (5 Nov 2026): one black look, so the page holds Colour, Character, Layout and Text size, with nothing more.
     expect(PAGES.look.more).toEqual([]);
-    expect(mainKeys("flowflow")).toEqual(["character.lively", "look.size", "character.name", "character.edge", "character.dockWhen", "character.peek", "character.stick", "character.follow", "sound.on"]);
+    // M111 (changed on purpose): Where the character lives leads its place.
+    expect(mainKeys("flowflow")).toEqual(["character.lively", "look.size", "character.name", "character.lives", "character.edge", "character.dockWhen", "character.peek", "character.stick", "character.follow", "sound.on"]);
     // The overhaul spec (3.4): Prompt help, split out of voice.on, is its own group on Keys and voice.
     expect(mainKeys("keys")).toEqual(["keys.hotkeys", "voice.on", "talk.voice", "talk.speak", "talk.captions", "talk.dictate", "prompt.on"]);
     // M74: what goes to Claude, and how long safety copies are kept.
@@ -180,5 +182,29 @@ describe("the copy rules for Settings (the spec, 3.11)", () => {
     for (const [q, k] of [["Daily spending limit", "spend.dailyLimit"], ["Speak to me", "talk.speak"], ["Quiet during calls", "calls.quiet"], ["Pause learning", "memory.paused"], ["Explain after a task", "explain.mode"], ["Character size", "look.size"]] as const) {
       expect(searchSettingsFor(q).some((r) => "key" in r.hit && r.hit.key === k), q).toBe(true);
     }
+  });
+});
+
+describe("where the character lives (M111 review)", () => {
+  test("the choice's words never repeat the Screen edge row under it, and fit side by side", () => {
+    expect(S.setSeg["character.lives"]).toEqual({ edge: "On an edge", notch: "In the notch" });
+    expect(Object.values(S.setSeg["character.lives"] ?? {})).not.toContain(wordsOf("character.edge").label);
+  });
+  test("in the notch, the rows that place it on the edge are dimmed with why; the notch choice needs the notch on", () => {
+    const v = (lives: string, show = true) => (k: string): unknown => (k === "character.lives" ? lives : k === "island.show" ? show : undefined);
+    expect([...EDGE_ROWS].sort()).toEqual(["character.dockWhen", "character.edge", "character.peek", "character.position", "character.sameEverywhere"]);
+    for (const k of EDGE_ROWS) {
+      expect(livesOff(k, v("notch"), "Squibby"), k).toBe(S.m111.edgeOff("Squibby"));
+      expect(livesOff(k, v("edge"), "Squibby"), k).toBe("");
+    }
+    expect(livesOff("character.lives", v("edge", false), "Squibby")).toBe(S.ui.turnOnFirst(wordsOf("island.show").label));
+    expect(livesOff("character.lives", v("edge", true), "Squibby")).toBe("");
+    expect(livesOff("character.follow", v("notch"), "Squibby")).toBe("");
+    expect(S.m111.edgeOff("Squibby").length).toBeLessThanOrEqual(LINE_MAX);
+  });
+  test("the page dims every one of them, At rest too", () => {
+    const src = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
+    expect(src).toContain("livesOff(item, setting, who)");
+    expect(src).toContain("<AtRestRow off={");
   });
 });

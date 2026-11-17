@@ -66,8 +66,10 @@ fn pointers_gone_hidden(app: &AppHandle) {
 fn set_user_hidden(app: &AppHandle, hide: bool) {
     USER_HID.store(hide, Ordering::SeqCst);
     // M66: Home's window comes back with the character, closed (its shape under the notch, the pointer passing through).
-    with_panels(|d, c| if hide { d.orderOut(None); c.orderOut(None); } else if !HIDDEN_BY_US.load(Ordering::SeqCst) { d.orderFrontRegardless(); c.orderFrontRegardless(); });
+    with_panels(|d, c| if hide { d.orderOut(None); c.orderOut(None); } else if !HIDDEN_BY_US.load(Ordering::SeqCst) { dock_front(d); c.orderFrontRegardless(); });
     island_show(!hide && !HIDDEN_BY_US.load(Ordering::SeqCst));
+    // M111: anything beside the character closes at once (Home beside it closes here anyway).
+    if hide { tied_close(docking::Change::Hidden); }
     if hide { home_stop_now("hidden"); voice_tell_hidden(); pointers_gone_hidden(app); }
     // Hidden counts as rest for the eyes' and the ring's threads (M46).
     gaze_recompute(); follow_wake();

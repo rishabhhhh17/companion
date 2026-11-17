@@ -238,6 +238,8 @@
   --dur-2: 200ms;                      /* menus, toasts, list rows, small panels */
   --dur-notch-row: 220ms;              /* M96: the one row under the notch and the small chat's words arriving (one short move) */
   --dur-3: 240ms;                      /* surfaces: a sheet, a place arriving in Home */
+  --dur-tuck: 240ms;                   /* M111: Flowflow shrinking up into the notch (docking.rs TUCK_MS) */
+  --dur-tuck-fade: 150ms;              /* M111: the same with Reduce Motion: a plain fade */
   --dur-4: 320ms;                      /* window trips, the character coming in */
   --dur-count: 300ms;                  /* listed exception: the cost counting up */
   --dur-flash: 1200ms;                 /* listed exception: a setting's row lit where a link landed */
@@ -441,6 +443,10 @@
   --lav-line: rgba(185, 204, 255, .85);        /* the ask field's lavender inner outline */
   --lav-glow: rgba(140, 175, 255, .55);        /* the soft blue outer glow of the pill and the mic */
   --lav-glow-soft: rgba(140, 175, 255, .35);   /* the field's, softer */
+  /* M111: the notch saying it will take Flowflow (a drag over it): the same lavender, as a soft inset glow on the notch's
+     own black, never a surface. */
+  --tuck-line: rgba(185, 204, 255, .7);
+  --tuck-glow: rgba(140, 175, 255, .42);
   --pill-hover: .92;                           /* the pill under the pointer: one step deeper, the same lavender */
   --chat-them-hover: #34353A;                  /* a bubble that opens somewhere, under the pointer */
   --pill-stop: #2E2F34;                        /* Stop under the notch: a quiet dark pill with no glow, never the lavender */

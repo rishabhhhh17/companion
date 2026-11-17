@@ -39,3 +39,8 @@
 
 ## Revisit only if
 People on real Macs find it distracting at work, or read it as a glitch; then the usual may change, the switch stays.
+
+## Update, 16 Nov 2026 (founder): tucked into the notch (M111)
+- The character can now live in the notch (F18 update of 16 Nov 2026). The peek out from the notch side keeps its own setting (`notch.peek`) and rules, unchanged, whether the character is tucked or not.
+- The notch's hover row and the small chat show the character's face; while tucked, that face can be dragged out onto the screen, and the chat has one small Bring out button beside Settings. A click on the face still opens the chat.
+- Built in `docs/milestones/M111-tuck-into-notch.md`.

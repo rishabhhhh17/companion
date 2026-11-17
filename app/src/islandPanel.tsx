@@ -27,6 +27,8 @@ import { hoverAction, hoverGreeting, hoverLine, hoverPill } from "./notchMinimal
 import { useGroups } from "./groups.ts";
 import { Button } from "./ui/parts.tsx";
 import { Icon } from "./icons.tsx";
+import { useDragOut } from "./tuck.ts";
+import { characterName } from "./companion.ts";
 
 /** `brief` (M26): the panel opened by itself (a question, or a result that matters), so it shows only that; the pointer
  *  opens the whole panel. `unseen` (M46): results finished while Home was closed, said on the hover panel's top line only
@@ -139,7 +141,11 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   const pill = hoverPill(action, m);
   // M96: the face or the hello opens the small chat out of the notch (the shell opens Home as before with island.smallChat
   // off). Never with the keyboard: the chat's field takes the keys only when the person clicks into it (rule 9).
-  const openChat = () => { if (ready()) void invoke("island_chat").catch(() => {}); };
+  // M111: tucked into the notch, the face can be dragged out onto the screen (a click still opens the chat).
+  const tucked = useSetting("character.lives") === "notch";
+  const out = useDragOut(tucked);
+  const who = characterName(useSetting("character.name"));
+  const openChat = () => { if (out.swallowed()) return; if (ready()) void invoke("island_chat").catch(() => {}); };
   // Every press but Stop opens Home at a place (island_go); Stop stops, as Home's own Stop does.
   const act = () => {
     if (!ready()) return;
@@ -158,7 +164,8 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
       {/* M96: one row out of the notch. The face and the hello are one button that opens the small chat; the one pill does
           the moment's one action. The line M93 drew (hoverLine) is what VoiceOver hears and the pill's tooltip, never a row. */}
       <div className="nb-row" role="group" aria-label={S.m93.say(greet, hline?.words ?? null)}>
-        <button className="nb-hi" type="button" tabIndex={tab} aria-label={S.m96.openChat(greet)} onClick={openChat}>
+        <button className="nb-hi" type="button" tabIndex={tab} aria-label={S.m96.openChat(greet)} onClick={openChat} data-tucked={tucked ? "" : undefined} title={tucked ? S.m111.tucked(who) : undefined}
+          onPointerDown={out.onPointerDown} onPointerMove={out.onPointerMove} onPointerUp={out.onPointerUp} onPointerCancel={out.onPointerCancel} onLostPointerCapture={out.onLostPointerCapture}>
           <FlowMini className="ip-face nb-face" state={m.character} still={!shown} />
           <span className="nb-greet" title={greet}>{greet}</span>
         </button>

@@ -49,7 +49,9 @@ fn reduce_motion() -> bool { home_set().less_motion || NSWorkspace::sharedWorksp
 fn roam_to(app: &AppHandle, mtm: MainThreadMarker, an: Option<&anchor::Anchor>, target: Rect) {
     use std::sync::atomic::Ordering::SeqCst;
     let going = (|| {
-        if !with_prefs(|p| p.come_to) || HIDDEN_BY_US.load(SeqCst) || USER_HID.load(SeqCst) { return None; }
+        let island_on = home_set().island_show;
+        // M111: never while tucked into the notch (docking::roams), as with Come to what it is about off.
+        if !with_prefs(|p| p.come_to && !docking::tucked_in(p, island_on)) || HIDDEN_BY_US.load(SeqCst) || USER_HID.load(SeqCst) { return None; }
         let an = an?;
         let list = screens_now(mtm);
         let screen = roam::display_of(&list, target)?;
@@ -112,7 +114,9 @@ fn roam_tick(app: &AppHandle, wins: &[fullscreen::Win], front_pid: i32) {
     // A Draw it for me picture kept until it is closed is not a pointer at that window: it never keeps the character there.
     let up = diagram::holds_a_visit(overlay_busy(), DIAGRAM_KEPT.load(SeqCst)) || TURN.lock().unwrap_or_else(|e| e.into_inner()).is_some() || card_visible();
     let hidden = HIDDEN_BY_US.load(SeqCst) || USER_HID.load(SeqCst);
-    let on = with_prefs(|p| p.come_to);
+    // M111: tucked into the notch, any visit ends as with the setting off.
+    let island_on = home_set().island_show;
+    let on = with_prefs(|p| docking::roams(p, island_on));
     let ended = roamer().tick(&roam::TickIn { now: now() as u64, on, hidden, up, wins, ours: std::process::id() as i32, front_pid, linger_ms: home_set().linger_ms });
     if let Some(why) = ended {
         log("roam_home", json!({ "why": format!("{why:?}") }));
@@ -270,6 +274,8 @@ fn dock_hover_changed(inside: bool) {
 fn peek_apply(app: &AppHandle, light: bool) {
     let Some(mtm) = MainThreadMarker::new() else { return };
     if companion_hidden() { return; }
+    // M111: tucked into the notch it has no edge to peek from.
+    if tucked() { return; }
     let hs = home_set();
     let calm = reduce_motion();
     let at_home = roam_phase() == roam::Phase::Home && roamer().visit().is_none() && !dragging();
@@ -535,6 +541,12 @@ fn home_setting_applied(app: &AppHandle, key: &str) {
                 island_show(!USER_HID.load(Ordering::SeqCst) && !HIDDEN_BY_US.load(Ordering::SeqCst));
                 // Home's size: the character's own place keeps clear of Home at the new size (docking.rs dock_zone).
                 if size { apply_dock(mtm, "setting", true); }
+                // M111: tucked into the notch, the notch turned off brings Flowflow back for good (it never vanishes), so
+                // turning the notch on again later never hides it by surprise (the M111 review).
+                if !size && with_prefs(|p| docking::notch_turned(p, home_set().island_show)) {
+                    save_prefs();
+                    if let Some(a) = APP.get() { come_out(a, "island_off"); }
+                }
                 with_panels(place_card);
             });
         }

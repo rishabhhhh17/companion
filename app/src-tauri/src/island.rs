@@ -235,6 +235,20 @@ pub fn look_sized(d: &Display, mode: Mode, panel: f64, wing: f64, pw: f64) -> Lo
     Look { frame, core, row, wing }
 }
 
+/// M111: while Flowflow is dragged over the notch, the notch grows the M96 row out of itself (330 by 42) to say it will take
+/// it ("Let go to tuck Flowflow in", with a soft lavender glow). The same frame as the pointer's row, so it is inside the
+/// character's clear zone and never covers anything the row does not.
+pub const TAKE_W: f64 = 330.0;
+pub const TAKE_ROW: f64 = 42.0;
+pub fn take_look(d: &Display) -> Look { look_sized(d, Mode::Peek, TAKE_ROW, WING, TAKE_W) }
+/// What that row says: nothing, "take" (Flowflow dragged over the notch, with the glow), or "tucked" (just tucked in: for
+/// TUCKED_SAY_MS the same row says where it went, so a tuck by accident never looks like it vanished; the M111 review).
+pub const TAKE_NONE: u8 = 0;
+pub const TAKE_HINT: u8 = 1;
+pub const TAKE_TUCKED: u8 = 2;
+pub const TUCKED_SAY_MS: u64 = 2400;
+pub fn take_word(n: u8) -> Option<&'static str> { match n { TAKE_HINT => Some("take"), TAKE_TUCKED => Some("tucked"), _ => None } }
+
 /// How much wider the wings get for a moment when a fix is proven (the done tick): the page springs its shape out and back.
 pub const CHEER: f64 = 8.0;
 /// The wings during that moment: CHEER wider around the same middle, the same top and height, kept on the display. Only the
@@ -2360,4 +2374,42 @@ mod m96_tests {
         let groups = include_str!("../../../protocol/groups.json");
         assert!(groups.contains("\"island_go\", \"island_chat\", \"home_expand\""));
     }
+}
+
+#[cfg(test)]
+mod m111_tests {
+    use super::*;
+    #[test]
+    fn the_notch_says_it_will_take_flowflow_in_the_pointers_own_row() {
+        let side = (1512.0 - 185.0) / 2.0;
+        let notched = Display { id: "n".into(), frame: [0.0, 0.0, 1512.0, 982.0], work: [0.0, 33.0, 1512.0, 949.0], primary: true, notch: notch_from(1512.0, 32.0, side, side) };
+        let plain = Display { id: "p".into(), frame: [0.0, 0.0, 1440.0, 900.0], work: [0.0, 25.0, 1440.0, 875.0], primary: true, notch: None };
+        for d in [notched, plain] {
+            let t = take_look(&d);
+            let rest = island_frame(&d, Mode::Rest);
+            assert_eq!(t.frame[1], rest[1], "it hangs from the notch");
+            assert!((t.frame[0] + t.frame[2] / 2.0 - (rest[0] + rest[2] / 2.0)).abs() < 1e-6, "centred on it");
+            assert_eq!(t.frame[2], TAKE_W.max(rest[2] + 2.0 * WING));
+            assert!(t.frame[3] >= rest[3] + TAKE_ROW - 1e-6 && t.frame[3] <= rest[3] + PANEL_MIN.max(TAKE_ROW) + 1e-6);
+            let z = crate::docking::notch_zone(&d);
+            assert!(t.frame[0] >= z[0] && t.frame[0] + t.frame[2] <= z[0] + z[2] && t.frame[1] + t.frame[3] <= z[1] + z[3], "inside the clear zone");
+        }
+    }
+    fn main_body(name: &str) -> String { let m = crate::main_src(); let at = m.find(name).unwrap_or_else(|| panic!("{name}")); m[at..at + m[at..].find("\n}\n").unwrap()].to_string() }
+    #[test]
+    fn after_a_tuck_the_notch_says_where_it_went_for_a_moment() {
+        // M111 review: a tuck by accident must never look like the character vanished.
+        assert_eq!((take_word(TAKE_NONE), take_word(TAKE_HINT), take_word(TAKE_TUCKED), take_word(9)), (None, Some("take"), Some("tucked"), None));
+        assert!((1500..=3000).contains(&TUCKED_SAY_MS), "long enough to read one short line, short enough to stay calm");
+        assert!(main_body("fn tuck_away(").contains("take_say(island::TAKE_TUCKED);"));
+        // Pointing at the notch while it says so opens the usual row instead (the line asked for exactly that).
+        assert!(main_body("fn island_hover_changed(").contains("if inside { take_said_clear(); }"));
+    }
+    #[test]
+    fn a_let_go_forgets_the_hover_only_after_a_drag_from_or_over_the_notch_and_places_the_island_again() {
+        let drop = main_body("fn drop_dock(");
+        assert!(drop.contains("if from_notch || took { reset_hover(); if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, \"drop\"); } }"));
+        assert_eq!(drop.matches("reset_hover()").count(), 1, "an ordinary drag never touches the notch's hover");
+    }
+
 }

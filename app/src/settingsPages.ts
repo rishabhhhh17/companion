@@ -5,6 +5,8 @@
 // permissions, the danger zone) are named `{ fixed }` and searched by their words in strings.ts (S.setFixed).
 import type { IconName } from "./icons.tsx";
 import type { Colour } from "./meaning.ts";
+import { S } from "./strings.ts";
+import { wordsOf } from "./settingsRows.ts";
 
 export type PageId = "account" | "general" | "look" | "fixing" | "flowflow" | "keys" | "privacy" | "about" | "more";
 /** The parts that are not settings. Each is drawn by the page (settingsPage.tsx) and found by search. */
@@ -105,7 +107,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "flowflow.preview", items: [f("preview")] },
       { id: "flowflow.lively", items: ["character.lively"] },
       { id: "flowflow.look", items: ["look.size", "character.name"] },
-      { id: "flowflow.place", items: ["character.edge", "character.dockWhen", "character.peek", "character.follow"] },
+      { id: "flowflow.place", items: ["character.lives", "character.edge", "character.dockWhen", "character.peek", "character.follow"] },
       { id: "flowflow.sound", items: ["sound.on"] },
     ],
     more: [{ id: "more.flowflow.motion", items: ["character.position", "character.sameEverywhere", "character.comeTo", "character.linger", "character.motion", "character.restLowPower", "character.overFullScreen", "character.peekIdle", "character.live", "character.reacts", "fun.reactions", "sound.volume"] }],
@@ -162,6 +164,16 @@ export const isPage = (id: string): id is PageId => Object.hasOwn(PAGES, id);
 export const ROW_OWNS: Readonly<Record<string, readonly string[]>> = { "character.peek": ["character.peek", "character.stick"] };
 /** Child rows on a page: indented under their parent switch, and dimmed with why while it is off. */
 export const CHILD_OF: Readonly<Record<string, string>> = { "talk.voice": "voice.on", "talk.speak": "voice.on", "talk.captions": "voice.on", "talk.dictate": "voice.on", "quiet.from": "quiet.on", "quiet.to": "quiet.on" };
+/** M111: the rows that place the character on the screen edge. While it lives in the notch none of them applies, so they
+ *  are dimmed with why (the M111 review). */
+export const EDGE_ROWS: readonly string[] = ["character.edge", "character.position", "character.sameEverywhere", "character.dockWhen", "character.peek"];
+/** Why a row is dimmed for where the character lives, or "": an edge row while it is in the notch, and the notch choice
+ *  itself while the notch is turned off (the shell refuses it then, settings.rs lives_with). */
+export function livesOff(key: string, valueOf: (key: string) => unknown, name: string): string {
+  if (EDGE_ROWS.includes(key) && valueOf("character.lives") === "notch") return S.m111.edgeOff(name);
+  if (key === "character.lives" && valueOf("island.show") === false) return S.ui.turnOnFirst(wordsOf("island.show").label);
+  return "";
+}
 /** Options kept in the registry but not offered. A value already set to one still works. Night is the theme from before
  *  M51: Graphite replaced it, so it is kept only so a saved "night" checks out (it reads as Graphite, OPTION_ALIASES). Deep,
  *  hidden until it had a full, tested look (T17), is offered since M51. M71: Colour's Vivid reads as Colourful, and the

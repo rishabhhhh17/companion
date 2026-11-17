@@ -280,7 +280,7 @@
 .notch-chat .nc-stop:hover { background: var(--pill-stop-hover); }
 .notch-chat .nc-stop:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
 .notch-chat .nc-ico { flex: none; display: grid; place-items: center; width: 26px; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; background: var(--chat-icon-bg); color: var(--chat-icon-fg); transition: transform var(--dur-release) var(--ease-out); }
-.notch-chat .nc-ico:hover { background: var(--chat-send); }
+.notch-chat .nc-ico:hover { background: var(--chat-send); color: var(--chat-fg); }
 .notch-chat .nc-ico:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
 .notch-chat .nc-news { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: calc(6rem / 14); overflow-y: auto; }
 /* The newest at the foot, by the field; more than fits scrolls (never cut at the top). */
@@ -311,3 +311,5 @@
 .notch-chat .nc-send { flex: none; display: grid; place-items: center; width: 28px; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; background: var(--chat-send); color: var(--notch-ink); }
 .notch-chat .nc-send:disabled { color: var(--ink-disabled); background: var(--fill-disabled); }
 .notch-chat button:focus-visible { outline: var(--ring) solid var(--focus); outline-offset: 2px; }
+/* M111: the face in the chat's top row, held so it can be dragged out of the notch while Flowflow is tucked. */
+.notch-chat .nc-face-hold { flex: none; display: grid; place-items: center; touch-action: none; }

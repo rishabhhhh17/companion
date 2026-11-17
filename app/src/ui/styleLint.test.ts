@@ -235,7 +235,9 @@ describe("M71: one black look, colour for meaning only", () => {
     // M86: Watch what changed and Label it's labels, held to the same rules.
     ["replay.css", parse(sheet("./replay.css"))], ["labels.css", parse(sheet("./labels.css"))],
     // M90: the character peeking out of the notch, held to the same rules.
-    ["peekout.css", parse(sheet("./peekout.css"))]];
+    ["peekout.css", parse(sheet("./peekout.css"))],
+    // M111: the character tucking into the notch, held to the same rules.
+    ["tuck.css", parse(sheet("./tuck.css"))]];
   test("the lint covers every stylesheet in the app", () => {
     const all = readdirSync(new URL(".", import.meta.url)).filter((f) => f.endsWith(".css")).filter((f) => f !== "tokens.css");
     const covered = new Set(M71_FILES.map(([f]) => f));

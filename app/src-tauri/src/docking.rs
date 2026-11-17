@@ -47,9 +47,15 @@ pub struct Prefs {
     /// snapping to an edge. A drop near an edge, or a change of edge or position in Settings, takes it back to an edge.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub free: BTreeMap<String, (f64, f64)>,
+    /// M111 (the founder, 16 Nov 2026: "When I put Flowflow in the notch, it should just disappear"): let go over the notch,
+    /// it lives in the notch, with no window of its own. Every place above is kept, so bringing it out puts it back there.
+    /// Written only when true, so a file from before M111 reads back untucked.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub tucked: bool,
 }
 fn on() -> bool { true }
-impl Default for Prefs { fn default() -> Self { Prefs { last_screen: String::new(), per_screen: BTreeMap::new(), come_to: true, same_everywhere: None, free: BTreeMap::new() } } }
+fn is_false(b: &bool) -> bool { !*b }
+impl Default for Prefs { fn default() -> Self { Prefs { last_screen: String::new(), per_screen: BTreeMap::new(), come_to: true, same_everywhere: None, free: BTreeMap::new(), tucked: false } } }
 
 impl Prefs {
     /// Reads `dock.json`. Never loses more than it must: an entry that cannot be read (an edge this version does not
@@ -74,7 +80,71 @@ impl Prefs {
             }
         }
         p.same_everywhere = v.get("same_everywhere").and_then(|e| serde_json::from_value::<(Edge, f64)>(e.clone()).ok()).filter(|(_, pct)| pct.is_finite()).map(|(e, pct)| (e, pct.clamp(0.0, 1.0)));
+        // M111: only a clear true tucks it; nothing, or anything else, leaves it on the screen.
+        p.tucked = v.get("tucked").and_then(Value::as_bool) == Some(true);
         p
+    }
+    /// M111: brought out of the notch (the button, Settings): back to the place it last had, which tucking kept.
+    pub fn untuck(&mut self) { self.tucked = false; }
+}
+
+// ---------- M111: tucked into the notch ----------
+
+/// How far beside the island (each side) and below the menu bar a pointer still counts as over the notch.
+pub const TUCK_SIDE: f64 = 56.0;
+pub const TUCK_BELOW: f64 = 56.0;
+/// The tuck's motion: Flowflow shrinks up into the notch on a short spring, then its window goes. With Reduce Motion or
+/// Less motion a plain fade instead.
+pub const TUCK_MS: u64 = 240;
+pub const TUCK_FADE_MS: u64 = 150;
+pub fn tuck_ms(calm: bool) -> u64 { if calm { TUCK_FADE_MS } else { TUCK_MS } }
+
+/// Where a pointer counts as over the notch while dragging: the island at rest (the notch, or the pill on a display
+/// without one), TUCK_SIDE wider each side, from the very top of the display to TUCK_BELOW under the menu bar. Always
+/// inside `notch_zone` (tested), which is far bigger, so a drop near the top middle that is not over the notch still docks
+/// to the top edge as before.
+pub fn tuck_zone(s: &Screen) -> Rect {
+    let i = island::island_frame(s, island::Mode::Rest);
+    let below_menu = (s.work[1] - s.frame[1]).max(i[1] + i[3] - s.frame[1]).max(0.0);
+    [i[0] - TUCK_SIDE, s.frame[1], i[2] + 2.0 * TUCK_SIDE, below_menu + TUCK_BELOW]
+}
+/// Is the pointer over the notch of the display it is on?
+pub fn over_tuck(s: &Screen, p: (f64, f64)) -> bool { island::contains(tuck_zone(s), p) }
+
+/// Where Flowflow lives on a display now: tucked into the notch (only while the notch shows, `island_on`: with the notch
+/// turned off it comes back, so it never vanishes), free where it was let go, or on its edge.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Lives { Tucked, Free((f64, f64)), Edge(Edge, f64) }
+pub fn lives(p: &Prefs, screen_id: &str, island_on: bool) -> Lives {
+    if tucked_in(p, island_on) { return Lives::Tucked; }
+    match p.free.get(screen_id) { Some(at) => Lives::Free(*at), None => { let (e, pct) = choice(p, screen_id); Lives::Edge(e, pct) } }
+}
+/// Tucked, and the notch is there to hold it.
+pub fn tucked_in(p: &Prefs, island_on: bool) -> bool { p.tucked && island_on }
+/// M111 review: the notch turned off (or found off) while tucked brings it out for good, so turning the notch on again
+/// later never hides it by surprise. True when it came out (save dock.json and bring the window back).
+pub fn notch_turned(p: &mut Prefs, island_on: bool) -> bool {
+    if island_on || !p.tucked { return false; }
+    p.untuck();
+    true
+}
+/// Whether it may go beside a window (Come to what it is about): never while tucked.
+pub fn roams(p: &Prefs, island_on: bool) -> bool { p.come_to && !tucked_in(p, island_on) }
+
+/// M111, the founder's bug (16 Nov 2026: "when you dock Squibby, it feels like the bubbles beside it don't go"): what
+/// happened to the character, and what a thing shown beside it must do then. Never left floating where it used to be.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Change { DragBegan, Landed, Tucked, Hidden, Displays, Untucked }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tied { MoveWith, Close, Stays }
+/// `beside`: it is placed beside the character (Home with the notch turned off). Anything tied to the notch or the
+/// pointer (Home dropped from the notch, the peek out, the ring) stays. The character's own words, badge and bubbles are
+/// in its own window or canvas, so they always move with it (MoveWith).
+pub fn tied_after(change: Change, beside: bool) -> Tied {
+    if !beside { return Tied::Stays; }
+    match change {
+        Change::Landed | Change::Untucked => Tied::MoveWith,
+        Change::DragBegan | Change::Tucked | Change::Hidden | Change::Displays => Tied::Close,
     }
 }
 
@@ -342,7 +412,7 @@ pub const DRAG_LOST_MS: u64 = 20_000;
 
 /// Where a let go puts the character: where it is (0 to 1 across and down its room, as `Prefs::free`), or on an edge.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Landing { Free((f64, f64)), Edge(Edge, f64) }
+pub enum Landing { Free((f64, f64)), Edge(Edge, f64), /** M111: over the notch: it lives in the notch now. */ Tuck }
 
 /// What a let go decided, on the display under the pointer.
 #[derive(Clone, Debug, PartialEq)]
@@ -360,6 +430,8 @@ pub struct Drag {
     when: DockWhen,
     /// A move was followed. A drag the shell never followed (a right button drag, bug bash 5 Nov) decides nothing at the let go.
     moved: bool,
+    /// M111: the notch is there to take it (island.show on): a let go over it tucks it.
+    tuck: bool,
 }
 
 impl Drag {
@@ -368,10 +440,14 @@ impl Drag {
     pub fn begin(pointer: (f64, f64), window: Rect, screens: Vec<Screen>) -> Drag {
         let ok = |v: f64| if v.is_finite() { v } else { 0.0 };
         let offset = (ok(pointer.0 - window[0]), ok(pointer.1 - window[1]));
-        Drag { offset, size: (window[2], window[3]), screens, pointer, frame: window, last_press: None, done: false, trail: vec![(pointer.0, pointer.1, mono_ms())], near_since: None, rested: false, when: DockWhen::Pushed, moved: false }
+        Drag { offset, size: (window[2], window[3]), screens, pointer, frame: window, last_press: None, done: false, trail: vec![(pointer.0, pointer.1, mono_ms())], near_since: None, rested: false, when: DockWhen::Pushed, moved: false, tuck: false }
     }
     /// Letting go near an edge sticks only when pushed, thrown or kept there (`Pushed`, the usual), or always (`Near`).
     pub fn set_dock_when(&mut self, when: DockWhen) { self.when = when; }
+    /// M111: whether the notch can take it (the island shows).
+    pub fn set_tuck(&mut self, on: bool) { self.tuck = on; }
+    /// M111: the pointer is over the notch and the notch can take it: the notch glows and says so, and it shrinks toward it.
+    pub fn over_notch(&self) -> bool { self.tuck && !self.done && screen_near(&self.screens, self.pointer).is_some_and(|s| over_tuck(s, self.pointer)) }
     /// Where the window goes for the pointer at `p`: the same offset, kept inside the work area of the display under the
     /// pointer (or the nearest one). Pushed into an edge the window stops there and the pointer goes on: that is the press.
     /// None once it was let go.
@@ -444,6 +520,8 @@ impl Drag {
         self.done = true;
         if !self.moved { return None; }
         let s = screen_near(&self.screens, self.pointer)?.clone();
+        // M111: let go over the notch, it tucks in.
+        if self.tuck && over_tuck(&s, self.pointer) { return Some(Let { screen: s, how: Landing::Tuck, pointer: self.pointer, frame: self.frame }); }
         let (x, y) = self.pointer;
         let near = free_on(&s, self.size, x, y).is_none();
         let goes_in = match self.when { DockWhen::Near => near, DockWhen::Pushed => (near && self.rests(t)) || self.pushes_hard(&s, t) };
@@ -495,8 +573,12 @@ impl Prefs {
     /// A let go, written as a drag always wrote it: the display used last; free there, or on the edge (and copied for
     /// every display with no place yet when Same place on every display is on).
     pub fn land(&mut self, screen_id: &str, how: Landing) {
+        // M111: tucked, every place is kept as it was, so it comes back there.
+        if how == Landing::Tuck { self.tucked = true; return; }
+        self.tucked = false;
         self.last_screen = screen_id.to_string();
         match how {
+            Landing::Tuck => {}
             Landing::Free(at) => { self.free.insert(screen_id.to_string(), at); }
             Landing::Edge(edge, pct) => {
                 self.free.remove(screen_id);
@@ -575,7 +657,7 @@ mod tests {
     }
     #[test]
     fn unplugging_the_screen_the_character_was_on_brings_it_back_inside_the_laptop_screen() {
-        let p = Prefs { last_screen: "1920x1080@1512,0".into(), per_screen: [("1920x1080@1512,0".to_string(), (Edge::Left, 0.2))].into(), come_to: true, same_everywhere: None, free: Default::default() };
+        let p = Prefs { last_screen: "1920x1080@1512,0".into(), per_screen: [("1920x1080@1512,0".to_string(), (Edge::Left, 0.2))].into(), come_to: true, same_everywhere: None, free: Default::default(), tucked: false };
         let only = [mac()];
         let (s, _) = pick(&only, &p, (400.0, 400.0)).unwrap();
         let (e, pct) = choice(&p, &s.id);
@@ -790,7 +872,7 @@ mod tests {
     }
     #[test]
     fn a_top_place_on_a_screen_that_went_away_comes_back_inside_the_laptop_screen_and_out_of_the_zone() {
-        let p = Prefs { last_screen: "1920x1080@1512,-98".into(), per_screen: [("1920x1080@1512,-98".to_string(), (Edge::Top, 0.5))].into(), come_to: true, same_everywhere: None, free: Default::default() };
+        let p = Prefs { last_screen: "1920x1080@1512,-98".into(), per_screen: [("1920x1080@1512,-98".to_string(), (Edge::Top, 0.5))].into(), come_to: true, same_everywhere: None, free: Default::default(), tucked: false };
         let only = [mac()];
         let (s, _) = pick(&only, &p, (400.0, 400.0)).unwrap();
         let (e, pct) = choice(&p, &s.id);
@@ -1209,4 +1291,159 @@ mod tests {
         assert!(drag_holds(true, 10_000, 10_000 + 5_000), "held still mid drag: still a drag");
         assert!(!drag_holds(true, 10_000, 10_000 + DRAG_LOST_MS), "a let go that never arrived stops counting");
     }
+}
+
+#[cfg(test)]
+mod m111_tests {
+    use super::*;
+    const HOME: island::HomeSize = island::HomeSize::STANDARD;
+    fn notched() -> Screen {
+        let (w, nw) = (1512.0, 185.0);
+        let side = (w - nw) / 2.0;
+        Screen { id: "1512x982@0,0".into(), frame: [0.0, 0.0, w, 982.0], work: [0.0, 33.0, w, 949.0], primary: true, notch: island::notch_from(w, 32.0, side, side) }
+    }
+    fn plain() -> Screen { Screen { id: "1440x900@0,0".into(), frame: [0.0, 0.0, 1440.0, 900.0], work: [0.0, 25.0, 1440.0, 875.0], primary: true, notch: None } }
+    fn second() -> Screen { Screen { id: "1920x1080@1512,0".into(), frame: [1512.0, 0.0, 1920.0, 1080.0], work: [1512.0, 25.0, 1920.0, 1055.0], primary: false, notch: None } }
+    /// A drag from the middle of `s` to `to`, followed in a few steps, then let go.
+    fn drag_to(s: &Screen, to: (f64, f64), tuck: bool) -> (Drag, Option<Let>) {
+        let start = (s.frame[0] + s.frame[2] / 2.0, s.frame[1] + s.frame[3] / 2.0);
+        let mut d = Drag::begin(start, [start.0 - 80.0, start.1 - 80.0, 160.0, 160.0], vec![s.clone(), second()]);
+        d.set_tuck(tuck);
+        for (i, k) in [0.25, 0.5, 0.75, 1.0].iter().enumerate() {
+            d.follow_at((start.0 + (to.0 - start.0) * k, start.1 + (to.1 - start.1) * k), 100 + 400 * i as u64);
+        }
+        let over = d.over_notch();
+        let l = d.release_at(HOME, 3_000);
+        assert!(!d.over_notch(), "after the let go the hint is off");
+        let _ = over;
+        (d, l)
+    }
+
+    #[test]
+    fn the_tuck_zone_is_the_notch_and_a_little_round_it_inside_the_clear_zone() {
+        for s in [notched(), plain(), second()] {
+            let z = tuck_zone(&s);
+            let n = notch_zone(&s);
+            assert!(z[0] >= n[0] - 1e-9 && z[1] >= n[1] - 1e-9 && z[0] + z[2] <= n[0] + n[2] + 1e-9 && z[1] + z[3] <= n[1] + n[3] + 1e-9, "{z:?} in {n:?}");
+            let i = island::island_frame(&s, island::Mode::Rest);
+            assert!(over_tuck(&s, (i[0] + i[2] / 2.0, i[1] + 2.0)), "the notch itself");
+            assert!(!over_tuck(&s, (s.frame[0] + 40.0, s.frame[1] + 5.0)), "the menu bar far to the left is not the notch");
+            assert!(!over_tuck(&s, (i[0] + i[2] / 2.0, s.work[1] + TUCK_BELOW + 20.0)), "well under the menu bar is not the notch");
+        }
+    }
+
+    #[test]
+    fn a_let_go_over_the_notch_tucks_and_anywhere_else_docks_as_before() {
+        for s in [notched(), plain()] {
+            let cx = s.frame[0] + s.frame[2] / 2.0;
+            let (_, l) = drag_to(&s, (cx, s.frame[1] + 4.0), true);
+            assert_eq!(l.unwrap().how, Landing::Tuck, "{}", s.id);
+            // Pushed into the top edge away from the notch: the usual edge snap.
+            let (_, l) = drag_to(&s, (s.frame[0] + 300.0, s.work[1] + 1.0), true);
+            assert!(matches!(l.unwrap().how, Landing::Edge(Edge::Top, _)), "{}", s.id);
+            // In the middle: free, as before.
+            let (_, l) = drag_to(&s, (cx - 200.0, s.frame[1] + s.frame[3] / 2.0), true);
+            assert!(matches!(l.unwrap().how, Landing::Free(_)));
+            // With the notch turned off it never tucks: the top edge, as before M111.
+            let (_, l) = drag_to(&s, (cx, s.frame[1] + 4.0), false);
+            assert!(matches!(l.unwrap().how, Landing::Edge(Edge::Top, _)), "{}", s.id);
+        }
+    }
+
+    #[test]
+    fn the_hint_follows_the_pointer_on_and_off() {
+        let s = notched();
+        let cx = s.frame[2] / 2.0;
+        let mut d = Drag::begin((cx, 500.0), [cx - 80.0, 420.0, 160.0, 160.0], vec![s.clone()]);
+        d.set_tuck(true);
+        d.follow_at((cx, 400.0), 10);
+        assert!(!d.over_notch(), "in the middle");
+        d.follow_at((cx + 20.0, 10.0), 20);
+        assert!(d.over_notch(), "over the notch");
+        d.follow_at((cx + 400.0, 10.0), 30);
+        assert!(!d.over_notch(), "moved away along the menu bar: undone");
+        d.follow_at((cx - 10.0, 20.0), 40);
+        assert!(d.over_notch(), "back again");
+        d.set_tuck(false);
+        assert!(!d.over_notch(), "no notch to take it, no hint");
+    }
+
+    #[test]
+    fn tucked_it_never_roams_and_has_no_place_on_any_display_even_after_a_display_change() {
+        let mut p = Prefs::default();
+        p.land("1512x982@0,0", Landing::Edge(Edge::Left, 0.3));
+        assert!(roams(&p, true));
+        assert_eq!(lives(&p, "1512x982@0,0", true), Lives::Edge(Edge::Left, 0.3));
+        p.land("1512x982@0,0", Landing::Tuck);
+        assert!(p.tucked);
+        assert!(!roams(&p, true), "no Come to what it is about trips");
+        for id in ["1512x982@0,0", "1920x1080@1512,0", "a display never seen"] { assert_eq!(lives(&p, id, true), Lives::Tucked, "{id}"); }
+        // The notch turned off: it comes back, so it never vanishes entirely.
+        assert_eq!(lives(&p, "1512x982@0,0", false), Lives::Edge(Edge::Left, 0.3));
+        assert!(roams(&p, false));
+    }
+
+    #[test]
+    fn brought_out_it_goes_back_to_the_edge_and_place_it_last_had() {
+        let mut p = Prefs::default();
+        p.land("a", Landing::Edge(Edge::Bottom, 0.8));
+        p.land("b", Landing::Free((0.2, 0.6)));
+        let before = p.clone();
+        p.land("b", Landing::Tuck);
+        assert_eq!(p.last_screen, before.last_screen, "tucking keeps which display it was on");
+        p.untuck();
+        assert_eq!(p, before, "everything as it was");
+        assert_eq!(lives(&p, "a", true), Lives::Edge(Edge::Bottom, 0.8));
+        assert_eq!(lives(&p, "b", true), Lives::Free((0.2, 0.6)));
+        // Dragged out and let go somewhere: lands there, untucked.
+        p.land("a", Landing::Tuck);
+        p.land("a", Landing::Edge(Edge::Right, 0.1));
+        assert!(!p.tucked);
+        assert_eq!(lives(&p, "a", true), Lives::Edge(Edge::Right, 0.1));
+    }
+
+    #[test]
+    fn old_dock_files_read_back_untucked_and_tucked_survives_a_save() {
+        let old = r#"{"last_screen":"1512x982@0,0","per_screen":{"1512x982@0,0":["top",0.8017751479289941]},"come_to":true}"#;
+        let p = Prefs::from_text(Some(old));
+        assert!(!p.tucked);
+        assert_eq!(p.per_screen["1512x982@0,0"], (Edge::Top, 0.8017751479289941));
+        for bad in [r#"{"tucked":"yes"}"#, r#"{"tucked":1}"#, r#"{"tucked":null}"#, "not json"] { assert!(!Prefs::from_text(Some(bad)).tucked, "{bad}"); }
+        assert!(!serde_json::to_string(&p).unwrap().contains("tucked"), "untucked is not written");
+        let mut t = p.clone();
+        t.land("1512x982@0,0", Landing::Tuck);
+        let text = serde_json::to_string(&t).unwrap();
+        assert!(text.contains("\"tucked\":true"));
+        assert_eq!(Prefs::from_text(Some(&text)), t);
+    }
+
+    #[test]
+    fn the_tuck_is_short_and_a_fade_with_less_motion() {
+        assert!(tuck_ms(false) < 300);
+        assert!(tuck_ms(true) < tuck_ms(false));
+        assert_eq!(land_secs(&Landing::Tuck, false), None, "the tuck has its own motion, never the edge ease");
+    }
+
+    #[test]
+    fn nothing_beside_it_is_left_where_it_used_to_be() {
+        // Home beside the character (the notch off): closes at once when it is picked up, tucked, hidden or its display
+        // changes; moves with it when it lands or comes back.
+        for c in [Change::DragBegan, Change::Tucked, Change::Hidden, Change::Displays] { assert_eq!(tied_after(c, true), Tied::Close, "{c:?}"); }
+        for c in [Change::Landed, Change::Untucked] { assert_eq!(tied_after(c, true), Tied::MoveWith, "{c:?}"); }
+        // Tied to the notch or the pointer, never to the character: stays.
+        for c in [Change::DragBegan, Change::Landed, Change::Tucked, Change::Hidden, Change::Displays, Change::Untucked] { assert_eq!(tied_after(c, false), Tied::Stays); }
+    }
+    #[test]
+    fn turning_the_notch_off_brings_it_out_and_turning_it_on_again_never_hides_it_by_surprise() {
+        let mut p = Prefs::default();
+        p.land("a", Landing::Edge(Edge::Left, 0.3));
+        p.tucked = true;
+        assert!(!notch_turned(&mut p, true), "the notch on: nothing changes");
+        assert!(p.tucked);
+        assert!(notch_turned(&mut p, false), "off while tucked: it comes out, and that is saved");
+        assert!(!p.tucked);
+        assert_eq!(lives(&p, "a", true), Lives::Edge(Edge::Left, 0.3), "the notch turned on again later: it stays on its edge");
+        assert!(!notch_turned(&mut p, false), "already out: nothing to do");
+    }
+
 }

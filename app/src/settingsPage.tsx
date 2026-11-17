@@ -29,7 +29,8 @@ import { afterInstallFailed, canInstall, found, updateLine, type UpdateState } f
 import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
 import { invoke, listen } from "./tauri.ts";
-import { AT_REST, atRestOf, atRestWrites, CHILD_OF, FIRST_PAGE, HAIRLINE_BEFORE, HIDDEN_OPTIONS, isPage, mainKeys, MORE_SECTIONS, moreKeys, PAGE_COLOUR, PAGES, placeOf, rowAnchor, shownValue, SIDEBAR, type AtRest, type Fixed, type Item, type PageId, type Topic } from "./settingsPages.ts";
+import { characterName } from "./companion.ts";
+import { AT_REST, atRestOf, atRestWrites, CHILD_OF, FIRST_PAGE, livesOff, HAIRLINE_BEFORE, HIDDEN_OPTIONS, isPage, mainKeys, MORE_SECTIONS, moreKeys, PAGE_COLOUR, PAGES, placeOf, rowAnchor, shownValue, SIDEBAR, type AtRest, type Fixed, type Item, type PageId, type Topic } from "./settingsPages.ts";
 import { developerShown, groupResults, searchSettingsFor, shownResults, type Hit } from "./settingsSearch.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
 import { reviewModeOf } from "../../protocol/index.ts";
@@ -522,7 +523,7 @@ function SettingRow({ d, parentOff = "", indent }: { d: Def; parentOff?: string;
 // ---------- rows the page draws itself ----------
 
 /** At rest (the spec, 3.4): Show, Half or Hidden, one control for Tuck into the edge and Stick to the edge. */
-function AtRestRow() {
+function AtRestRow({ off = "" }: { off?: string }) {
   const peek = useSetting("character.peek"), stick = useSetting("character.stick");
   const labelId = useId();
   const [problem, setProblem] = useState("");
@@ -534,10 +535,10 @@ function AtRestRow() {
   const changed = changedNow().some((k) => k === "character.peek" || k === "character.stick");
   const usual = atRestOf(defaultOf("character.peek"), defaultOf("character.stick"));
   return (
-    <Row id={rowAnchor("character.peek")} label={S.setRows.atRest.label} labelId={labelId} description={S.setRows.atRest.desc}
+    <Row id={rowAnchor("character.peek")} label={S.setRows.atRest.label} labelId={labelId} description={off || S.setRows.atRest.desc} disabled={!!off || undefined}
       changed={changed ? { usual: S.setRows.atRest.options[usual], onRestore: () => { void resetSetting("character.peek").then(() => resetSetting("character.stick")); } } : null}
       more={[wordsOf("character.peek").help, wordsOf("character.stick").help]}
-      control={<Segmented labelledBy={labelId} value={v} options={AT_REST.map((id) => ({ id, label: S.setRows.atRest.options[id] }))} onChange={(x) => void pick(x)} />}>
+      control={<Segmented labelledBy={labelId} value={v} options={AT_REST.map((id) => ({ id, label: S.setRows.atRest.options[id] }))} disabled={!!off} onChange={(x) => void pick(x)} />}>
       <Problem text={problem} />
     </Row>
   );
@@ -697,14 +698,17 @@ const keyOf = (i: Item): string | null => (typeof i === "string" ? i : null);
 
 /** One item of a group: a setting's row (or the rows a custom setting draws), or a part that is not a setting. */
 function ItemRows({ item, parentOff = "", indent }: { item: Item; parentOff?: string; indent?: boolean }) {
+  // M111: where the character lives dims the edge rows, and the notch choice needs the notch (drawn again when either changes).
+  useSetting("character.lives"); useSetting("island.show");
+  const who = characterName(useSetting("character.name"));
   if (typeof item !== "string") return <FixedRows fixed={item.fixed} />;
   const d = defOf(item);
   if (!d || d.hidden || !shownSettings().some((x) => x.key === item) || !shownNow(item, setting)) return null;
   const parentKey = CHILD_OF[item];
-  const parentWords = parentKey && setting(parentKey) !== true ? S.ui.turnOnFirst(wordsOf(parentKey).label) : parentOff;
+  const parentWords = parentKey && setting(parentKey) !== true ? S.ui.turnOnFirst(wordsOf(parentKey).label) : parentOff || livesOff(item, setting, who);
   if (item === "keys.hotkeys") return null;   // drawn as its own groups (KeysRows)
   if (item === "talk.voice") return <VoiceRows parentOff={parentWords} />;
-  if (item === "character.peek") return <AtRestRow />;
+  if (item === "character.peek") return <AtRestRow off={parentWords} />;
   return <SettingRow d={d} parentOff={parentWords} indent={indent ?? !!parentKey} />;
 }
 

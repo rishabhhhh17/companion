@@ -55,6 +55,8 @@ describe("the shipped list of settings", () => {
       "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false, "character.live": true,
       // Peeking (27 Oct 2026, the founder asked for it on): it rests past the edge, and takes a curious peek now and then.
       "character.peek": true, "character.stick": true, "character.peekIdle": false, "character.dockWhen": "pushed",
+      // M111: Flowflow lives on the screen edge unless tucked into the notch (kept in dock.json).
+      "character.lives": "edge",
       // Area 5: pointing, talking and other apps.
       "point.ringSeconds": 10, "point.yourTurnSeconds": 90, "point.colour": "orange", "point.lettering": "plain", "point.guesses": "softRing",
       "point.pace": "normal", "drawIt.on": false, "drawIt.seconds": "15", "talk.maxHold": "60", "showme.listen": true, "speak.alsoSay": [], "ph.style": "full", "ph.useProjectInfo": true,
@@ -310,6 +312,10 @@ describe("the shipped list of settings", () => {
     expect(defOf("island.smallChat")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["shell", "pages"], store: "settings", live: true });
     expect(validate(defOf("island.smallChat")!, false).ok).toBe(true);
     expect(validate(defOf("island.smallChat")!, "yes").ok).toBe(false);
+    // M111: Where Flowflow lives: the screen edge or the notch, in dock.json with its place, applied by the shell.
+    expect(defOf("character.lives")).toMatchObject({ section: "home", kind: "choice", default: "edge", options: ["edge", "notch"], scope: "app", applies: ["shell"], store: "dock", live: true });
+    expect(validate(defOf("character.lives")!, "notch").ok).toBe(true);
+    expect(validate(defOf("character.lives")!, "roof").ok).toBe(false);
     expect(defOf("island.pointOpens")).toMatchObject({ section: "home", kind: "choice", default: "status", options: ["home", "status"], scope: "app", applies: ["shell"], store: "settings", live: true });
     expect(defOf("home.goToNeeds")!.options).toEqual(["goToIt", "markTab"]);
     expect(defOf("home.size")!.options).toEqual(["standard", "large"]);

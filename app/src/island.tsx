@@ -12,6 +12,7 @@ import { reactionsOn } from "./reactions.ts";
 import { useModel } from "./useModel.ts";
 import { useMood } from "./useMood.ts";
 import { S } from "./strings.ts";
+import { characterName } from "./companion.ts";
 import { useDrop } from "./dropRing.tsx";
 import { activeGroup } from "./groups.ts";
 import { running } from "./dropmenu.ts";
@@ -37,12 +38,12 @@ import { FlowMini } from "./flowflowMini.tsx";
 import { HELLO_SHOW_MS, LAST_HELLO_KEY, WAKE_TICK_MS, firstName, helloFact, helloGate, helloLine, lastHelloFrom, restWings, restWingState, wokeAfter, type HelloWhy, type RestWings } from "./notchHello.ts";
 type Kind = "notch" | "pill" | "edge";
 const KINDS: readonly Kind[] = ["notch", "pill", "edge"];
-type Shape = { mode: IslandMode; kind: Kind; w: number; h: number; core: number; row: number; wing: number; hover: boolean };
+type Shape = { mode: IslandMode; kind: Kind; w: number; h: number; core: number; row: number; wing: number; hover: boolean; take?: "take" | "tucked" | null };
 const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : 0);
 const shapeFrom = (v: unknown): Shape | null => {
-  const o = v as { mode?: unknown; kind?: unknown; w?: unknown; h?: unknown; core?: unknown; row?: unknown; wing?: unknown; hover?: unknown } | null;
+  const o = v as { mode?: unknown; kind?: unknown; w?: unknown; h?: unknown; core?: unknown; row?: unknown; wing?: unknown; hover?: unknown; take?: unknown } | null;
   if (!o || !ISLAND_MODES.includes(o.mode as IslandMode) || !KINDS.includes(o.kind as Kind)) return null;
-  return { mode: o.mode as IslandMode, kind: o.kind as Kind, w: num(o.w), h: num(o.h), core: num(o.core), row: num(o.row), wing: num(o.wing), hover: o.hover !== false };
+  return { mode: o.mode as IslandMode, kind: o.kind as Kind, w: num(o.w), h: num(o.h), core: num(o.core), row: num(o.row), wing: num(o.wing), hover: o.hover !== false, take: o.take === "take" || o.take === "tucked" ? o.take : null };
 };
 
 /** Springs the black shape toward the size the app asked for, drawing straight into its style (no React render per frame).
@@ -407,6 +408,9 @@ function Island() {
   // view (or to nothing) and the fade had nothing left to fade.
   // While Home grows from it, the panel stays laid out with its words, which fade as Home's shape covers them (ui/notch.css
   // .island[data-home]): Home's own words arrive once its body is there, so the two overlap instead of leaving a gap.
+  // M111: while the notch says it will take Flowflow, its row is the take line, never the panel.
+  // After a tuck, the same row says for a moment where it went ("tucked"), with no glow (the M111 review).
+  const take = shape.take === "take", said = shape.take === "tucked";
   const panelShown = parts.panel || held !== null;
   const briefRef = useRef(!shape.hover);
   // Latched on the pointer's panel, not on the held one: holding is exactly when the pointer has gone.
@@ -420,8 +424,10 @@ function Island() {
   // The step is as wide as the longest of the four words, so its line keeps one length from Finding to Proven.
   const vars = { "--core": `${shape.core}px`, "--row": `${shape.row}px`, ...(shape.wing > 0 ? { "--wing": `${shape.wing}px` } : {}), ...(stepW > 0 ? { "--step-w": `${stepW}px` } : {}) } as CSSProperties;
   const st = wings ? step : lastStep.current;
+  // M111: Flowflow dragged over the notch makes it grow the pointer's row to say it will take it, with a soft glow.
+  const nameSet = useSetting("character.name");
   return (
-    <main className={`island ${shape.kind}`} data-mode={shape.mode} data-tuck={tucking ?? undefined} data-home={homeUp ? "" : undefined} data-drop={drop.s.hover ? "over" : undefined} data-step={st && shape.wing > WING_USUAL ? "" : undefined} data-style="instrument" style={vars}>
+    <main className={`island ${shape.kind}`} data-mode={shape.mode} data-tuck={tucking ?? undefined} data-home={homeUp ? "" : undefined} data-drop={drop.s.hover ? "over" : undefined} data-take={take ? "" : undefined} data-said={said ? "" : undefined} data-step={st && shape.wing > WING_USUAL ? "" : undefined} data-style="instrument" style={vars}>
       <span className="island-shape" ref={box}>
         {/* The notch's own row: a click opens Home, as always. The wings are drawn in it while something happens. */}
         <button className="island-hit" type="button" aria-label={islandName(line)} title={unseen > 0 ? S.panel.unseen(unseen) : undefined} onClick={tap}>
@@ -440,6 +446,7 @@ function Island() {
         <span className="island-step island-step-measure" ref={measure} aria-hidden="true">{S.home.steps.map((word) => <span key={word} className="island-step-word">{word}</span>)}</span>
         {/* M68: the word at rest, laid out but never shown, so the right wing is asked for as wide as it needs. */}
         <span className="island-rest-word island-step-measure" ref={restMeasure} aria-hidden="true">{rest?.word ?? ""}</span>
+        {(take || said) && <div className="island-take" role="status"><FlowMini className="ip-face nb-face" state={m.character} /><span>{take ? S.m111.take(characterName(nameSet)) : S.m111.inNotch(characterName(nameSet))}</span></div>}
         <IslandPanel ref={panelRef} m={m} line={line} shown={panelShown} brief={briefRef.current} unseen={unseen} review={review && !hushed} reviewKey={reviewKey} hello={helloRef.current} kept={kept} onKeep={keep} lineKind={lineKind} />
       </span>
     </main>

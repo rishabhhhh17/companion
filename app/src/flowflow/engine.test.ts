@@ -305,3 +305,55 @@ describe("M90 review: pinned for the peek out of the notch (a 60 by 32 point win
     expect(s.pinned ?? false).toBe(false);
   });
 });
+
+// M111, the founder's bug (16 Nov 2026: "when you dock Squibby, it feels like the bubbles beside it don't go"): its two
+// bubbles sat on slow springs, so a drag, a landing or a peek moved the orb and left them hanging where it had been.
+describe("the bubbles go with it (M111)", () => {
+  /** The most a bubble may swing round the orb in one frame at 60 a second (world units; the frame is 2.2 high). */
+  const STEP_MAX = 0.25;
+  const make = () => { const e = new FlowflowEngine(); e.mode = "still"; e.setFrame(1.29, 1.1); return e; };
+  /** How far each bubble is from where it should sit beside the orb this very frame (its aim). */
+  const gap = (e: FlowflowEngine) => {
+    const twin = e.followers.aimFor(e.followFrameNow());
+    return Math.max(...[0, 1].map((i) => Math.hypot(e.followers.x[i] - twin.x[i], e.followers.y[i] - twin.y[i])));
+  };
+  /** Where the orb's centre is, and each bubble, this frame. */
+  const at = (e: FlowflowEngine) => { const f = e.followFrameNow(); return { cx: f.cx, cy: f.cy, x: [e.followers.x[0], e.followers.x[1]], y: [e.followers.y[0], e.followers.y[1]] }; };
+  /** A drag that swings about, as a person's does. */
+  const swing = (e: FlowflowEngine, each: (was: ReturnType<typeof at>, now: ReturnType<typeof at>) => void) => {
+    for (let t = 0; t < 1.2; t += 1 / 60) { const was = at(e); e.push(2400 * Math.cos(t * 9), 1800 * Math.sin(t * 7)); e.update(1 / 60); each(was, at(e)); }
+  };
+  // Changed on purpose (M111 review): they were placed exactly at their aim every frame, so a change of drag direction made
+  // them jump to the other side of the orb in one frame. Now they go with the orb in the same frame and swing round it on
+  // a short ease, so the check is that they never jump and never hang back, not that they sit exactly at the aim.
+  test("while its window moves they go with the orb in the same frame, and swing round it without jumping", () => {
+    const e = make(); run(e, 2);
+    let jump = 0;
+    swing(e, (was, now) => {
+      // How far each bubble moved this frame beyond the orb's own move.
+      for (const i of [0, 1]) jump = Math.max(jump, Math.hypot(now.x[i] - was.x[i] - (now.cx - was.cx), now.y[i] - was.y[i] - (now.cy - was.cy)));
+    });
+    expect(jump).toBeLessThan(STEP_MAX);
+  });
+  test("a drag in one direction: they settle beside the orb, then move with it exactly", () => {
+    const e = make(); run(e, 2);
+    for (let t = 0; t < 0.5; t += 1 / 60) { e.push(1800, 0); e.update(1 / 60); }
+    expect(gap(e)).toBeLessThan(0.02);
+    // and they move with the orb exactly: the orb's own move carries them
+    const was = at(e); e.push(1800, 0); e.update(1 / 60); const now = at(e);
+    for (const i of [0, 1]) expect(Math.abs(now.x[i] - was.x[i] - (now.cx - was.cx))).toBeLessThan(0.02);
+  });
+  test("landing at an edge puts them on the open side at once, not after a slow spring", () => {
+    const e = make(); run(e, 2);
+    e.push(1500, 0); e.update(1 / 60);
+    e.push(0, 0); e.setSurface("right", 1, 0.2); e.press(0.5, true);
+    e.update(1 / 60);
+    expect(gap(e)).toBeLessThan(1e-9);
+    for (let i = 0; i < 2; i++) expect(e.followers.x[i] + e.followers.r[i]).toBeLessThanOrEqual(1.29);
+  });
+  test("at rest they still settle on their springs, and a celebration still rises and pops", () => {
+    const e = make(); run(e, 2); e.applyApp("done");
+    let popped = false; for (let t = 0; t < 1.6; t += 1 / 60) { e.update(1 / 60); if (e.followers.r[0] === 0) popped = true; }
+    expect(popped).toBe(true);
+  });
+});
