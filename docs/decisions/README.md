@@ -36,7 +36,7 @@ New decisions get the next number (F13, T16, and so on) and the same layout. A r
 | [F22](F22-company-pays-for-usage-gated.md) | The company pays for the model: built behind a switch, off until Anthropic says yes in writing (22 Oct 2026; proposed) |
 | [F23](F23-three-layers-hero-guide-helper.md) | Three layers: the hero for the niche, the guide for everyone, an AI helper for every LLM user (22 Oct 2026; default switch amended by F28) |
 | [F24](F24-product-name-squibby.md) | The product is called Squibby; the water character is Flowflow (22 Oct 2026) |
-| [F25](F25-pricing-free-and-pro.md) | Pricing: Free, and Pro at $10 a month (29 Oct 2026) |
+| [F25](F25-pricing-free-and-pro.md) | Pricing: Free, and Pro at $10 a month (29 Oct 2026; Pro $15 from 6 Nov; the trial dropped and Pro from the account, 19 Nov 2026) |
 | [F26](F26-type-by-voice-anywhere.md) | Type by voice into any app (30 Oct 2026; default switch amended by F28) |
 | [F27](F27-flowflow-glass-water-and-water-ring.md) | Flowflow is clear glass water, and a water ring rides the pointer (30 Oct 2026) |
 | [F28](F28-one-product-status-first-quiet-by-choice.md) | The launch cut: one product (Fix it with proof, a receipt and Undo), Home tells the state first, the notch is bare, the person picks how lively Flowflow is (30 Oct 2026) |
@@ -65,8 +65,9 @@ New decisions get the next number (F13, T16, and so on) and the same layout. A r
 | [T14](T14-local-data-markdown-and-sqlite.md) | Local data in markdown files and SQLite | M1 |
 | [T15](T15-connectors-and-scheduled-tasks.md) | Connectors, folder watching and scheduled tasks | M12 |
 | [T16](T16-settings-registry.md) | One settings registry (`protocol/settings.json`) read by the shell, the pages and the engine; `settings.json` kept by the shell only | M11 customize core; a real Mac check is still owed |
-| [T17](T17-pro-unlocks-with-a-dodo-license-key.md) | Pro unlocks with a Dodo license key, checked on the Mac (31 Oct 2026) | Dodo test mode; not yet proven |
+| [T17](T17-pro-unlocks-with-a-dodo-license-key.md) | Pro unlocks with a Dodo license key, checked on the Mac (31 Oct 2026; replaced by T31, 19 Nov 2026) | No longer checked |
 | [T18](T18-risky-packages-on-osv.md) | Risky packages are looked up on OSV.dev, names and versions only (11 Nov 2026) | Stand in network tests; a real OSV answer is not yet seen |
+| [T31](T31-pro-lives-on-the-squibby-account.md) | Pro and the report live on the Squibby account, made with Google and set by Dodo's webhooks; no license keys, no trial (19 Nov 2026; replaces T17; T19 to T30 are not used) | M116 steps 9 and 12: Dodo test mode, a real Google sign in, the deployed free plan |
 
 Still pending, written in the T records as options only (nothing is built for them until the founder decides):
 - T12: what to do if Claude Code keeps received screenshots on disk (spike (e) checks).
