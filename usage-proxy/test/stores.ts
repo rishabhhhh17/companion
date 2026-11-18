@@ -13,19 +13,25 @@ export class FakeDurableStore extends DurableStore implements TestStore {
   constructor(public fake = new FakeNamespace(), private nowFor: () => number = Date.now) { super(fake, nowFor); }
   get records(): UsageRecord[] {
     const out: [string, UsageRecord][] = [];
-    for (const [name, o] of this.fake.objects) if (name.startsWith("owner:")) for (const [k, v] of o.storage.data) if (k.startsWith("rec:")) out.push([k, v as UsageRecord]);
-    return out.sort(([a], [b]) => (a < b ? -1 : 1)).map(([, v]) => v);
+    for (const [name, o] of this.fake.objects) if (name.startsWith("owner:")) for (const [k, v] of o.storage.data) if (k.startsWith("rec:") && !(v as { seed?: boolean }).seed) out.push([k, v as UsageRecord]);
+    // M116: a record carries the day and month totals as of it; the record itself is the rest.
+    return out.sort(([a], [b]) => (a < b ? -1 : 1)).map(([, v]) => { const { totals: _t, ...r } = v as UsageRecord & { totals?: unknown }; return r; });
   }
   inFlight(userId: string): number {
-    const running = (this.fake.storageOf(OWNER(userId))?.data.get("running") as { at: number }[] | undefined) ?? [];
+    const running = (this.fake.storageOf(OWNER(userId))?.data.get("live") as { running?: { at: number }[] } | undefined)?.running ?? [];
     return running.filter((r) => this.nowFor() - r.at < LEASE_MS).length;
   }
   dump() { return this.fake.dump(); }
-  /** Writes what was spent straight into the owner's object, as the in memory store's helper does. */
+  /** Writes what was spent straight into the owner's object, as the in memory store's helper does. M116: the totals live in
+   *  the newest record, so this writes a seed record (no cost of its own, left out of `records`) that carries them. */
   setSpent(userId: string, now: number, s: Spent) {
     const data = this.fake.storageFor(OWNER(userId)).data;
-    data.set(`spent:d:${dayKey(now)}`, s.day);
-    data.set(`spent:m:${monthKey(now)}`, s.month);
+    const live = (data.get("live") as { running: unknown[]; holds: unknown[]; seq: number } | undefined) ?? { running: [], holds: [], seq: 0 };
+    const seq = live.seq + 1;
+    data.set("live", { ...live, seq });
+    data.set(`rec:${String(seq).padStart(12, "0")}`, { seed: true, userId, model: "", usd: 0, at: now, complete: true,
+      usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 },
+      totals: { day: dayKey(now), dayUsd: s.day, month: monthKey(now), monthUsd: s.month } });
   }
 }
 

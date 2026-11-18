@@ -69,16 +69,29 @@ The operator's suspend and restore work on the real store through the Worker: `P
 - A stream that is cut short is still charged for what was used.
 - A store failure is answered with a plain 503 in the API's own error shape ("Nothing was sent to Claude"), never with Cloudflare's
   own error page. A slot taken before the failure is let go. A cost that cannot be booked after Claude answered still sends the
-  answer back, and the log says `booking_failed`.
+  answer back, and the log says `booking_failed`. The slot and hold are then let go alone, right away and again a few times in
+  the background within 20 seconds (`RELEASE_RETRY_MS`), so a short store outage does not leave the person "busy on your other
+  Mac" for the 30 minute lease; if every try fails the log says `release_failed`. The booking is never sent twice, because the
+  store may have kept it before its reply was lost.
+- Two bookings that end around midnight UTC can arrive in the other order. The day and month totals never step back to the
+  older day or month: the newer ones are carried forward, and an older day's cost still counts in its month.
 - Each running slot and hold carries its request's own id, so a request that ends after its 30 minutes ran out never lets go of
   another request's slot or hold of the same amount.
+- Rows written (M116 step 3, the free plan allows 100,000 a day): a model request takes its slot and hold in one step (one
+  row), then lets them go and books its record, which also carries the day and month totals, in one more (two rows). At most 3
+  rows per request, and none for a refusal (over the limit, or busy on another Mac). Once a day per person, records past 90 days
+  are deleted, one row each: that one request writes more rows, as many as there are records to drop (128 keys a delete, until
+  the oldest kept record is reached, so even a person with thousands a day never keeps one past 90 days). A model request makes 4 calls to the objects (the token, the person, start, finish).
+- The stream reader passes over the reply's own words (text deltas and block lines) as bytes, never decoding them; it reads only
+  the start, the last usage update, the stop and an error event. `test/m116-cheaper.test.ts` times it on this Mac as an early
+  warning only; the real check is a long fix on the deployed server (V1 in M116).
 
 ## How long things are kept (M99 review)
 - One small record per request (counts, cost, model, time): 90 days, then dropped, checked at most once a day per person.
-- Day totals: only this month's. Month totals: only the months those 90 days of records still cover.
+- Day and month totals: carried by the newest record, so they go when the records go.
 - Sign in token hashes: the newest 50 sign ins per person. Past that the oldest go first, stopped ones before working ones; a
   dropped token stops working and its small object is cleared, so the person signs in again.
-- Payment event ids: 15 minutes (three times Dodo's time window). The suspension log and the list of owners are kept while the
+- Payment event ids: 48 hours, because Dodo retries a delivery for about 37 hours, each time signed afresh with the same id. The suspension log and the list of owners are kept while the
   service runs, because they are how a notice from Anthropic is matched to a person.
 
 ## Telling Anthropic who a request is for, and cutting one person off (24 Oct 2026)

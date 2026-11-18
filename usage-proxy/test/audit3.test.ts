@@ -102,12 +102,15 @@ describe("Dodo events that arrive at the same moment", () => {
     expect(rs.map((r) => r.status)).toEqual([200, 200]);
     expect(plan).toBe("free");
   });
-  test("the list of handled event ids does not grow for ever: ids older than the time window are forgotten", async () => {
+  // M116 step 3: kept 48 hours now, not an hour: Dodo signs each retry afresh with the same id, for about 37 hours.
+  test("the list of handled event ids does not grow for ever: ids older than the keep window are forgotten", async () => {
     let t = 1_000_000;
     const ledger = new MemoryDodoLedger(() => t * 1000);
     for (let i = 0; i < 50; i++) await ledger.claim(`msg_${i}`);
     expect(ledger.size()).toBe(50);
-    t += 3600;   // an hour later no signed copy of those events can pass the five minute window any more
+    t += 3600;   // an hour later they are all still remembered (a retry of any of them is a duplicate)
+    expect(await ledger.claim("msg_0")).toBe(false);
+    t += 48 * 3600;   // past the keep window, they are forgotten
     await ledger.claim("msg_new");
     expect(ledger.size()).toBe(1);
     expect(await ledger.claim("msg_new")).toBe(false);   // a recent id is still remembered

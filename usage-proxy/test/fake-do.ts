@@ -11,12 +11,18 @@ export class FakeStorage implements StorageLike {
   calls = 0;
   /** Rows written: every put and delete (M116: GET /v1/me and the nonce route must write none). */
   writes = 0;
+  /** M116 step 3: rows written as Cloudflare counts them: each key in a put, and each key a delete names. */
+  rows = 0;
   async get<T>(key: string) { this.calls++; await yieldNow(); return copy(this.data.get(key)) as T | undefined; }
-  async put(entries: Record<string, unknown>) { this.calls++; this.writes++; await yieldNow(); for (const [k, v] of Object.entries(entries)) this.data.set(k, copy(v)); }
-  async delete(keys: string[]) { this.calls++; this.writes++; await yieldNow(); let n = 0; for (const k of keys) if (this.data.delete(k)) n++; return n; }
-  async list<T>(o: { prefix: string }) {
+  async put(entries: Record<string, unknown>) { this.calls++; this.writes++; this.rows += Object.keys(entries).length; await yieldNow(); for (const [k, v] of Object.entries(entries)) this.data.set(k, copy(v)); }
+  async delete(keys: string[]) { if (keys.length > 128) throw new Error("Cloudflare takes at most 128 keys in one delete"); this.calls++; this.writes++; this.rows += keys.length; await yieldNow(); let n = 0; for (const k of keys) if (this.data.delete(k)) n++; return n; }
+  /** As Cloudflare's list: keys in order, `reverse` from the end, at most `limit`. */
+  async list<T>(o: { prefix: string; reverse?: boolean; limit?: number }) {
     this.calls++; await yieldNow();
-    return new Map([...this.data].filter(([k]) => k.startsWith(o.prefix)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([k, v]) => [k, copy(v) as T]));
+    let all = [...this.data].filter(([k]) => k.startsWith(o.prefix)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    if (o.reverse) all = all.reverse();
+    if (o.limit !== undefined) all = all.slice(0, o.limit);
+    return new Map(all.map(([k, v]) => [k, copy(v) as T]));
   }
 }
 

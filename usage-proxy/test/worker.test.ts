@@ -119,7 +119,7 @@ describe("a metered request, end to end", () => {
     expect(await r.text()).toContain(REPLY);
     await Promise.all(w.waits);
     expect((await w.store.spent("google:42", NOW)).day).toBeGreaterThan(0);
-    expect(w.fake.storageFor(OWNER("google:42")).data.get("running")).toEqual([]);
+    expect((w.fake.storageFor(OWNER("google:42")).data.get("live") as { running: unknown[] }).running).toEqual([]);   // M116: slot and hold live in one key
   });
   test("logs and the objects hold no prompt, reply, token, key or secret", async () => {
     const w = world();

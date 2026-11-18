@@ -11,7 +11,7 @@
 // It needs nothing from Cloudflare at build time: the object talks through `fetch`, and the types below are the small part of the
 // Durable Object API it uses, so the tests run it on a fake of that API (test/fake-do.ts) with Bun alone.
 import { budgetCheck, dayKey, monthKey, type Plan, type Spent } from "./plans.ts";
-import type { Account, SignIn, Store, SuspensionRecord, UsageRecord, User, OwnerPlan } from "./store.ts";
+import type { Account, FinishAsk, SignIn, StartAsk, Started, Store, SuspensionRecord, UsageRecord, User, OwnerPlan } from "./store.ts";
 import type { DodoLedger, LinkBook } from "./dodo.ts";
 
 /** The part of Durable Object storage used here (the key value calls, on SQLite backed objects too). */
@@ -19,7 +19,7 @@ export interface StorageLike {
   get<T = unknown>(key: string): Promise<T | undefined>;
   put(entries: Record<string, unknown>): Promise<void>;
   delete(keys: string[]): Promise<number>;
-  list<T = unknown>(options: { prefix: string }): Promise<Map<string, T>>;
+  list<T = unknown>(options: { prefix: string; reverse?: boolean; limit?: number }): Promise<Map<string, T>>;
 }
 export type StateLike = { storage: StorageLike };
 export type StubLike = { fetch(input: string, init?: RequestInit): Promise<Response> };
@@ -33,17 +33,25 @@ export interface NamespaceLike<Id = unknown> {
  *  good. Longer than the longest answer the proxy allows (64,000 tokens at a slow stream is about 20 minutes). */
 export const LEASE_MS = 30 * 60 * 1000;
 /** How long one small record per request is kept (counts and cost only). Older ones are dropped, at most once a day per
- *  person. Day totals are kept only for the current month, and month totals only for the months these records still cover. */
+ *  person. M116: the day and month totals live in the newest record itself, so they go with the records. */
 export const RECORD_KEEP_MS = 90 * 24 * 3600 * 1000;
 /** The most sign ins kept per person (one token hash each). Past it the oldest go first, stopped ones before working ones, and a
  *  dropped token simply stops working (the person signs in again). */
 export const MAX_TOKENS_KEPT = 50;
-/** How long a payment event id is remembered: three times Dodo's time window, as the in memory ledger does. */
-export const WEBHOOK_KEEP_MS = 3 * 300 * 1000;
+/** How long a payment event id is remembered (M116): 48 hours, because Dodo retries a delivery for about 37 hours, each time
+ *  with a fresh signature and the same id (https://docs.dodopayments.com/developer-resources/webhooks). The in memory ledger
+ *  keeps the same (dodo.ts). */
+export const WEBHOOK_KEEP_MS = 48 * 3600 * 1000;
 
 type Tok = { plan: string; status: User["status"] };
 /** `id`: the request's own id, so a request that ends late lets go of only its own slot or hold, never another's of the same amount. */
 type Lease = { at: number; usd: number; id?: string };
+/** M116 step 3: an owner's running requests, their holds, the record count and the day of the last tidy, in one key, so starting
+ *  a request writes one row and finishing it two (this key and its record). Rows written are what the free plan counts. */
+type Live = { running: Lease[]; holds: Lease[]; seq: number; prunedOn?: string };
+/** The day and month totals as of a record, carried by the record itself (the newest one is the one read). */
+type Totals = { day: string; dayUsd: number; month: string; monthUsd: number };
+type KeptRecord = UsageRecord & { totals: Totals };
 const pad = (n: number, w = 15) => String(Math.max(0, Math.floor(n))).padStart(w, "0");
 
 /** One Durable Object. The Worker reaches it only through its binding; it is never on the public address. */
@@ -77,13 +85,52 @@ export class StoreObject {
 // ---------- what each kind of object does ----------
 
 type Op = (s: StorageLike, a: any) => Promise<unknown>;
-const live = (list: Lease[] | number[] | undefined, now: number): Lease[] =>
-  (list ?? []).map((x) => (typeof x === "number" ? { at: x, usd: 0 } : x)).filter((x) => now - x.at < LEASE_MS);
+const alive = (list: Lease[], now: number): Lease[] => list.filter((x) => now - x.at < LEASE_MS);
+const without = (list: Lease[], id: string | undefined) => {
+  const i = id ? list.findIndex((x) => x.id === id) : list.findIndex((x) => !x.id);
+  return i < 0 ? list : [...list.slice(0, i), ...list.slice(i + 1)];
+};
 
 async function ownerTokens(s: StorageLike): Promise<[string, Tok][]> { return (await s.get<[string, Tok][]>("tokens")) ?? []; }
-async function spentNow(s: StorageLike, now: number): Promise<Spent> {
-  const held = live(await s.get<Lease[]>("holds"), now).reduce((n, h) => n + h.usd, 0);
-  return { day: ((await s.get<number>(`spent:d:${dayKey(now)}`)) ?? 0) + held, month: ((await s.get<number>(`spent:m:${monthKey(now)}`)) ?? 0) + held };
+async function liveOf(s: StorageLike): Promise<Live> {
+  const l = await s.get<Live>("live");
+  return { running: l?.running ?? [], holds: l?.holds ?? [], seq: l?.seq ?? 0, ...(l?.prunedOn ? { prunedOn: l.prunedOn } : {}) };
+}
+async function newestRecord(s: StorageLike): Promise<KeptRecord | undefined> {
+  for (const r of (await s.list<KeptRecord>({ prefix: "rec:", reverse: true, limit: 1 })).values()) return r;
+  return undefined;
+}
+/** What is booked for `now`'s day and month, from the newest record's totals (nothing when they are for another day or month). */
+const bookedFor = (t: Totals | undefined, now: number): Spent =>
+  ({ day: t && t.day === dayKey(now) ? t.dayUsd : 0, month: t && t.month === monthKey(now) ? t.monthUsd : 0 });
+async function spentNow(s: StorageLike, now: number, l?: Live): Promise<Spent> {
+  const held = alive((l ?? (await liveOf(s))).holds, now).reduce((n, h) => n + h.usd, 0);
+  const booked = bookedFor((await newestRecord(s))?.totals, now);
+  return { day: booked.day + held, month: booked.month + held };
+}
+/** Only these fields: counts, cost, model, time. Whatever else a caller passed is not kept. */
+const keptFields = (r: UsageRecord): UsageRecord => ({ userId: r.userId, model: r.model, usd: r.usd, at: r.at, complete: r.complete, usage: {
+  input_tokens: r.usage.input_tokens, output_tokens: r.usage.output_tokens, cache_read_input_tokens: r.usage.cache_read_input_tokens,
+  cache_creation_input_tokens: r.usage.cache_creation_input_tokens, web_search_requests: r.usage.web_search_requests } });
+/** The one new row a booking writes: the record with the day and month totals as of it. Old records are let go first, at
+ *  most once a day (`l` is changed in place: its count and the day of the tidy; the caller writes it in the same put). */
+async function booking(s: StorageLike, l: Live, r: UsageRecord): Promise<Record<string, unknown>> {
+  const totals = nextTotals((await newestRecord(s))?.totals, r);
+  await prune(s, l, r.at);
+  l.seq += 1;
+  return { [`rec:${pad(l.seq, 12)}`]: { ...keptFields(r), totals } };
+}
+/** The totals after booking `r` on top of the newest ones. Each record's time is taken in the Worker before the call, so two
+ *  requests that end around midnight UTC can arrive in the other order: one stamped just before midnight can come after one
+ *  stamped just after. The totals then never step back to the older day or month: the newer ones are carried forward, and the
+ *  cost is added only where its day or month is the one being counted (an older day's cost still counts in the same month). */
+export function nextTotals(t: Totals | undefined, r: UsageRecord): Totals {
+  const day = dayKey(r.at), month = monthKey(r.at);
+  if (!t) return { day, dayUsd: r.usd, month, monthUsd: r.usd };
+  // The keys are YYYY-MM-DD and YYYY-MM, so comparing them as text compares them as dates.
+  const d = day > t.day ? { day, dayUsd: r.usd } : day === t.day ? { day, dayUsd: t.dayUsd + r.usd } : { day: t.day, dayUsd: t.dayUsd };
+  const m = month > t.month ? { month, monthUsd: r.usd } : month === t.month ? { month, monthUsd: t.monthUsd + r.usd } : { month: t.month, monthUsd: t.monthUsd };
+  return { ...d, ...m };
 }
 /** What a token means now: a written status, the owner's plan from a payment, and the suspension flag over everything. */
 function userOf(ownerId: string, t: Tok, plan: OwnerPlan | undefined, suspended: boolean): User {
@@ -106,18 +153,31 @@ function withToken(list: [string, Tok][], hash: string, tok: Tok): { list: [stri
   return { list, dropped };
 }
 
-/** Keeping as little as we can (RECORD_KEEP_MS): at most once a day per person, drop records past the keep time, day totals
- *  before this month and month totals before the oldest kept record's month. Only `spent` for today and this month is ever read. */
-async function prune(s: StorageLike, now: number): Promise<void> {
+/** Deletes any number of keys, DELETE_MAX a call. */
+async function deleteAll(s: StorageLike, keys: string[]): Promise<void> {
+  for (let i = 0; i < keys.length; i += DELETE_MAX) await s.delete(keys.slice(i, i + DELETE_MAX));
+}
+/** How many old records one tidy reads and lets go of at a time. */
+export const PRUNE_BATCH = 1000;
+/** The most keys one storage delete takes on Cloudflare (https://developers.cloudflare.com/durable-objects/api/storage-api/). */
+export const DELETE_MAX = 128;
+/** Keeping as little as we can (RECORD_KEEP_MS): at most once a day per person, drop records past the keep time. Records are
+ *  kept in the order they were booked, so the old ones are at the front. Deletes count as rows written, one per old record.
+ *  It goes on, a batch at a time, until it reaches a record young enough to keep, so a person who books more than one batch a
+ *  day still has nothing kept past the keep time. Deletes go DELETE_MAX keys a call, the most Cloudflare takes in one. */
+async function prune(s: StorageLike, l: Live, now: number): Promise<void> {
   const today = dayKey(now);
-  if ((await s.get<string>("prunedOn")) === today) return;
-  const cutoff = now - RECORD_KEEP_MS, recBefore = `rec:${pad(cutoff)}`, dayFrom = `spent:d:${monthKey(now)}`, monthFrom = `spent:m:${monthKey(cutoff)}`;
-  const old: string[] = [];
-  for (const k of (await s.list({ prefix: "rec:" })).keys()) if (k < recBefore) old.push(k);
-  for (const k of (await s.list({ prefix: "spent:d:" })).keys()) if (k < dayFrom) old.push(k);
-  for (const k of (await s.list({ prefix: "spent:m:" })).keys()) if (k < monthFrom) old.push(k);
-  if (old.length) await s.delete(old);
-  await s.put({ prunedOn: today });
+  if (l.prunedOn === today) return;
+  const cutoff = now - RECORD_KEEP_MS;
+  for (;;) {
+    const batch = await s.list<KeptRecord>({ prefix: "rec:", limit: PRUNE_BATCH });
+    const old: string[] = [];
+    let reachedKept = batch.size < PRUNE_BATCH;
+    for (const [k, r] of batch) { if (r.at < cutoff) old.push(k); else { reachedKept = true; break; } }
+    await deleteAll(s, old);
+    if (reachedKept || old.length === 0) break;
+  }
+  l.prunedOn = today;
 }
 
 const OPS: Record<string, Op> = {
@@ -188,43 +248,64 @@ const OPS: Record<string, Op> = {
   "owner.lastAt": async (s) => (await s.get<number>("planAt")) ?? null,
   "owner.setLastAt": async (s, a: { ms: number }) => { await s.put({ planAt: Math.max(a.ms, (await s.get<number>("planAt")) ?? 0) }); },
   "owner.spent": async (s, a: { now: number }) => spentNow(s, a.now),
+  // M116 step 3: what the proxy uses. The budget check, the cap and the taking of the slot and hold, in one step and one row.
+  // A refusal writes nothing.
+  "owner.start": async (s, a: { max: number; usd: number; now: number; limits: Plan | null; id: string }) => {
+    const l = await liveOf(s);
+    if (a.limits) {
+      const spent = await spentNow(s, a.now, l);
+      if (!budgetCheck(a.limits, spent, a.now).ok) return { ok: false, why: "over", spent };
+    }
+    const running = alive(l.running, a.now);
+    if (running.length >= a.max) return { ok: false, why: "busy" };
+    l.running = [...running, { at: a.now, usd: 0, id: a.id }];
+    l.holds = alive(l.holds, a.now);
+    if (a.usd > 0) l.holds.push({ at: a.now, usd: a.usd, id: a.id });
+    await s.put({ live: l });
+    return { ok: true };
+  },
+  // The slot and hold let go (only this request's own, by its id) and the record booked: one put, two rows.
+  "owner.finish": async (s, a: { id: string; now: number; record?: UsageRecord }) => {
+    const l = await liveOf(s);
+    l.running = without(alive(l.running, a.now), a.id);
+    l.holds = without(l.holds, a.id);
+    const rec = a.record ? await booking(s, l, a.record) : {};
+    await s.put({ live: l, ...rec });
+  },
   // The check and the hold in one step: no other call to this object runs between them.
   "owner.hold": async (s, a: { usd: number; now: number; limits: Plan; id?: string }) => {
-    if (!budgetCheck(a.limits, await spentNow(s, a.now), a.now).ok) return false;
-    await s.put({ holds: [...live(await s.get<Lease[]>("holds"), a.now), { at: a.now, usd: a.usd, ...(a.id ? { id: a.id } : {}) }] });
+    const l = await liveOf(s);
+    if (!budgetCheck(a.limits, await spentNow(s, a.now, l), a.now).ok) return false;
+    l.holds = [...alive(l.holds, a.now), { at: a.now, usd: a.usd, ...(a.id ? { id: a.id } : {}) }];
+    await s.put({ live: l });
     return true;
   },
   // Not pruned by time here: a hold is timed by the request's own clock (`hold`'s now), so it is pruned there and in `spent`.
   // With an id, only that hold goes, and nothing at all when it already ran out (a late end never takes another request's hold).
   "owner.unhold": async (s, a: { usd: number; id?: string }) => {
-    const holds = (await s.get<Lease[]>("holds")) ?? [], i = holds.findIndex((h) => (a.id ? h.id === a.id : h.usd === a.usd && !h.id));
+    const l = await liveOf(s), i = l.holds.findIndex((h) => (a.id ? h.id === a.id : h.usd === a.usd && !h.id));
     if (i < 0) return;
-    holds.splice(i, 1);
-    await s.put({ holds });
+    l.holds.splice(i, 1);
+    await s.put({ live: l });
   },
   "owner.begin": async (s, a: { max: number; now: number; id?: string }) => {
-    const running = live(await s.get<Lease[]>("running"), a.now);
-    if (running.length >= a.max) { await s.put({ running }); return false; }
-    await s.put({ running: [...running, { at: a.now, usd: 0, ...(a.id ? { id: a.id } : {}) }] });
+    const l = await liveOf(s), running = alive(l.running, a.now);
+    if (running.length >= a.max) return false;
+    l.running = [...running, { at: a.now, usd: 0, ...(a.id ? { id: a.id } : {}) }];
+    await s.put({ live: l });
     return true;
   },
   "owner.end": async (s, a: { now: number; id?: string }) => {
-    const running = live(await s.get<Lease[]>("running"), a.now), i = a.id ? running.findIndex((r) => r.id === a.id) : running.findIndex((r) => !r.id);
-    if (i >= 0) running.splice(i, 1);
-    await s.put({ running });
+    const l = await liveOf(s);
+    l.running = without(alive(l.running, a.now), a.id);
+    await s.put({ live: l });
   },
-  "owner.inFlight": async (s, a: { now: number }) => live(await s.get<Lease[]>("running"), a.now).length,
+  "owner.inFlight": async (s, a: { now: number }) => alive((await liveOf(s)).running, a.now).length,
   "owner.record": async (s, a: { r: UsageRecord }) => {
-    const r = a.r, seq = ((await s.get<number>("seq")) ?? 0) + 1;
-    const d = `spent:d:${dayKey(r.at)}`, m = `spent:m:${monthKey(r.at)}`;
-    // Only these fields: counts, cost, model, time. Whatever else a caller passed is not kept.
-    const kept: UsageRecord = { userId: r.userId, model: r.model, usd: r.usd, at: r.at, complete: r.complete, usage: {
-      input_tokens: r.usage.input_tokens, output_tokens: r.usage.output_tokens, cache_read_input_tokens: r.usage.cache_read_input_tokens,
-      cache_creation_input_tokens: r.usage.cache_creation_input_tokens, web_search_requests: r.usage.web_search_requests } };
-    await s.put({ seq, [`rec:${pad(r.at)}:${pad(seq, 9)}`]: kept, [d]: ((await s.get<number>(d)) ?? 0) + r.usd, [m]: ((await s.get<number>(m)) ?? 0) + r.usd });
-    await prune(s, r.at);
+    const l = await liveOf(s), rec = await booking(s, l, a.r);
+    await s.put({ live: l, ...rec });
   },
-  "owner.records": async (s) => [...(await s.list<UsageRecord>({ prefix: "rec:" })).values()],
+  "owner.records": async (s) => [...(await s.list<KeptRecord>({ prefix: "rec:" })).values()].map(keptFields),
 
   // ---- token:<hash> ----
   "token.get": async (s) => (await s.get<string>("owner")) ?? null,
@@ -254,7 +335,7 @@ const OPS: Record<string, Op> = {
   "pay.claim": async (s, a: { id: string; now: number }) => {
     const ids = await s.list<number>({ prefix: "h:" }), old: string[] = [];
     for (const [k, at] of ids) if (a.now - at > WEBHOOK_KEEP_MS) old.push(k);
-    if (old.length) await s.delete(old);
+    await deleteAll(s, old);
     if (ids.has(`h:${a.id}`) && !old.includes(`h:${a.id}`)) return false;
     await s.put({ [`h:${a.id}`]: a.now });
     return true;
@@ -299,6 +380,8 @@ export class DurableStore implements Store {
   async record(r: UsageRecord) { await this.call(OWNER(r.userId), "owner.record", { r }); }
   begin(userId: string, max: number, id?: string) { return this.call<boolean>(OWNER(userId), "owner.begin", { max, now: this.clock(), ...(id ? { id } : {}) }); }
   async end(userId: string, id?: string) { await this.call(OWNER(userId), "owner.end", { now: this.clock(), ...(id ? { id } : {}) }); }
+  start(userId: string, a: StartAsk) { return this.call<Started>(OWNER(userId), "owner.start", a); }
+  async finish(userId: string, a: FinishAsk) { await this.call(OWNER(userId), "owner.finish", a); }
   hold(userId: string, usd: number, now: number, limits: Plan, id?: string) { return this.call<boolean>(OWNER(userId), "owner.hold", { usd, now, limits, ...(id ? { id } : {}) }); }
   async unhold(userId: string, usd: number, id?: string) { await this.call(OWNER(userId), "owner.unhold", { usd, ...(id ? { id } : {}) }); }
   listOwnerIds() { return this.call<string[]>(DIRECTORY, "dir.owners"); }

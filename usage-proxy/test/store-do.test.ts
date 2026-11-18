@@ -165,6 +165,7 @@ describe("what the objects keep", () => {
     await s.record({ userId: "u1", model: "m", usd: 0.01, at: NOW, complete: true, text: PROMPT, usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0, note: REPLY } } as never);
     expect(JSON.stringify(s.dump())).not.toMatch(new RegExp(`${PROMPT}|${REPLY}`));
   });
+  // M116 step 3: the day and month totals live in the newest record now, so they go with the records.
   test("M99 review: old request records and old day and month totals are dropped, as the README says", async () => {
     const s = new FakeDurableStore(), day = 24 * 3600 * 1000;
     const rec = (at: number) => s.record({ userId: "u1", model: "m", usd: 0.01, at, complete: true, usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 } });
@@ -172,11 +173,9 @@ describe("what the objects keep", () => {
     await rec(old); await rec(recent); await rec(NOW - day); await rec(NOW);
     expect(s.records.map((r) => r.at)).toEqual([recent, NOW - day, NOW]);
     const keys = [...s.fake.storageFor(OWNER("u1")).data.keys()];
-    const days = keys.filter((k) => k.startsWith("spent:d:")), months = keys.filter((k) => k.startsWith("spent:m:"));
-    expect(days.every((k) => k.startsWith(`spent:d:${monthKey(NOW)}`))).toBe(true);
-    expect(days.length).toBeGreaterThan(0);
-    expect(months).not.toContain(`spent:m:${monthKey(old)}`);
-    expect(months).toContain(`spent:m:${monthKey(NOW)}`);
+    expect(keys.filter((k) => k.startsWith("spent:"))).toEqual([]);   // no totals of their own to keep or drop
+    expect(keys.filter((k) => k.startsWith("rec:")).length).toBe(3);
+    expect(JSON.stringify(s.fake.storageFor(OWNER("u1")).data.get(keys.filter((k) => k.startsWith("rec:")).sort().at(-1)!))).toContain(`"month":"${monthKey(NOW)}"`);
     expect(await s.spent("u1", NOW)).toEqual({ day: 0.01, month: monthKey(NOW - day) === monthKey(NOW) ? 0.02 : 0.01 });
     const readme = readFileSync(join(import.meta.dir, "..", "README.md"), "utf8");
     expect(readme).toContain(`${RECORD_KEEP_MS / day} days`);

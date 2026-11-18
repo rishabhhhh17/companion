@@ -54,7 +54,7 @@ describe("who may use it", () => {
     const t = rig({ enabled: false });
     const r = await t.send();
     expect(r.status).toBe(503);
-    expect((await errBody(r)).error.message).toMatch(/own Claude key/i);
+    expect((await errBody(r)).error.message).toMatch(/not switched on yet/i);   // M116 (F29): never "your own Claude key" any more
     expect(t.seen.length).toBe(0);
   });
   test("no token, an unknown token, a real Anthropic key, a canceled or revoked user: refused, nothing forwarded", async () => {
@@ -161,7 +161,7 @@ describe("metadata.user_id: who the request is for, without saying who", () => {
   });
   test("switched off still comes first: with the switch off the message is the switch's, not the secret's", async () => {
     const t = rig({ enabled: false, secret: null }); const r = await t.send();
-    expect((await errBody(r)).error.message).toMatch(/own Claude key/i);
+    expect((await errBody(r)).error.message).toMatch(/not switched on yet/i);   // M116 (F29): never "your own Claude key" any more
   });
   test("counting tokens: that endpoint documents no metadata field, so none is sent, even if the client sent one", async () => {
     const t = rig({ upstream: () => json({ input_tokens: 5 }) });
@@ -333,7 +333,8 @@ describe("when the store fails (M99 review)", () => {
   const boom = async () => { throw new Error(`store hiccup ${PROMPT_MARK}`); };
   test("a store that cannot answer: a plain 503 that nothing was sent, in the API's own error shape", async () => {
     const t = rig(); await t.token();
-    for (const step of ["userByTokenHash", "spent", "begin"] as const) {
+    // M116 step 3: the proxy takes its slot and hold in one step (start), so these are the steps before anything is sent.
+    for (const step of ["userByTokenHash", "start"] as const) {
       const real = t.store[step];
       (t.store as any)[step] = boom;
       const r = await t.send();
@@ -345,25 +346,28 @@ describe("when the store fails (M99 review)", () => {
       (t.store as any)[step] = real;
     }
     expect(t.seen.length).toBe(0);
-    expect(t.events.filter((e) => e.reason === "store_failed").length).toBe(3);
+    expect(t.events.filter((e) => e.reason === "store_failed").length).toBe(2);
   });
-  test("a hold that fails after the slot was taken lets the slot go, so the person is not left at too many at once", async () => {
+  // M116 step 3: the slot and the hold are taken in one step now, so a failure there takes neither.
+  test("a start that fails takes no slot and no hold, so the person is not left at too many at once", async () => {
     const t = rig({ maxInFlight: 1 }); await t.token();
-    const real = t.store.hold;
-    t.store.hold = boom;
+    const real = t.store.start;
+    t.store.start = boom;
     const r = await t.send();
     expect(r.status).toBe(503);
     expect((await errBody(r)).error.message).toMatch(/Nothing was sent to Claude/);
     expect(t.seen.length).toBe(0);
     expect(t.store.inFlight("u1")).toBe(0);
-    t.store.hold = real;
+    expect((await t.store.spent("u1", NOW)).day).toBe(0);
+    t.store.start = real;
     expect((await t.send()).status).toBe(200);
   });
   test("a booking that fails after Claude answered: the answer still comes back, and the hold and slot are let go", async () => {
     const t = rig(); await t.token();
-    const real = t.store.record;
+    // M116 step 3: the booking and the letting go are one step (finish); when it fails, the slot and hold are let go alone.
+    const real = t.store.finish;
     let failed = 0;
-    t.store.record = async (rec) => { if (failed++ === 0) throw new Error("hiccup"); return real.call(t.store, rec); };
+    t.store.finish = async (userId, a) => { if (a.record && failed++ === 0) throw new Error("hiccup"); return real.call(t.store, userId, a); };
     const r = await t.send();
     expect(r.status).toBe(200);
     expect(await r.text()).toContain(REPLY_MARK);

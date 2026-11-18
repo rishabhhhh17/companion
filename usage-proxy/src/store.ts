@@ -18,9 +18,22 @@ export type SignIn = { email: string; nonceId: string; nonceUntil: number; now: 
 /** One line of the suspension log: ids and dates only, never text. `caseId` is a short reference of ours (a report or notice number). */
 export type SuspensionRecord = { ownerId: string; kind: "suspended" | "restored"; at: number; caseId?: string };
 export type UsageRecord = { userId: string; model: string; usage: Usage; usd: number; at: number; complete: boolean };
+/** M116 step 3, one step to start a model request: `max` running at once, `usd` its worst case held while it runs, checked
+ *  against `limits` (null for a request that costs nothing, which takes only a slot), `id` the request's own id. */
+export type StartAsk = { max: number; usd: number; now: number; limits: Plan | null; id: string };
+/** Over the limit comes before busy, and either way nothing was taken. `spent` is what the limit was checked against. */
+export type Started = { ok: true } | { ok: false; why: "busy" } | { ok: false; why: "over"; spent: Spent };
+/** One step to finish it: let go of its slot and hold and, with `record`, book what it really cost. */
+export type FinishAsk = { id: string; now: number; record?: UsageRecord };
 
 export interface Store {
   userByTokenHash(hash: string): Promise<User | null>;
+  /** M116 step 3: what the proxy uses, so a model request writes at most 3 rows on Cloudflare (the slot and hold together
+   *  here, then the slot let go and the record with the day and month totals in `finish`). The check and the taking are one
+   *  step, so many requests at once never pass on the same last cent or past the cap. */
+  start(userId: string, a: StartAsk): Promise<Started>;
+  /** Lets go of only this request's slot and hold (by its id) and books `record` if given, in one step. */
+  finish(userId: string, a: FinishAsk): Promise<void>;
   spent(userId: string, now: number): Promise<Spent>;
   record(r: UsageRecord): Promise<void>;
   /** Take one of the user's running request slots; false when `max` are already running. `id` is the request's own id: `end`
@@ -66,6 +79,7 @@ export class MemoryStore implements Store {
   #spent = new Map<string, number>();
   #running = new Map<string, number>();
   #held = new Map<string, number>();
+  #started = new Map<string, { userId: string; usd: number }>();
   #suspended = new Set<string>();
   #plans = new Map<string, { plan: OwnerPlan; at?: number }>();
   #emails = new Map<string, string>();
@@ -141,6 +155,28 @@ export class MemoryStore implements Store {
     if (!budgetCheck(limits, this.#spentNow(userId, now), now).ok) return false;
     this.#held.set(userId, (this.#held.get(userId) ?? 0) + usd);
     return true;
+  }
+  // No await between the checks and the taking, as in hold.
+  async start(userId: string, a: StartAsk): Promise<Started> {
+    if (a.limits) {
+      const spent = this.#spentNow(userId, a.now);
+      if (!budgetCheck(a.limits, spent, a.now).ok) return { ok: false, why: "over", spent };
+    }
+    const n = this.#running.get(userId) ?? 0;
+    if (n >= a.max) return { ok: false, why: "busy" };
+    this.#running.set(userId, n + 1);
+    if (a.usd > 0) this.#held.set(userId, (this.#held.get(userId) ?? 0) + a.usd);
+    this.#started.set(a.id, { userId, usd: a.usd });
+    return { ok: true };
+  }
+  async finish(userId: string, a: FinishAsk) {
+    const was = this.#started.get(a.id);
+    if (was && was.userId === userId) {
+      this.#started.delete(a.id);
+      await this.end(userId);
+      if (was.usd > 0) await this.unhold(userId, was.usd);
+    }
+    if (a.record) await this.record(a.record);
   }
   async unhold(userId: string, usd: number) { this.#held.set(userId, Math.max(0, (this.#held.get(userId) ?? 0) - usd)); }
   async record(r: UsageRecord) {

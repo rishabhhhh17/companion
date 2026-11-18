@@ -184,13 +184,16 @@ export interface DodoLedger {
   lastAppliedAt(userId: string): Promise<number | null>;
   setLastAppliedAt(userId: string, ms: number): Promise<void>;
 }
+/** How long a payment event id is remembered: 48 hours, past Dodo's retries of about 37 hours
+ *  (https://docs.dodopayments.com/developer-resources/webhooks). The Durable Object ledger keeps the same (WEBHOOK_KEEP_MS). */
+export const DODO_WEBHOOK_KEEP_MS = 48 * 3600 * 1000;
 export class MemoryDodoLedger implements DodoLedger {
-  // id -> when it was taken (ms). An id is only worth keeping while a signed copy of its event could still pass the time window
-  // (the window is DODO_TIMESTAMP_TOLERANCE_SEC either side of the event's own time), so older ones are dropped and the list stays small.
+  // id -> when it was taken (ms). M116: kept 48 hours, because Dodo retries a delivery for about 37 hours, each retry signed
+  // afresh (so it passes the time window) with the same id. Older ones are dropped, so the list stays small.
   #ids = new Map<string, number>();
   #last = new Map<string, number>();
   constructor(private clock: () => number = Date.now) {}
-  static readonly KEEP_MS = 3 * DODO_TIMESTAMP_TOLERANCE_SEC * 1000;
+  static readonly KEEP_MS = DODO_WEBHOOK_KEEP_MS;
   size() { return this.#ids.size; }
   async claim(id: string) {
     const at = this.clock();
