@@ -14,7 +14,8 @@
 #   ANTHROPIC_API_KEY         Squibby's own Anthropic key. Without it nothing is forwarded. Needed to deploy only once PROXY_ON is set.
 #   DODO_PAYMENTS_API_KEY     Dodo's API key (dodo_test_ first), for checkouts and the billing portal. Needed once payments are on.
 #   DODO_WEBHOOK_SECRET       Dodo's webhook signing secret (starts with whsec_). Needed once payments are on.
-#   DODO_PRODUCTS             the product table, as JSON (see dodo-products.example.json). Needed once payments are on.
+#   DODO_PRODUCTS             the product table, as JSON (see dodo-products.example.json): each Dodo product id with its item
+#                             (pro_monthly, pro_yearly, report). Needed once payments are on. Product ids never go in code.
 #   PROXY_ON                  the switch for model requests. Not needed to deploy: without it, or with anything but "on", nothing
 #                             is forwarded (sign in, /v1/me and sign out still work). Turn on: `wrangler secret put PROXY_ON` and
 #                             type on. Turn off: `wrangler secret delete PROXY_ON`. Delete it, never set it to off: the deploy
@@ -39,6 +40,9 @@ preview_urls = false
 [vars]
 # none (the default) serves no payment webhook at all. Change to "dodo" when Dodo's account and products are ready.
 PAYMENT_PROVIDER = "none"
+# M116: Dodo's address. Test mode until live payments start; then https://live.dodopayments.com, with a dodo_live_ key and
+# `bun run deploy -- --live-payments`. The server makes no checkout while the address and the key's mode disagree.
+DODO_API_BASE = "https://test.dodopayments.com"
 
 # One object per owner (and a few small shared ones), each doing its read, check and write as one step (src/store-do.ts).
 [[durable_objects.bindings]]
@@ -51,3 +55,9 @@ new_sqlite_classes = ["StoreObject"]
 
 [observability]
 enabled = true
+
+# M116: Cloudflare's own per request logs are off. They keep each request's address, and the /paid return address carries the
+# buyer's email in its query (Dodo adds it). Only the Worker's own short log lines stay: a kind, an owner id, a plan, a count.
+# https://developers.cloudflare.com/workers/observability/logs/workers-logs/
+[observability.logs]
+invocation_logs = false

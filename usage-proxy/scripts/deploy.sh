@@ -3,6 +3,8 @@
 #
 #   sh scripts/deploy.sh           a dry run: builds the Worker into dist/ and checks it, deploys nothing, needs no account
 #   sh scripts/deploy.sh --apply   a real deploy, and only when every secret it needs is already set on Cloudflare
+#   add --live-payments            M116: needed when DODO_API_BASE in wrangler.toml is Dodo's live address (and refused with the
+#                                  test one), so live payments are never deployed by accident
 #
 # It never signs in, never creates an account or anything on an account by itself (a deploy only makes what wrangler.toml
 # names), never prints a secret and never prints wrangler's own output: what wrangler said is saved in the out folder.
@@ -22,11 +24,13 @@ DEV_ONLY="DEV_TOKENS UPSTREAM_BASE"
 OUT="${SQUIBBY_DIST:-dist}"
 
 apply=0
+live=0
 for a in "$@"; do
   case "$a" in
     --apply) apply=1 ;;
+    --live-payments) live=1 ;;
     --dry-run) ;;
-    *) echo "That option is not known. Use no option for a dry run, or --apply to deploy. Nothing was deployed."; exit 2 ;;
+    *) echo "That option is not known. Use no option for a dry run, or --apply to deploy (with --live-payments for Dodo's live address). Nothing was deployed."; exit 2 ;;
   esac
 done
 
@@ -70,6 +74,26 @@ if [ -n "$devvar" ]; then
   echo "Nothing was deployed."
   exit 1
 fi
+
+# 2b. M116: Dodo's address. Only the test or the live one, and the live one only on purpose. The key itself is a secret this
+#     script never reads, so the server checks that the key's mode agrees with the address before every call to Dodo.
+DODO_TEST="https://test.dodopayments.com"
+DODO_LIVE="https://live.dodopayments.com"
+base=$(sed 's/#.*//' wrangler.toml | sed -n 's/^[[:space:]]*DODO_API_BASE[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+[ -z "$base" ] && base="$DODO_TEST"
+if [ "$base" != "$DODO_TEST" ] && [ "$base" != "$DODO_LIVE" ]; then
+  echo "DODO_API_BASE in wrangler.toml must be $DODO_TEST or $DODO_LIVE. Nothing was deployed."
+  exit 1
+fi
+if [ "$base" = "$DODO_LIVE" ] && [ "$live" -eq 0 ]; then
+  echo "DODO_API_BASE is Dodo's live address. To deploy live payments on purpose, run again with --live-payments. Nothing was deployed."
+  exit 1
+fi
+if [ "$base" = "$DODO_TEST" ] && [ "$live" -eq 1 ]; then
+  echo "--live-payments was given, but DODO_API_BASE is Dodo's test address. Set it to $DODO_LIVE first. Nothing was deployed."
+  exit 1
+fi
+if [ "$base" = "$DODO_LIVE" ]; then echo "Live payments: DODO_PAYMENTS_API_KEY must be a live key (dodo_live_). With a test key, no checkout is made."; fi
 
 # 3. A real deploy only when every secret it needs is already set. Only the names are read, never a value.
 if ! "$W" secret list --format json > "$OUT/secret-names.json" 2> "$OUT/secret-list.log"; then

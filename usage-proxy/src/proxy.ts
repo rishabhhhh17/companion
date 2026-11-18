@@ -19,7 +19,7 @@ import { error, readCapped } from "./http.ts";
  *  the other account routes (account-routes.ts). */
 export { GOOGLE_SIGNIN_PATH } from "./account-routes.ts";
 
-export type SafeEvent = { kind: "refused" | "request" | "upstream_error" | "signin" | "signout"; userId?: string; reason?: string; model?: string; usd?: number; status?: number; complete?: boolean };
+export type SafeEvent = { kind: "refused" | "request" | "upstream_error" | "signin" | "signout" | "checkout" | "portal"; userId?: string; reason?: string; model?: string; usd?: number; status?: number; complete?: boolean };
 export type Deps = {
   store: Store;
   anthropicKey: string;

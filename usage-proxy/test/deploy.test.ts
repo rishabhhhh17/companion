@@ -150,6 +150,25 @@ describe("scripts/deploy.sh", () => {
     expect(fine.code).toBe(0);
     expect(realDeploys(fine.calls)).toEqual(["deploy"]);
   });
+  test("M116 S4: the Dodo address must be the test or the live one, and the live one needs --live-payments", () => {
+    const toml = (base: string) => `name = "x"\n[vars]\nPAYMENT_PROVIDER = "none"\nDODO_API_BASE = "${base}"\n`;
+    const odd = stub({ secrets: [...ALWAYS_SECRETS], toml: toml("https://dodo.evil.example") }).run(["--apply"]);
+    expect(odd.code).toBe(1);
+    expect(odd.text).toContain("DODO_API_BASE");
+    expect(realDeploys(odd.calls)).toEqual([]);
+    const live = stub({ secrets: [...ALWAYS_SECRETS], toml: toml("https://live.dodopayments.com") }).run(["--apply"]);
+    expect(live.code).toBe(1);
+    expect(live.text).toContain("--live-payments");
+    expect(realDeploys(live.calls)).toEqual([]);
+    const liveOk = stub({ secrets: [...ALWAYS_SECRETS], toml: toml("https://live.dodopayments.com") }).run(["--apply", "--live-payments"]);
+    expect(liveOk.code).toBe(0);
+    expect(liveOk.text).toContain("dodo_live_");   // it reminds the founder the key must be a live key
+    const testOk = stub({ secrets: [...ALWAYS_SECRETS], toml: toml("https://test.dodopayments.com") }).run(["--apply"]);
+    expect(testOk.code).toBe(0);
+    // --live-payments with the test address is refused too: the two must agree
+    const mixed = stub({ secrets: [...ALWAYS_SECRETS], toml: toml("https://test.dodopayments.com") }).run(["--apply", "--live-payments"]);
+    expect(mixed.code).toBe(1);
+  });
   test("an unknown option deploys nothing", () => {
     const r = stub().run(["--force"]);
     expect(r.code).toBe(2);

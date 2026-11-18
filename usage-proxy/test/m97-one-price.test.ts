@@ -35,9 +35,11 @@ describe("one price everywhere", () => {
     for (const ok of ["There is no Max plan.", "Free and Pro; no Max plan.", "A table that still names `max` is refused.", "maxItems", "the maximum"])
       expect(namesMax(ok), ok).toBe(false);
   });
-  test("the example product table maps only to Pro, monthly and yearly", () => {
-    const t = JSON.parse(read("usage-proxy/dodo-products.example.json")) as Record<string, string>;
-    expect(Object.values(t)).toEqual(["pro", "pro"]);
+  test("the example product table maps only to Pro, monthly and yearly (M116: plus the one time report, never a plan)", () => {
+    const t = JSON.parse(read("usage-proxy/dodo-products.example.json")) as Record<string, { item: string; plan?: string; once?: boolean }>;
+    expect(Object.values(t).filter((e) => e.plan !== undefined).map((e) => e.plan)).toEqual(["pro", "pro"]);
+    expect(Object.values(t).map((e) => e.item)).toEqual(["pro_monthly", "pro_yearly", "report"]);
+    expect(Object.values(t).find((e) => e.item === "report")).toEqual({ item: "report", once: true });
     expect(Object.keys(t).join(" ")).toMatch(/MONTHLY.*YEARLY/);
   });
   test("the dated history docs say at the top that their prices are superseded", () => {

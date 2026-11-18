@@ -15,6 +15,9 @@
 //   PAYMENT_PROVIDER          none (the default, in wrangler.toml), or dodo. Stripe's webhook is not built here.
 //   DODO_WEBHOOK_SECRET, DODO_PRODUCTS   Dodo's signing secret and the product table (dodo.ts).
 //   DODO_PAYMENTS_API_KEY     M116: Dodo's API key, for checkouts and the billing portal. Needed to deploy once payments are on.
+//   DODO_API_BASE             M116: Dodo's address, a plain var in wrangler.toml: https://test.dodopayments.com (the default)
+//                             or https://live.dodopayments.com. It must agree with the key (dodo_test_ or dodo_live_), or no
+//                             checkout or portal is made (dodo-api.ts).
 //   OPERATOR_KEY              the operator's own key for POST /v1/operator (suspend and restore). Without it that route is not served.
 //   UPSTREAM_BASE             only for `wrangler dev` against a stand in model on this machine (https only, loopback aside).
 //   DEV_TOKENS                only for `wrangler dev`: "on" serves POST /v1/dev/token, which gives a test sign in token, and only
@@ -24,7 +27,9 @@
 // Logs are the SafeEvent lines the proxy and the webhook already make: ids, reasons, counts and dollars, never a body or a secret.
 import { createProxy, storeFailed, type SafeEvent } from "./proxy.ts";
 import { createGoogleVerifier } from "./google.ts";
-import { createDodoWebhook, parseDodoProducts, constantTimeEqual, type SafeDodoEvent } from "./dodo.ts";
+import { createDodoWebhook, parseDodoCatalog, constantTimeEqual, type SafeDodoEvent } from "./dodo.ts";
+import { createBillingRoutes, isBillingPath, storeHooks, BILLING_PRESSES_PER_MINUTE } from "./billing-routes.ts";
+import { dodoMode, dodoSetup, paymentProducts } from "./dodo-api.ts";
 import { paymentProviderFromSetting, webhookRouteFor } from "./payments.ts";
 import { runOperator } from "./operator.ts";
 import { accountStoreFailed, isAccountPath } from "./account-routes.ts";
@@ -42,6 +47,7 @@ export type Env = {
   LOOP_ON?: string;
   PAYMENTS_ON?: string;
   DODO_PAYMENTS_API_KEY?: string;
+  DODO_API_BASE?: string;
   ANTHROPIC_API_KEY?: string;
   METADATA_USER_ID_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;
@@ -83,7 +89,7 @@ export function switchOn(value: unknown): boolean {
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 const logLine = (e: SafeEvent | SafeDodoEvent | { kind: "operator"; code: number } | { kind: "refused"; reason: string }) => console.log(JSON.stringify(e));
 
-type Parts = { proxy: (req: Request) => Promise<Response>; dodo: (req: Request) => Promise<Response>; store: DurableStore };
+type Parts = { proxy: (req: Request) => Promise<Response>; dodo: (req: Request) => Promise<Response>; billing: (req: Request, url: URL) => Promise<Response | null>; store: DurableStore };
 // Google's keys are fetched once per server instance and kept as long as Google says, so the checker is kept per client id.
 // Everything else is made fresh for each request (it is cheap), so one request's waitUntil is never used for another's work.
 const googleCheckers = new Map<string, ReturnType<typeof createGoogleVerifier>>();
@@ -95,6 +101,8 @@ function googleFor(clientId: string, now: () => number) {
 
 // M116: sign in tries per address, counted in this server instance's memory (writes nothing). See ratelimit.ts.
 const signinTries = createRateLimiter({ limit: SIGNIN_TRIES_PER_MINUTE, windowMs: 60_000 });
+// M116: checkout and portal presses per account, the same way.
+const billingPresses = createRateLimiter({ limit: BILLING_PRESSES_PER_MINUTE, windowMs: 60_000 });
 
 function partsFor(env: Env, ctx: Ctx, now: () => number): Parts {
   const store = new DurableStore(env.STORE, now);
@@ -112,19 +120,33 @@ function partsFor(env: Env, ctx: Ctx, now: () => number): Parts {
     ...(env.GOOGLE_CLIENT_ID ? { googleSignIn: googleFor(env.GOOGLE_CLIENT_ID, now) } : {}),
     waitUntil: (p) => ctx.waitUntil(p),
   });
-  const products = () => { const p = parseDodoProducts(env.DODO_PRODUCTS ?? ""); return p.ok ? p.products : {}; };
+  const catalog = () => { const p = parseDodoCatalog(env.DODO_PRODUCTS ?? ""); return p.ok ? p.catalog : null; };
+  const dodoApi = () => { const s = dodoSetup(env.DODO_API_BASE, env.DODO_PAYMENTS_API_KEY); return s.ok ? { base: s.base, key: s.key, fetch } : null; };
   const dodo = createDodoWebhook({
     secret: () => env.DODO_WEBHOOK_SECRET ?? "",
-    products,
+    products: () => catalog()?.plans ?? {},
+    reportIds: () => catalog()?.reports ?? [],
     ledger: new DurableDodoLedger(env.STORE, now),
     links: new DurableLinkBook(env.STORE),
-    // The plan goes on the owner's own object, and an event older than one already applied is skipped there in the same step.
-    // False: another server instance already applied a newer event for this owner, so this one is answered and logged as stale.
-    apply: (e, at) => store.setOwnerPlan(e.userId, { plan: e.plan, status: e.status, ...(e.until !== undefined ? { until: e.until } : {}) }, at),
+    // M116: the plan is kept per subscription on the owner's own object, and an event older than one already applied for that
+    // subscription is skipped there in the same step (false: answered and logged as stale). The owner's plan is the best of
+    // their subscriptions. Report credits are keyed by payment_id.
+    ...storeHooks(store),
+    paymentProducts: async (paymentId) => { const api = dodoApi(); return api ? paymentProducts(api, paymentId) : null; },
+    // Customer ids are kept with the Dodo mode of DODO_API_BASE. The webhook secret and the address are switched to live
+    // together on the go live checklist, so an event's mode is the address's.
+    mode: () => dodoMode(env.DODO_API_BASE),
     now,
     log: logLine,
   });
-  return { proxy, dodo, store };
+  const billing = createBillingRoutes({
+    store, now, log: logLine,
+    paymentsOn: () => switchOn(env.PAYMENTS_ON),
+    provider: () => paymentProviderFromSetting(env.PAYMENT_PROVIDER),
+    catalog, dodoBase: () => env.DODO_API_BASE, dodoKey: () => env.DODO_PAYMENTS_API_KEY,
+    pressLimit: billingPresses,
+  });
+  return { proxy, dodo, billing, store };
 }
 
 async function operatorRoute(req: Request, env: Env, store: DurableStore, now: () => number): Promise<Response> {
@@ -160,7 +182,7 @@ export async function handle(req: Request, env: Env, ctx: Ctx, now: () => number
     const path = new URL(req.url).pathname;
     if (path === OPERATOR_PATH || path === DEV_TOKEN_PATH) return json(503, { error: "The store could not finish that step. Nothing was changed. Try again in a moment." });
     if (path.startsWith("/webhooks/")) return json(503, { outcome: "apply_failed", message: "Something went wrong on our side. Nothing was changed, and the sender can deliver this again." });
-    if (isAccountPath(path)) return accountStoreFailed();
+    if (isAccountPath(path) || isBillingPath(path)) return accountStoreFailed();
     return storeFailed();
   }
 }
@@ -174,6 +196,9 @@ async function route(req: Request, env: Env, ctx: Ctx, now: () => number): Promi
     const t = await issueToken(parts.store, "dev:stand-in", "pro");
     return t.ok ? json(200, { token: t.token, owner: "dev:stand-in" }) : json(403, { error: t.message });
   }
+  // M116: checkout, portal and the /paid return page, ahead of the proxy and its switch.
+  const billing = await parts.billing(req, url);
+  if (billing) return billing;
   const provider = paymentProviderFromSetting(env.PAYMENT_PROVIDER);
   const hook = webhookRouteFor(provider, req.method, url.pathname);
   if (hook === "dodo") return parts.dodo(req);

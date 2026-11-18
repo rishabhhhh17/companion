@@ -11,6 +11,43 @@ export type User = { id: string; plan: string; status: "active" | "past_due" | "
 /** The plan a payment event gave an owner. It wins over the plan written with each token, until a newer event changes it.
  *  M116: `on_hold` (a failed renewal Dodo stopped retrying: plan free) and `cancelling` (Pro until `until`). */
 export type OwnerPlan = { plan: string; status: "active" | "past_due" | "on_hold" | "cancelling"; until?: number; renewsOn?: number };
+/** M116 step 4: one Dodo subscription as its newest event left it. The owner's plan is the best of their subscriptions
+ *  (bestPlan), so a cancel or an expiry of one never drops a person who has another that is live. `at`: that event's time. */
+export type SubChange = { plan: string; status: OwnerPlan["status"]; until?: number; renewsOn?: number; customerId?: string; customerMode?: DodoMode };
+export type Sub = SubChange & { at: number };
+/** Which Dodo a customer id came from. Test mode and live mode keep separate customers, so an id from one is unknown to the
+ *  other. A customer id kept without a mode counts as test: nothing was live before modes were kept. */
+export type DodoMode = "test" | "live";
+/** One $29 report credit, keyed by Dodo's payment_id. `removed`: a full refund or a lost dispute took it back before use, or
+ *  arrived before the payment did (Dodo does not promise the order), so the credit was never given. */
+export type ReportCredit = { at: number; state: "unused" | "used" | "removed" };
+/** What the payment routes read about an owner, in one step and writing nothing. */
+export type Billing = { email: string | null; customerId: string | null; customerMode: DodoMode | null; subs: [string, Sub][]; reports: [string, ReportCredit][] };
+export type ReportRemoved = { result: "removed" | "used" | "already" | "unknown"; ownerId?: string };
+
+/** The owner's plan from their subscriptions: any active one wins (the newest renew date shown); then the one kept the longest
+ *  (cancelling or past due, until its date); then on hold (a failed renewal); then Free. */
+export function bestPlan(subs: readonly [string, Sub][]): OwnerPlan {
+  const all = subs.map(([, x]) => x), paid = all.filter((x) => x.plan !== "free");
+  const open = paid.filter((x) => x.until === undefined);
+  if (open.length) {
+    const b = open.reduce((a, x) => ((x.renewsOn ?? 0) > (a.renewsOn ?? 0) ? x : a));
+    return { plan: b.plan, status: "active", ...(b.renewsOn !== undefined ? { renewsOn: b.renewsOn } : {}) };
+  }
+  if (paid.length) {
+    const b = paid.reduce((a, x) => ((x.until ?? 0) > (a.until ?? 0) ? x : a));
+    return { plan: b.plan, status: b.status === "past_due" ? "past_due" : "cancelling", until: b.until };
+  }
+  return { plan: "free", status: all.some((x) => x.status === "on_hold") ? "on_hold" : "active" };
+}
+/** A subscription that could still charge the person, or still gives Pro: a second Pro checkout is refused while one exists. */
+export const liveSub = (x: Sub, now: number): boolean =>
+  x.status === "on_hold" || (x.plan !== "free" && (x.until === undefined || x.until > now));
+/** The sub as kept: only these fields. */
+export const keptSub = (c: SubChange, at: number): Sub => ({ plan: c.plan, status: c.status, at,
+  ...(c.until !== undefined ? { until: c.until } : {}), ...(c.renewsOn !== undefined ? { renewsOn: c.renewsOn } : {}),
+  ...(c.customerId ? { customerId: c.customerId, customerMode: c.customerMode ?? "test" } : {}) });
+
 /** What GET /v1/me reads, in one step and writing nothing: the token's user, what they spent (with holds), and the owner's email. */
 export type Account = { user: User; spent: Spent; email: string | null };
 /** M116 sign in: the email to keep on the owner, and the nonce to mark used in the same write that keeps the token's hash. */
@@ -72,6 +109,20 @@ export interface Store {
   /** M116 sign out on all Macs: forget every token hash of the owner. The number that still worked. The account, its email
    *  and its plan stay. */
   dropAllTokens(ownerId: string): Promise<number>;
+  /** M116 step 4: write one subscription's state from a Dodo event, and the owner's plan as the best of their subscriptions, in
+   *  one step. False, and nothing written, when this subscription already has a newer event. Saves `customerId` (with its
+   *  `customerMode`, test when missing) when given. */
+  applySubscription(ownerId: string, subscriptionId: string, change: SubChange, at: number): Promise<boolean>;
+  /** M116: the owner's email, Dodo customer id, subscriptions and report credits. Reads only. */
+  billingOf(ownerId: string): Promise<Billing>;
+  /** M116: keep the Dodo customer id on the owner (from a payment whose metadata names them), with the mode it came from. */
+  saveCustomer(ownerId: string, customerId: string, mode?: DodoMode): Promise<void>;
+  /** M116: one report credit for this payment_id. "known" when that payment was seen before (a retry, or one refunded since),
+   *  or was refunded or lost in a dispute before it arrived: then the credit is kept as removed, never given. */
+  addReport(ownerId: string, paymentId: string, at: number): Promise<"added" | "known">;
+  /** M116: take back an unused credit (a full refund or a lost dispute). The owner is found by the payment_id. For a payment
+   *  not seen yet ("unknown"), a marker is kept by payment_id, so the payment's credit, if it comes later, is never given. */
+  removeReport(paymentId: string, at?: number): Promise<ReportRemoved>;
 }
 
 export class MemoryStore implements Store {
@@ -85,6 +136,11 @@ export class MemoryStore implements Store {
   #emails = new Map<string, string>();
   #nonces = new Map<string, Map<string, number>>();
   #log: SuspensionRecord[] = [];
+  #subs = new Map<string, Map<string, Sub>>();
+  #customers = new Map<string, { id: string; mode: DodoMode }>();
+  #removedEarly = new Set<string>();
+  #reports = new Map<string, Map<string, ReportCredit>>();
+  #reportOwners = new Map<string, string>();
   records: UsageRecord[] = [];
   addUser(hash: string, u: User) { this.#users.set(hash, u); }
   setSpent(userId: string, now: number, s: Spent) { this.#spent.set(`${userId}|d|${dayKey(now)}`, s.day); this.#spent.set(`${userId}|m|${monthKey(now)}`, s.month); }
@@ -121,6 +177,42 @@ export class MemoryStore implements Store {
     if (at !== undefined && was?.at !== undefined && at < was.at) return false;
     this.#plans.set(ownerId, { plan, at: at !== undefined ? Math.max(at, was?.at ?? 0) : was?.at });
     return true;
+  }
+  async applySubscription(ownerId: string, subscriptionId: string, change: SubChange, at: number) {
+    const subs = this.#subs.get(ownerId) ?? new Map<string, Sub>();
+    const was = subs.get(subscriptionId);
+    if (was && at < was.at) return false;
+    subs.set(subscriptionId, keptSub(change, at));
+    this.#subs.set(ownerId, subs);
+    if (change.customerId) this.#customers.set(ownerId, { id: change.customerId, mode: change.customerMode ?? "test" });
+    const prev = this.#plans.get(ownerId);
+    this.#plans.set(ownerId, { plan: bestPlan([...subs]), at: Math.max(at, prev?.at ?? 0) });
+    return true;
+  }
+  async billingOf(ownerId: string) {
+    const c = this.#customers.get(ownerId);
+    return { email: this.#emails.get(ownerId) ?? null, customerId: c?.id ?? null, customerMode: c?.mode ?? null,
+      subs: [...(this.#subs.get(ownerId) ?? [])].map(([k, v]): [string, Sub] => [k, { ...v }]),
+      reports: [...(this.#reports.get(ownerId) ?? [])].map(([k, v]): [string, ReportCredit] => [k, { ...v }]) };
+  }
+  async saveCustomer(ownerId: string, customerId: string, mode: DodoMode = "test") { this.#customers.set(ownerId, { id: customerId, mode }); }
+  async addReport(ownerId: string, paymentId: string, at: number) {
+    const owner = this.#reportOwners.get(paymentId) ?? ownerId;   // a payment belongs to whoever it was first seen for
+    this.#reportOwners.set(paymentId, owner);
+    const list = this.#reports.get(owner) ?? new Map<string, ReportCredit>();
+    if (list.has(paymentId)) return "known" as const;
+    const early = this.#removedEarly.has(paymentId);   // refunded or lost before it arrived: kept, never given
+    list.set(paymentId, { at, state: early ? "removed" : "unused" });
+    this.#reports.set(owner, list);
+    return early ? "known" as const : "added" as const;
+  }
+  async removeReport(paymentId: string): Promise<ReportRemoved> {
+    const ownerId = this.#reportOwners.get(paymentId), c = ownerId ? this.#reports.get(ownerId)?.get(paymentId) : undefined;
+    if (!ownerId || !c) { this.#removedEarly.add(paymentId); return { result: "unknown" }; }
+    if (c.state === "used") return { result: "used", ownerId };
+    if (c.state === "removed") return { result: "already", ownerId };
+    c.state = "removed";
+    return { result: "removed", ownerId };
   }
   async listOwnerIds() { return [...new Set([...[...this.#users.values()].map((u) => u.id), ...this.#emails.keys()])]; }
   async isSuspended(ownerId: string) { return this.#suspended.has(ownerId); }
@@ -187,5 +279,5 @@ export class MemoryStore implements Store {
   async end(userId: string) { this.#running.set(userId, Math.max(0, (this.#running.get(userId) ?? 0) - 1)); }
   inFlight(userId: string) { return this.#running.get(userId) ?? 0; }
   /** Everything held, for a test that checks no text or secret is among it. */
-  dump() { return { users: [...this.#users], emails: [...this.#emails], nonces: [...this.#nonces].map(([o, m]) => [o, [...m]]), suspended: [...this.#suspended], plans: [...this.#plans], log: this.#log, spent: [...this.#spent], running: [...this.#running], held: [...this.#held], records: this.records }; }
+  dump() { return { users: [...this.#users], emails: [...this.#emails], nonces: [...this.#nonces].map(([o, m]) => [o, [...m]]), suspended: [...this.#suspended], plans: [...this.#plans], subs: [...this.#subs].map(([o, m]) => [o, [...m]]), customers: [...this.#customers], removedEarly: [...this.#removedEarly], reports: [...this.#reports].map(([o, m]) => [o, [...m]]), reportOwners: [...this.#reportOwners], log: this.#log, spent: [...this.#spent], running: [...this.#running], held: [...this.#held], records: this.records }; }
 }

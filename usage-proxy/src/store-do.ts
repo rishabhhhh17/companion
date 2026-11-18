@@ -11,7 +11,7 @@
 // It needs nothing from Cloudflare at build time: the object talks through `fetch`, and the types below are the small part of the
 // Durable Object API it uses, so the tests run it on a fake of that API (test/fake-do.ts) with Bun alone.
 import { budgetCheck, dayKey, monthKey, type Plan, type Spent } from "./plans.ts";
-import type { Account, FinishAsk, SignIn, StartAsk, Started, Store, SuspensionRecord, UsageRecord, User, OwnerPlan } from "./store.ts";
+import { bestPlan, keptSub, type Account, type Billing, type DodoMode, type FinishAsk, type ReportCredit, type ReportRemoved, type SignIn, type StartAsk, type Started, type Store, type Sub, type SubChange, type SuspensionRecord, type UsageRecord, type User, type OwnerPlan } from "./store.ts";
 import type { DodoLedger, LinkBook } from "./dodo.ts";
 
 /** The part of Durable Object storage used here (the key value calls, on SQLite backed objects too). */
@@ -52,6 +52,13 @@ type Live = { running: Lease[]; holds: Lease[]; seq: number; prunedOn?: string }
 /** The day and month totals as of a record, carried by the record itself (the newest one is the one read). */
 type Totals = { day: string; dayUsd: number; month: string; monthUsd: number };
 type KeptRecord = UsageRecord & { totals: Totals };
+/** M116 step 4: an owner's payments in one key: the Dodo customer id, each subscription's state, and the report credits by
+ *  payment_id. Lists of pairs, not objects, so no id from Dodo can ever be read as an object's own machinery. */
+type BillingRec = { customerId?: string; customerMode?: DodoMode; subs: [string, Sub][]; reports: [string, ReportCredit][] };
+async function billingRec(s: StorageLike): Promise<BillingRec> {
+  const b = await s.get<BillingRec>("billing");
+  return { ...(b?.customerId ? { customerId: b.customerId, customerMode: b.customerMode ?? "test" } : {}), subs: b?.subs ?? [], reports: b?.reports ?? [] };
+}
 const pad = (n: number, w = 15) => String(Math.max(0, Math.floor(n))).padStart(w, "0");
 
 /** One Durable Object. The Worker reaches it only through its binding; it is never on the public address. */
@@ -245,8 +252,56 @@ const OPS: Record<string, Op> = {
     await s.put({ plan: a.plan, ...(a.at !== undefined ? { planAt: Math.max(a.at, last ?? 0) } : {}) });
     return true;
   },
-  "owner.lastAt": async (s) => (await s.get<number>("planAt")) ?? null,
-  "owner.setLastAt": async (s, a: { ms: number }) => { await s.put({ planAt: Math.max(a.ms, (await s.get<number>("planAt")) ?? 0) }); },
+  // With a scope (a subscription id), the order is that subscription's own, kept by owner.applySub in the same write.
+  "owner.lastAt": async (s, a: { scope?: string }) => {
+    if (a.scope) return (await billingRec(s)).subs.find(([id]) => id === a.scope)?.[1].at ?? null;
+    return (await s.get<number>("planAt")) ?? null;
+  },
+  "owner.setLastAt": async (s, a: { ms: number; scope?: string }) => {
+    if (a.scope) return;   // owner.applySub already kept this subscription's time
+    await s.put({ planAt: Math.max(a.ms, (await s.get<number>("planAt")) ?? 0) });
+  },
+  // M116 step 4: one subscription's state and the owner's plan (the best of their subscriptions), in one write.
+  "owner.applySub": async (s, a: { subId: string; change: SubChange; at: number }) => {
+    const b = await billingRec(s), i = b.subs.findIndex(([id]) => id === a.subId);
+    if (i >= 0 && a.at < b.subs[i][1].at) return false;
+    const sub = keptSub(a.change, a.at);
+    if (i >= 0) b.subs[i] = [a.subId, sub]; else b.subs.push([a.subId, sub]);
+    if (a.change.customerId) { b.customerId = a.change.customerId; b.customerMode = a.change.customerMode ?? "test"; }
+    await s.put({ billing: b, plan: bestPlan(b.subs), planAt: Math.max(a.at, (await s.get<number>("planAt")) ?? 0) });
+    return true;
+  },
+  "owner.billing": async (s): Promise<Billing> => {
+    const b = await billingRec(s);
+    return { email: (await s.get<string>("email")) ?? null, customerId: b.customerId ?? null, customerMode: b.customerId ? (b.customerMode ?? "test") : null, subs: b.subs, reports: b.reports };
+  },
+  "owner.saveCustomer": async (s, a: { customerId: string; mode?: DodoMode }) => {
+    const b = await billingRec(s), mode = a.mode ?? "test";
+    if (b.customerId === a.customerId && b.customerMode === mode) return;
+    await s.put({ billing: { ...b, customerId: a.customerId, customerMode: mode } });
+  },
+  // `removed`: the payment was refunded or lost in a dispute before it arrived. Its credit is kept as removed, never given.
+  "owner.addReport": async (s, a: { paymentId: string; at: number; removed?: boolean }) => {
+    const b = await billingRec(s);
+    if (b.reports.some(([id]) => id === a.paymentId)) return "known";
+    b.reports.push([a.paymentId, { at: a.at, state: a.removed ? "removed" : "unused" }]);
+    await s.put({ billing: b });
+    return a.removed ? "known" : "added";
+  },
+  "owner.removeReport": async (s, a: { paymentId: string; at: number }) => {
+    const b = await billingRec(s), c = b.reports.find(([id]) => id === a.paymentId)?.[1];
+    if (!c) {
+      // The payment's owner is known but its credit is not written yet (a refund between addReport's two steps): keep it as
+      // removed now, so the credit that follows is "known" and never given.
+      b.reports.push([a.paymentId, { at: a.at, state: "removed" }]);
+      await s.put({ billing: b });
+      return "unknown";
+    }
+    if (c.state !== "unused") return c.state === "used" ? "used" : "already";
+    c.state = "removed";
+    await s.put({ billing: b });
+    return "removed";
+  },
   "owner.spent": async (s, a: { now: number }) => spentNow(s, a.now),
   // M116 step 3: what the proxy uses. The budget check, the cap and the taking of the slot and hold, in one step and one row.
   // A refusal writes nothing.
@@ -343,6 +398,24 @@ const OPS: Record<string, Op> = {
   "pay.release": async (s, a: { id: string }) => { await s.delete([`h:${a.id}`]); },
   "pay.link": async (s, a: { customerId: string }) => (await s.get<string>(`c:${a.customerId}`)) ?? null,
   "pay.setLink": async (s, a: { customerId: string; userId: string }) => { await s.put({ [`c:${a.customerId}`]: a.userId }); },
+  // M116: which owner a report payment belongs to, so a refund (whose metadata is its own) finds the credit. The first one stays.
+  // `removed`: a full refund or a lost dispute for this payment came before the payment itself (marker `x:`).
+  "pay.setReportOwner": async (s, a: { paymentId: string; ownerId: string }) => {
+    const removed = (await s.get<number>(`x:${a.paymentId}`)) !== undefined;
+    const was = await s.get<string>(`r:${a.paymentId}`);
+    if (was !== undefined) return { ownerId: was, removed };
+    await s.put({ [`r:${a.paymentId}`]: a.ownerId });
+    return { ownerId: a.ownerId, removed };
+  },
+  // The owner of a report payment for a refund. Not known: a marker is kept by payment_id (with when), so the payment, if Dodo
+  // delivers it later (its retries last about 37 hours), never gives a credit. Refunds and lost disputes are rare and a
+  // marker is one short key, so markers are kept.
+  "pay.reportOwnerOrMark": async (s, a: { paymentId: string; at: number }) => {
+    const owner = await s.get<string>(`r:${a.paymentId}`);
+    if (owner !== undefined) return owner;
+    if ((await s.get<number>(`x:${a.paymentId}`)) === undefined) await s.put({ [`x:${a.paymentId}`]: a.at });
+    return null;
+  },
 };
 
 // ---------- the Store the proxy uses, on top of the objects ----------
@@ -424,6 +497,22 @@ export class DurableStore implements Store {
     for (const h of r.hashes) await this.call(TOKEN(h), "token.drop", { ownerId });
     return r.stopped;
   }
+  applySubscription(ownerId: string, subscriptionId: string, change: SubChange, at: number) {
+    return this.call<boolean>(OWNER(ownerId), "owner.applySub", { subId: subscriptionId, change, at });
+  }
+  billingOf(ownerId: string) { return this.call<Billing>(OWNER(ownerId), "owner.billing"); }
+  async saveCustomer(ownerId: string, customerId: string, mode: DodoMode = "test") { await this.call(OWNER(ownerId), "owner.saveCustomer", { customerId, mode }); }
+  async addReport(ownerId: string, paymentId: string, at: number) {
+    // The payment's owner first (the first one seen stays), then the credit on that owner's own object.
+    const { ownerId: owner, removed } = await this.call<{ ownerId: string; removed: boolean }>(PAYMENTS, "pay.setReportOwner", { paymentId, ownerId });
+    return this.call<"added" | "known">(OWNER(owner), "owner.addReport", { paymentId, at, removed });
+  }
+  async removeReport(paymentId: string, at = this.clock()): Promise<ReportRemoved> {
+    const ownerId = await this.call<string | null>(PAYMENTS, "pay.reportOwnerOrMark", { paymentId, at });
+    if (ownerId === null) return { result: "unknown" };
+    const result = await this.call<ReportRemoved["result"]>(OWNER(ownerId), "owner.removeReport", { paymentId, at });
+    return result === "unknown" ? { result } : { result, ownerId };
+  }
 }
 
 /** Dodo's once only ledger: event ids in the payments object, the newest applied time in each owner's own object. */
@@ -431,8 +520,11 @@ export class DurableDodoLedger implements DodoLedger {
   constructor(private ns: NamespaceLike, private clock: () => number = Date.now) {}
   claim(id: string) { return callObject<boolean>(this.ns, PAYMENTS, "pay.claim", { id, now: this.clock() }); }
   async release(id: string) { await callObject(this.ns, PAYMENTS, "pay.release", { id }); }
-  lastAppliedAt(userId: string) { return callObject<number | null>(this.ns, OWNER(userId), "owner.lastAt"); }
-  async setLastAppliedAt(userId: string, ms: number) { await callObject(this.ns, OWNER(userId), "owner.setLastAt", { ms }); }
+  lastAppliedAt(userId: string, scope?: string) { return callObject<number | null>(this.ns, OWNER(userId), "owner.lastAt", scope ? { scope } : {}); }
+  async setLastAppliedAt(userId: string, ms: number, scope?: string) {
+    if (scope) return;   // the subscription's time is kept by owner.applySub in the same write as its state
+    await callObject(this.ns, OWNER(userId), "owner.setLastAt", { ms });
+  }
 }
 export class DurableLinkBook implements LinkBook {
   constructor(private ns: NamespaceLike) {}

@@ -125,18 +125,24 @@ Fees, payout timing and terms are Dodo's: read them in the Dodo dashboard and Do
 remote switch, and it stays off until Anthropic confirms in writing (`docs/decisions/F22-company-pays-for-usage-gated.md`).
 
 ### Setting it up (operator, later, after a written yes)
-1. In the Dodo dashboard (test mode first) create the two Pro products, monthly ($15) and yearly ($144) as in `app/src/prices.json` (F31), and note each product id.
-2. Fill in the product table, a JSON object of Dodo product id to plan name (both are `pro`; there is no Max plan). The shape is in
+1. In the Dodo dashboard (test mode first) create the two Pro products, monthly ($15) and yearly ($144) as in `app/src/prices.json` (F31),
+   and the $29 report (one time), and note each product id. Turn license keys off on all three (T31).
+2. Fill in the product table (M116): each Dodo product id with its item, `{"item": "pro_monthly", "plan": "pro"}`,
+   `{"item": "pro_yearly", "plan": "pro"}` and `{"item": "report", "once": true}`. The shape is in
    `dodo-products.example.json`. It is read from the `DODO_PRODUCTS` setting. Product ids are never written in code. A product that
    is not in the table is given no plan, and the webhook answers 503 with a plain sentence naming it, so Dodo tries again after you
    fix the table.
 3. Add a webhook in the dashboard that points to `https://<the proxy's own address>/webhooks/dodo` and subscribe it to the
-   subscription events (and `payment.succeeded`, which teaches the link below). Copy its signing secret (it starts with `whsec_`) into
+   events `subscription.*`, `payment.succeeded`, `payment.failed`, `refund.succeeded`, `dispute.opened` and `dispute.lost`. Copy its signing secret (it starts with `whsec_`) into
    the operator's environment as `DODO_WEBHOOK_SECRET`. **The secret goes in the environment or the host's secret store, never in this
    repo, never in a log.**
-4. Set `PAYMENT_PROVIDER=dodo`. The server then serves `POST /webhooks/dodo` and nothing else for payments.
-5. When you create a checkout session (on the server, never from the app), put our user id in its `metadata` under
-   `companion_user_id`.
+4. Set `PAYMENT_PROVIDER=dodo`, `PAYMENTS_ON` and `DODO_PAYMENTS_API_KEY` (a `dodo_test_` key while `DODO_API_BASE` in
+   `wrangler.toml` is `https://test.dodopayments.com`). The server then serves the webhook, `POST /v1/checkout` and `POST /v1/portal`.
+5. Checkouts are made only here (M116, `src/billing-routes.ts`): the app sends an item name, the server picks the product id, puts
+   the owner from the sign in token in `metadata.companion_user_id`, locks the account's email, and answers the checkout address.
+   A second Pro is refused while one subscription is live, and the report while Pro includes it. The browser comes back to
+   `/paid`, which drops its query (Dodo puts the email there) with a 303 to `/paid/done`, logs nothing and grants nothing.
+   Cloudflare's invocation logs are off in `wrangler.toml` for the same reason.
 
 ### What the code does with a webhook
 - **Signature** (Standard Webhooks, as Dodo documents it): headers `webhook-id`, `webhook-timestamp`, `webhook-signature`. HMAC
@@ -145,12 +151,25 @@ remote switch, and it stays off until Anthropic confirms in writing (`docs/decis
   difference; a timestamp more than 300 seconds (`DODO_TIMESTAMP_TOLERANCE_SEC`) from now, either way, is refused.
 - **Once only:** each `webhook-id` is taken before anything is applied. The same event twice (Dodo retries up to 8 times) changes
   nothing the second time. If applying fails the id is given back, the answer is 500 and Dodo retries.
-- **In order:** Dodo says events can arrive out of order and to order them by the payload's `timestamp`. An event older than the newest
-  one already applied for that person is skipped.
-- **Plans:** active, renewed, unpaused, updated and plan_changed give the mapped plan when the payload status is `active`. `past_due`
-  keeps the plan only until `past_due_ends_at`. `on_hold`, `paused`, `failed`, `expired` and `cancelled` drop the person to free at once.
-  We chose "at once" for `cancelled` because Dodo's docs do not say whether access runs to the end of the period; a cancel that is only
-  scheduled shows as an updated event that is still `active`, which keeps the plan until the cancelled or expired event.
+- **In order:** Dodo says events can arrive out of order and to order them by the payload's `timestamp`. M116: an event older than the
+  newest one already applied for that subscription is skipped (each subscription is ordered on its own).
+- **Plans (M116):** the plan is kept per subscription, and the person's plan is the best of their subscriptions, so a cancel or an
+  expiry of one never drops someone who has another that is live. Active, renewed, unpaused, updated and plan_changed give the mapped
+  plan when the payload status is `active`; with `cancel_at_next_billing_date` true and a future `next_billing_date` it is
+  `cancelling` (Pro until that date), and the flag back to false undoes it. `cancelled` keeps Pro until `next_billing_date` the same
+  way, otherwise it is Free at once, as is `expired`. `past_due` keeps the plan only until `past_due_ends_at`. `on_hold`, `paused` and
+  `failed` are Free with status `on_hold` ("payment failed, fix it in billing"). The Dodo customer id is saved from events whose
+  metadata names the person, for the billing portal, unless that customer is already linked to someone else (then it is left
+  where it is and `link_conflict` is logged). It is kept with the Dodo mode of `DODO_API_BASE` (test or live): checkout and the
+  portal use only an id from the mode the server is in now, so test ids are never sent to live Dodo. The portal opens the
+  customer of the newest live subscription first.
+- **The report (M116):** `payment.succeeded` for the report product adds one credit keyed by `payment_id` (a retry or a repeat never
+  adds two). Its product comes from `product_cart`, or is read back from Dodo when the event has none. A one time payment whose
+  product is neither the report nor Pro in the table (the report product is missing, or the table cannot be read) answers 503
+  `unknown_product`, so Dodo delivers it again once the table is fixed; it is never dropped with a 200. `refund.succeeded` with
+  `is_partial` false, or `dispute.lost`, takes back that credit if unused; a used one stays used and is logged. One that arrives
+  before its payment leaves a marker by `payment_id`, so the payment, when Dodo delivers it, gives no credit. A refund or dispute of
+  a subscription payment changes no plan: Pro follows the subscription events Dodo sends after it.
 - **Who it is:** the `companion_user_id` in the payload's `metadata`, or else the person learned from an earlier `payment.succeeded`
   that carried it for the same Dodo customer id (the first link wins). Email and name are never used and never logged. An event that
   cannot be matched answers 503 so Dodo delivers it again.

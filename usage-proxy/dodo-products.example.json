@@ -1,4 +1,5 @@
 {
-  "REPLACE_WITH_THE_DODO_PRODUCT_ID_FOR_PRO_MONTHLY": "pro",
-  "REPLACE_WITH_THE_DODO_PRODUCT_ID_FOR_PRO_YEARLY": "pro"
+  "REPLACE_WITH_THE_DODO_PRODUCT_ID_FOR_PRO_MONTHLY": { "item": "pro_monthly", "plan": "pro" },
+  "REPLACE_WITH_THE_DODO_PRODUCT_ID_FOR_PRO_YEARLY": { "item": "pro_yearly", "plan": "pro" },
+  "REPLACE_WITH_THE_DODO_PRODUCT_ID_FOR_THE_REPORT": { "item": "report", "once": true }
 }
