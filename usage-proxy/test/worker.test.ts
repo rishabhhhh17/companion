@@ -1,7 +1,7 @@
 // M99: the Cloudflare Worker entry, run with Bun on a fake of the Durable Object API and a stand in model on 127.0.0.1.
 // No network beyond this machine, no real key, nothing deployed.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import worker, { handle, switchOn, DEV_TOKEN_PATH, REQUIRED_SECRETS, OPERATOR_PATH, STATUS_PATH, type Env } from "../src/worker.ts";
+import worker, { handle, switchOn, DEV_TOKEN_PATH, ALL_SECRETS, OPERATOR_PATH, STATUS_PATH, type Env } from "../src/worker.ts";
 import { DurableStore, OWNER, PAYMENTS } from "../src/store-do.ts";
 import { issueToken } from "../src/accounts.ts";
 import { signDodoForTest } from "../src/dodo.ts";
@@ -307,5 +307,5 @@ describe("M99 review: a payment event out of date across two server instances", 
 });
 
 test("the secrets a real deploy needs are the ones the Worker reads", () => {
-  expect([...REQUIRED_SECRETS].sort()).toEqual(["ANTHROPIC_API_KEY", "DODO_PRODUCTS", "DODO_WEBHOOK_SECRET", "GOOGLE_CLIENT_ID", "METADATA_USER_ID_SECRET", "OPERATOR_KEY"]);
+  expect([...ALL_SECRETS].sort()).toEqual(["ANTHROPIC_API_KEY", "DODO_PAYMENTS_API_KEY", "DODO_PRODUCTS", "DODO_WEBHOOK_SECRET", "GOOGLE_CLIENT_ID", "METADATA_USER_ID_SECRET", "OPERATOR_KEY"]);
 });

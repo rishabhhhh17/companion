@@ -4,13 +4,17 @@
 //
 // What is set where (never in this repo):
 //   PROXY_ON                  the switch. Off unless it is exactly on, 1 or true. Set it with `wrangler secret put PROXY_ON`.
+//                             M116: only model requests sit behind it. Sign in, /v1/me and sign out work while it is off.
+//   PAYMENTS_ON               M116: the payments switch, off the same way. /v1/me tells the app; checkout and portal check it.
 //   LOOP_ON                   M100: the fixing loop's switch, off the same way. Off, a request with the loop's tools is refused
 //                             for every sign in token. Turned on only by the go live checklist.
-//   ANTHROPIC_API_KEY         Squibby's key. Without it nothing is forwarded.
-//   METADATA_USER_ID_SECRET   the key for the opaque metadata.user_id (userid.ts). Without it nothing is forwarded.
+//   ANTHROPIC_API_KEY         Squibby's key. Without it nothing is forwarded. Needed to deploy only once PROXY_ON is set.
+//   METADATA_USER_ID_SECRET   the key for the opaque metadata.user_id (userid.ts), and (under its own label) for the sign in
+//                             nonce (nonce.ts). Without it nothing is forwarded and nobody can sign in.
 //   GOOGLE_CLIENT_ID          Sign in with Google. Without it the sign in route answers 503.
 //   PAYMENT_PROVIDER          none (the default, in wrangler.toml), or dodo. Stripe's webhook is not built here.
 //   DODO_WEBHOOK_SECRET, DODO_PRODUCTS   Dodo's signing secret and the product table (dodo.ts).
+//   DODO_PAYMENTS_API_KEY     M116: Dodo's API key, for checkouts and the billing portal. Needed to deploy once payments are on.
 //   OPERATOR_KEY              the operator's own key for POST /v1/operator (suspend and restore). Without it that route is not served.
 //   UPSTREAM_BASE             only for `wrangler dev` against a stand in model on this machine (https only, loopback aside).
 //   DEV_TOKENS                only for `wrangler dev`: "on" serves POST /v1/dev/token, which gives a test sign in token, and only
@@ -23,10 +27,12 @@ import { createGoogleVerifier } from "./google.ts";
 import { createDodoWebhook, parseDodoProducts, constantTimeEqual, type SafeDodoEvent } from "./dodo.ts";
 import { paymentProviderFromSetting, webhookRouteFor } from "./payments.ts";
 import { runOperator } from "./operator.ts";
+import { accountStoreFailed, isAccountPath } from "./account-routes.ts";
 import { issueToken } from "./accounts.ts";
 import { USER_ID_SECRET_SETTING } from "./userid.ts";
 import { DurableDodoLedger, DurableLinkBook, DurableStore, type NamespaceLike } from "./store-do.ts";
 import { PRODUCT } from "./names.ts";
+import { createRateLimiter, SIGNIN_TRIES_PER_MINUTE } from "./ratelimit.ts";
 
 export { StoreObject } from "./store-do.ts";
 
@@ -34,6 +40,8 @@ export type Env = {
   STORE: NamespaceLike;
   PROXY_ON?: string;
   LOOP_ON?: string;
+  PAYMENTS_ON?: string;
+  DODO_PAYMENTS_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
   METADATA_USER_ID_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;
@@ -46,8 +54,14 @@ export type Env = {
 };
 export type Ctx = { waitUntil(p: Promise<unknown>): void };
 
-/** Every secret the server needs before a real deploy. scripts/deploy.sh --apply refuses unless each is set. */
-export const REQUIRED_SECRETS = ["ANTHROPIC_API_KEY", "METADATA_USER_ID_SECRET", "OPERATOR_KEY", "GOOGLE_CLIENT_ID", "DODO_WEBHOOK_SECRET", "DODO_PRODUCTS"] as const;
+/** M116: the secrets a real deploy needs, in three lists. scripts/deploy.sh --apply refuses unless each needed one is set.
+ *  Always: accounts and the operator. */
+export const ALWAYS_SECRETS = ["METADATA_USER_ID_SECRET", "OPERATOR_KEY", "GOOGLE_CLIENT_ID"] as const;
+/** Only once forwarding is on (PROXY_ON is set): Squibby's Anthropic key. Until then the server holds no Anthropic key at all. */
+export const FORWARDING_SECRETS = ["ANTHROPIC_API_KEY"] as const;
+/** Only once payments are on (PAYMENTS_ON is set, or PAYMENT_PROVIDER is dodo): Dodo's API key and the webhook's secrets. */
+export const PAYMENT_SECRETS = ["DODO_PAYMENTS_API_KEY", "DODO_WEBHOOK_SECRET", "DODO_PRODUCTS"] as const;
+export const ALL_SECRETS = [...ALWAYS_SECRETS, ...FORWARDING_SECRETS, ...PAYMENT_SECRETS] as const;
 export const STATUS_PATH = "/v1/status";
 export const OPERATOR_PATH = "/v1/operator";
 export const DEV_TOKEN_PATH = "/v1/dev/token";
@@ -79,6 +93,9 @@ function googleFor(clientId: string, now: () => number) {
   return g;
 }
 
+// M116: sign in tries per address, counted in this server instance's memory (writes nothing). See ratelimit.ts.
+const signinTries = createRateLimiter({ limit: SIGNIN_TRIES_PER_MINUTE, windowMs: 60_000 });
+
 function partsFor(env: Env, ctx: Ctx, now: () => number): Parts {
   const store = new DurableStore(env.STORE, now);
   const proxy = createProxy({
@@ -87,6 +104,8 @@ function partsFor(env: Env, ctx: Ctx, now: () => number): Parts {
     userIdSecret: env.METADATA_USER_ID_SECRET,
     enabled: () => switchOn(env.PROXY_ON),
     loopOn: () => loopSwitchOn(env.LOOP_ON),
+    paymentsOn: () => switchOn(env.PAYMENTS_ON),
+    signinLimit: (address) => signinTries(address, now()),
     now,
     log: logLine,
     ...(env.UPSTREAM_BASE ? { upstream: env.UPSTREAM_BASE } : {}),
@@ -141,6 +160,7 @@ export async function handle(req: Request, env: Env, ctx: Ctx, now: () => number
     const path = new URL(req.url).pathname;
     if (path === OPERATOR_PATH || path === DEV_TOKEN_PATH) return json(503, { error: "The store could not finish that step. Nothing was changed. Try again in a moment." });
     if (path.startsWith("/webhooks/")) return json(503, { outcome: "apply_failed", message: "Something went wrong on our side. Nothing was changed, and the sender can deliver this again." });
+    if (isAccountPath(path)) return accountStoreFailed();
     return storeFailed();
   }
 }

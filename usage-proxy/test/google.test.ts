@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createGoogleVerifier, GOOGLE_JWKS_URL, maxAgeOf } from "../src/google.ts";
 import { createProxy, GOOGLE_SIGNIN_PATH, type SafeEvent } from "../src/proxy.ts";
+import { NONCE_PATH } from "../src/account-routes.ts";
 import { hashToken } from "../src/tokens.ts";
 import { TEST_STORES, type TestStore } from "./stores.ts";
 
@@ -66,7 +67,12 @@ function rig(o: { enabled?: boolean; secret?: string | null; clock?: { t: number
     ...(o.noGoogle ? {} : { googleSignIn: verify }),
   });
   const signIn = (body: unknown) => handle(new Request(`https://proxy.example${GOOGLE_SIGNIN_PATH}`, { method: "POST", headers: { "content-type": "application/json" }, body: typeof body === "string" ? body : JSON.stringify(body) }));
-  return { store, events, g, signIn, verify, clock, handle, forwarded: () => forwarded };
+  // M116: a good sign in carries a nonce the server made (GET /v1/signin/nonce), in the ID token's nonce claim.
+  const fresh = async (over: Record<string, unknown> = {}) => {
+    const n = ((await (await handle(new Request(`https://proxy.example${NONCE_PATH}`))).json()) as { nonce: string }).nonce;
+    return sign(claims({ nonce: n, ...over }));
+  };
+  return { store, events, g, signIn, fresh, verify, clock, handle, forwarded: () => forwarded };
 }
 
 describe("checking a Google ID token", () => {
@@ -150,7 +156,7 @@ describe("checking a Google ID token", () => {
 describe("the sign in route", () => {
   test("a good Google token signs in and gives a working sign in token on the free plan", async () => {
     const r = rig();
-    const res = await r.signIn({ idToken: await sign(claims()) });
+    const res = await r.signIn({ idToken: await r.fresh() });
     expect(res.status).toBe(200);
     const body = await res.json() as Record<string, unknown>;
     expect(body).toEqual({ token: expect.stringMatching(/^cmp_/), plan: "free", email: "pat@example.com", name: "Pat Example", picture: "https://lh3.googleusercontent.com/a/pat" });
@@ -161,7 +167,7 @@ describe("the sign in route", () => {
   test("signing in again keeps the plan the person already has", async () => {
     const r = rig();
     await r.store.addUser("some-hash", { id: "google:109876543210", plan: "pro", status: "active" });
-    const body = await (await r.signIn({ idToken: await sign(claims()) })).json() as Record<string, unknown>;
+    const body = await (await r.signIn({ idToken: await r.fresh() })).json() as Record<string, unknown>;
     expect(body.plan).toBe("pro");
     expect((await r.store.userByTokenHash(await hashToken(body.token as string)))?.plan).toBe("pro");
   });
@@ -169,7 +175,7 @@ describe("the sign in route", () => {
     const r = rig();
     await r.store.suspendOwner("google:109876543210", { at: NOW });
     const before = JSON.stringify(r.store.dump());
-    const res = await r.signIn({ idToken: await sign(claims()) });
+    const res = await r.signIn({ idToken: await r.fresh() });
     expect(res.status).toBe(403);
     expect(JSON.stringify(await res.json())).toMatch(/paused/i);
     expect(JSON.stringify(r.store.dump())).toBe(before);
@@ -187,13 +193,12 @@ describe("the sign in route", () => {
     for (const b of ["not json", {}, { idToken: 5 }, { idToken: "" }, [1], "null"]) expect((await r.signIn(b)).status).toBe(400);
     expect((await r.signIn({ idToken: "x".repeat(20_000) })).status).toBe(400);   // over the size limit
   });
-  test("with the switch off, sign in is refused like every other request", async () => {
+  test("M116: with the switch off, sign in still works, so people can make an account before forwarding is on", async () => {
     const r = rig({ enabled: false });
-    const res = await r.signIn({ idToken: await sign(claims()) });
-    expect(res.status).toBe(503);
-    expect(JSON.stringify(await res.json())).toMatch(/not switched on/);
-    expect(r.g.fetches).toBe(0);
-    expect(await r.store.listOwnerIds()).toEqual([]);
+    const res = await r.signIn({ idToken: await r.fresh() });
+    expect(res.status).toBe(200);
+    expect(await r.store.listOwnerIds()).toEqual(["google:109876543210"]);
+    expect(r.forwarded()).toBe(0);
   });
   test("without the user id secret, sign in is refused like every other request", async () => {
     const r = rig({ secret: null });
@@ -210,7 +215,7 @@ describe("the sign in route", () => {
     const res = await r.signIn({ idToken: t });
     const text = JSON.stringify(await res.json()) + JSON.stringify(r.events);
     for (const s of [t, "pat@example.com", "Pat Example"]) expect(text).not.toContain(s);
-    await r.signIn({ idToken: await sign(claims()) });
+    await r.signIn({ idToken: await r.fresh() });
     const logged = JSON.stringify(r.events);
     for (const s of ["pat@example.com", "Pat Example"]) expect(logged).not.toContain(s);
   });

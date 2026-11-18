@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEV_ONLY_SETTINGS, REQUIRED_SECRETS } from "../src/worker.ts";
+import { ALL_SECRETS, ALWAYS_SECRETS, DEV_ONLY_SETTINGS, FORWARDING_SECRETS, PAYMENT_SECRETS } from "../src/worker.ts";
 
 const ROOT = join(import.meta.dir, "..");
 const SCRIPT = join(ROOT, "scripts", "deploy.sh");
@@ -13,7 +13,7 @@ const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 /** A stand in wrangler on PATH. `secrets` is the names `secret list` answers with; `failDry` makes the dry run fail. */
-function stub(o: { secrets?: string[]; failDry?: boolean; noBinding?: boolean; failList?: boolean; vars?: string[]; toml?: string } = {}) {
+function stub(o: { secrets?: string[]; failDry?: boolean; noBinding?: boolean; failList?: boolean; vars?: string[]; toml?: string; provider?: string } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "squibby-m99-")); dirs.push(dir);
   const calls = join(dir, "calls.txt"), bin = join(dir, "wrangler");
   const list = JSON.stringify((o.secrets ?? []).map((name) => ({ name, type: "secret_text" })), null, 2);
@@ -27,7 +27,7 @@ case "$1 $2" in
     echo "export class StoreObject {}" > "$out/worker.js"
     echo "Your Worker has access to the following bindings:"
     ${o.noBinding ? "" : 'echo "env.STORE (StoreObject)      Durable Object"'}
-    echo 'env.PAYMENT_PROVIDER ("none")      Environment Variable'
+    echo 'env.PAYMENT_PROVIDER ("${o.provider ?? "none"}")      Environment Variable'
     ${(o.vars ?? []).map((v) => `echo 'env.${v} ("http://127.0.0.1:9")      Environment Variable'`).join("\n    ")}
     echo "--dry-run: exiting now."; exit 0 ;;
   "secret list") ${o.failList ? "echo 'not signed in' >&2; exit 1" : `cat "${join(dir, "names.json")}"; echo "the value is $ANTHROPIC_API_KEY" >&2`}; exit 0 ;;
@@ -73,11 +73,39 @@ describe("scripts/deploy.sh", () => {
     }
   });
   test("--apply refuses while any secret is missing, names each one, and never deploys", () => {
-    const r = stub({ secrets: ["ANTHROPIC_API_KEY", "METADATA_USER_ID_SECRET"] }).run(["--apply"]);
+    const r = stub({ secrets: ["METADATA_USER_ID_SECRET"] }).run(["--apply"]);
     expect(r.code).toBe(1);
-    for (const name of ["OPERATOR_KEY", "GOOGLE_CLIENT_ID", "DODO_WEBHOOK_SECRET", "DODO_PRODUCTS"]) expect(r.text).toContain(`The secret ${name} is not set`);
-    expect(r.text).not.toContain("The secret ANTHROPIC_API_KEY is not set");
+    for (const name of ["OPERATOR_KEY", "GOOGLE_CLIENT_ID"]) expect(r.text).toContain(`The secret ${name} is not set`);
+    expect(r.text).not.toContain("The secret METADATA_USER_ID_SECRET is not set");
     expect(realDeploys(r.calls)).toEqual([]);
+  });
+  test("M116: no ANTHROPIC_API_KEY is needed while PROXY_ON is not set, and no Dodo secret while payments are off", () => {
+    const r = stub({ secrets: [...ALWAYS_SECRETS] }).run(["--apply"]);
+    expect(r.text).not.toContain("is not set");
+    expect(r.code).toBe(0);
+    expect(realDeploys(r.calls)).toEqual(["deploy"]);
+  });
+  test("M116: with PROXY_ON set, ANTHROPIC_API_KEY is needed", () => {
+    const r = stub({ secrets: [...ALWAYS_SECRETS, "PROXY_ON"] }).run(["--apply"]);
+    expect(r.code).toBe(1);
+    for (const name of FORWARDING_SECRETS) expect(r.text).toContain(`The secret ${name} is not set`);
+    // S2 review: a PROXY_ON set to off still counts, so the refusal says to delete the switch rather than set it to off.
+    expect(r.text).toContain("wrangler secret delete PROXY_ON");
+    expect(realDeploys(r.calls)).toEqual([]);
+    const ok = stub({ secrets: [...ALWAYS_SECRETS, "PROXY_ON", ...FORWARDING_SECRETS] }).run(["--apply"]);
+    expect(ok.code).toBe(0);
+  });
+  test("M116: with payments on, DODO_PAYMENTS_API_KEY and the webhook secrets are needed", () => {
+    for (const o of [{ secrets: [...ALWAYS_SECRETS, "PAYMENTS_ON"] }, { secrets: [...ALWAYS_SECRETS], provider: "dodo" }]) {
+      const r = stub(o).run(["--apply"]);
+      expect(r.code).toBe(1);
+      for (const name of PAYMENT_SECRETS) expect(r.text).toContain(`The secret ${name} is not set`);
+      expect(r.text).not.toContain("The secret ANTHROPIC_API_KEY is not set");
+      expect(realDeploys(r.calls)).toEqual([]);
+      const ok = stub({ ...o, secrets: [...o.secrets, ...PAYMENT_SECRETS] }).run(["--apply"]);
+      expect(ok.code).toBe(0);
+    }
+    expect(PAYMENT_SECRETS).toContain("DODO_PAYMENTS_API_KEY");
   });
   test("--apply when the names cannot be read (not signed in): refuses, deploys nothing, signs in for nobody", () => {
     const r = stub({ failList: true }).run(["--apply"]);
@@ -87,7 +115,7 @@ describe("scripts/deploy.sh", () => {
     expect(r.calls.some((c) => /login|init|create/.test(c))).toBe(false);
   });
   test("--apply with every secret set deploys once, and prints no secret and none of wrangler's own words", () => {
-    const s = stub({ secrets: [...REQUIRED_SECRETS] });
+    const s = stub({ secrets: [...ALWAYS_SECRETS] });
     const r = s.run(["--apply"]);
     expect(r.code).toBe(0);
     expect(realDeploys(r.calls)).toEqual(["deploy"]);
@@ -98,7 +126,7 @@ describe("scripts/deploy.sh", () => {
   });
   test("--apply refuses while a setting for local runs only is set on Cloudflare", () => {
     for (const dev of ["DEV_TOKENS", "UPSTREAM_BASE"]) {
-      const r = stub({ secrets: [...REQUIRED_SECRETS, dev] }).run(["--apply"]);
+      const r = stub({ secrets: [...ALWAYS_SECRETS, dev] }).run(["--apply"]);
       expect(r.code).toBe(1);
       expect(r.text).toContain(`The setting ${dev} is only for a run on this Mac`);
       expect(realDeploys(r.calls)).toEqual([]);
@@ -106,19 +134,19 @@ describe("scripts/deploy.sh", () => {
   });
   test("M99 review: --apply also refuses a local only setting given as a plain var, in the bindings or in wrangler.toml", () => {
     for (const dev of ["DEV_TOKENS", "UPSTREAM_BASE"]) {
-      const r = stub({ secrets: [...REQUIRED_SECRETS], vars: [dev] }).run(["--apply"]);
+      const r = stub({ secrets: [...ALWAYS_SECRETS], vars: [dev] }).run(["--apply"]);
       expect(r.code).toBe(1);
       expect(r.text).toContain(`The setting ${dev} is only for a run on this Mac`);
       expect(realDeploys(r.calls)).toEqual([]);
       const toml = `name = "x"\n# ${dev} is only named in a comment here\n[vars]\nPAYMENT_PROVIDER = "none"\n${dev} = "on"\n`;
-      const t = stub({ secrets: [...REQUIRED_SECRETS], toml }).run(["--apply"]);
+      const t = stub({ secrets: [...ALWAYS_SECRETS], toml }).run(["--apply"]);
       expect(t.code).toBe(1);
       expect(t.text).toContain(`The setting ${dev} is only for a run on this Mac`);
       expect(t.text).toContain("wrangler.toml");
       expect(realDeploys(t.calls)).toEqual([]);
     }
     // Named only in a comment, or as part of a longer name: not refused.
-    const fine = stub({ secrets: [...REQUIRED_SECRETS], toml: `name = "x"\n# UPSTREAM_BASE and DEV_TOKENS are local only\n[vars]\nMY_UPSTREAM_BASE_NOTE = "x"\n` }).run(["--apply"]);
+    const fine = stub({ secrets: [...ALWAYS_SECRETS], toml: `name = "x"\n# UPSTREAM_BASE and DEV_TOKENS are local only\n[vars]\nMY_UPSTREAM_BASE_NOTE = "x"\n` }).run(["--apply"]);
     expect(fine.code).toBe(0);
     expect(realDeploys(fine.calls)).toEqual(["deploy"]);
   });
@@ -127,10 +155,14 @@ describe("scripts/deploy.sh", () => {
     expect(r.code).toBe(2);
     expect(r.calls).toEqual([]);
   });
-  test("the script's list of secrets, and of local only settings, are the Worker's", () => {
+  test("the script's lists of secrets, and of local only settings, are the Worker's", () => {
     const text = readFileSync(SCRIPT, "utf8");
-    expect((/REQUIRED="([^"]+)"/.exec(text)?.[1] ?? "").split(" ").sort()).toEqual([...REQUIRED_SECRETS].sort());
-    expect((/DEV_ONLY="([^"]+)"/.exec(text)?.[1] ?? "").split(" ").sort()).toEqual([...DEV_ONLY_SETTINGS].sort());
+    const list = (name: string) => (new RegExp(`^${name}="([^"]+)"`, "m").exec(text)?.[1] ?? "").split(" ").sort();
+    expect(list("ALWAYS")).toEqual([...ALWAYS_SECRETS].sort());
+    expect(list("FORWARDING")).toEqual([...FORWARDING_SECRETS].sort());
+    expect(list("PAYMENTS")).toEqual([...PAYMENT_SECRETS].sort());
+    expect(list("DEV_ONLY")).toEqual([...DEV_ONLY_SETTINGS].sort());
+    expect(text).not.toMatch(/^REQUIRED=/m);
   });
 });
 
@@ -169,8 +201,8 @@ describe("wrangler.toml and package.json", () => {
     expect(settings).not.toMatch(/DEV_TOKENS|UPSTREAM_BASE/);   // local only settings are never in the deployed file
   });
   test("every secret is named in a comment, by name only", () => {
-    for (const name of REQUIRED_SECRETS) expect(toml).toMatch(new RegExp(`^#\\s+${name}\\s`, "m"));
-    for (const name of REQUIRED_SECRETS) expect(settings).not.toContain(name);
+    for (const name of [...ALL_SECRETS, "PROXY_ON", "PAYMENTS_ON", "LOOP_ON"]) expect(toml).toMatch(new RegExp(`^#\\s+${name}\\s`, "m"));
+    for (const name of ALL_SECRETS) expect(settings).not.toContain(name);
   });
   test("the scripts, and the two new tools pinned to exact versions", () => {
     const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));

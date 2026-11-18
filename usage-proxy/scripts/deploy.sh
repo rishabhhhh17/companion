@@ -2,7 +2,7 @@
 # Squibby's usage server on Cloudflare (M99).
 #
 #   sh scripts/deploy.sh           a dry run: builds the Worker into dist/ and checks it, deploys nothing, needs no account
-#   sh scripts/deploy.sh --apply   a real deploy, and only when every secret below is already set on Cloudflare
+#   sh scripts/deploy.sh --apply   a real deploy, and only when every secret it needs is already set on Cloudflare
 #
 # It never signs in, never creates an account or anything on an account by itself (a deploy only makes what wrangler.toml
 # names), never prints a secret and never prints wrangler's own output: what wrangler said is saved in the out folder.
@@ -10,7 +10,13 @@
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
-REQUIRED="ANTHROPIC_API_KEY METADATA_USER_ID_SECRET OPERATOR_KEY GOOGLE_CLIENT_ID DODO_WEBHOOK_SECRET DODO_PRODUCTS"
+# M116: the secrets in three lists (the Worker's ALWAYS_SECRETS, FORWARDING_SECRETS and PAYMENT_SECRETS).
+# Always: accounts and the operator.
+ALWAYS="METADATA_USER_ID_SECRET OPERATOR_KEY GOOGLE_CLIENT_ID"
+# Only once PROXY_ON is set: Squibby's Anthropic key. Until then the server needs no Anthropic key at all.
+FORWARDING="ANTHROPIC_API_KEY"
+# Only once payments are on (PAYMENTS_ON is set, or PAYMENT_PROVIDER is dodo): Dodo's API key and the webhook's secrets.
+PAYMENTS="DODO_PAYMENTS_API_KEY DODO_WEBHOOK_SECRET DODO_PRODUCTS"
 # Only for a local run (wrangler dev). A real deploy refuses while either is set on Cloudflare.
 DEV_ONLY="DEV_TOKENS UPSTREAM_BASE"
 OUT="${SQUIBBY_DIST:-dist}"
@@ -65,14 +71,19 @@ if [ -n "$devvar" ]; then
   exit 1
 fi
 
-# 3. A real deploy only when every secret is already set. Only the names are read, never a value.
+# 3. A real deploy only when every secret it needs is already set. Only the names are read, never a value.
 if ! "$W" secret list --format json > "$OUT/secret-names.json" 2> "$OUT/secret-list.log"; then
   echo "Could not read the secret names from Cloudflare. Sign in yourself first (wrangler login), then try again. Nothing was deployed."
   rm -f "$OUT/secret-names.json"
   exit 1
 fi
+has_name() { grep -q "\"name\": *\"$1\"" "$OUT/secret-names.json"; }
+NEEDED="$ALWAYS"
+# A switch counts as set when its name is set on Cloudflare (its value is never read), or it is a binding in the dry run.
+if has_name PROXY_ON || grep -Eq "env\.PROXY_ON([^A-Za-z0-9_]|\$)" "$OUT/dry-run.log"; then NEEDED="$NEEDED $FORWARDING"; fi
+if has_name PAYMENTS_ON || grep -Eq "env\.PAYMENTS_ON([^A-Za-z0-9_]|\$)" "$OUT/dry-run.log" || grep -q 'env\.PAYMENT_PROVIDER ("dodo")' "$OUT/dry-run.log"; then NEEDED="$NEEDED $PAYMENTS"; fi
 missing=""
-for name in $REQUIRED; do
+for name in $NEEDED; do
   if ! grep -q "\"name\": *\"$name\"" "$OUT/secret-names.json"; then missing="$missing $name"; fi
 done
 devset=""
@@ -87,6 +98,8 @@ if [ -n "$devset" ]; then
 fi
 if [ -n "$missing" ]; then
   for name in $missing; do echo "The secret $name is not set. Set it with: wrangler secret put $name"; done
+  # The switch counts as set by its name alone, so PROXY_ON set to "off" still asks for the Anthropic key. Say how to really turn it off.
+  case " $missing " in *" ANTHROPIC_API_KEY "*) echo "PROXY_ON is set, so the Anthropic key is needed even if its value is off. To deploy with forwarding off and no Anthropic key, delete the switch instead: wrangler secret delete PROXY_ON";; esac
   echo "Nothing was deployed."
   exit 1
 fi

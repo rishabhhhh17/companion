@@ -5,10 +5,16 @@
 import { budgetCheck, dayKey, monthKey, type Plan, type Spent } from "./plans.ts";
 import type { Usage } from "./usage.ts";
 
-/** `planUntil`: a plan a late payment keeps only until then (Dodo's past_due_ends_at); from then on the person is on free. */
-export type User = { id: string; plan: string; status: "active" | "past_due" | "canceled" | "revoked" | "suspended"; planUntil?: number };
-/** The plan a payment event gave an owner. It wins over the plan written with each token, until a newer event changes it. */
-export type OwnerPlan = { plan: string; status: "active" | "past_due"; until?: number };
+/** `planUntil`: a plan a late payment, or a cancel at the end of the period, keeps only until then (Dodo's past_due_ends_at or
+ *  next_billing_date); from then on the person is on free. `renewsOn`: the next renewal date, when a payment event gave one. */
+export type User = { id: string; plan: string; status: "active" | "past_due" | "on_hold" | "cancelling" | "canceled" | "revoked" | "suspended"; planUntil?: number; renewsOn?: number };
+/** The plan a payment event gave an owner. It wins over the plan written with each token, until a newer event changes it.
+ *  M116: `on_hold` (a failed renewal Dodo stopped retrying: plan free) and `cancelling` (Pro until `until`). */
+export type OwnerPlan = { plan: string; status: "active" | "past_due" | "on_hold" | "cancelling"; until?: number; renewsOn?: number };
+/** What GET /v1/me reads, in one step and writing nothing: the token's user, what they spent (with holds), and the owner's email. */
+export type Account = { user: User; spent: Spent; email: string | null };
+/** M116 sign in: the email to keep on the owner, and the nonce to mark used in the same write that keeps the token's hash. */
+export type SignIn = { email: string; nonceId: string; nonceUntil: number; now: number };
 /** One line of the suspension log: ids and dates only, never text. `caseId` is a short reference of ours (a report or notice number). */
 export type SuspensionRecord = { ownerId: string; kind: "suspended" | "restored"; at: number; caseId?: string };
 export type UsageRecord = { userId: string; model: string; usage: Usage; usd: number; at: number; complete: boolean };
@@ -43,6 +49,16 @@ export interface Store {
    *  an event older than one already applied changes nothing, in the same step, and the answer is false. */
   setOwnerPlan?(ownerId: string, plan: OwnerPlan, at?: number): Promise<boolean>;
   suspensions(): Promise<SuspensionRecord[]>;
+  /** M116: keep a new sign in token's hash, the owner's email (replacing an older one) and the nonce as used, all in one write.
+   *  False, and nothing written, when that nonce was used before (and has not run out). */
+  signIn(hash: string, u: User, o: SignIn): Promise<boolean>;
+  /** M116, GET /v1/me: the token's account, or null for a token we do not hold. Reads only. */
+  account(hash: string, now: number): Promise<Account | null>;
+  /** M116 sign out: forget this token's hash. False when it was not held. */
+  dropToken(hash: string): Promise<boolean>;
+  /** M116 sign out on all Macs: forget every token hash of the owner. The number that still worked. The account, its email
+   *  and its plan stay. */
+  dropAllTokens(ownerId: string): Promise<number>;
 }
 
 export class MemoryStore implements Store {
@@ -52,6 +68,8 @@ export class MemoryStore implements Store {
   #held = new Map<string, number>();
   #suspended = new Set<string>();
   #plans = new Map<string, { plan: OwnerPlan; at?: number }>();
+  #emails = new Map<string, string>();
+  #nonces = new Map<string, Map<string, number>>();
   #log: SuspensionRecord[] = [];
   records: UsageRecord[] = [];
   addUser(hash: string, u: User) { this.#users.set(hash, u); }
@@ -62,7 +80,27 @@ export class MemoryStore implements Store {
     const paid = this.#plans.get(u.id)?.plan;
     if (this.#suspended.has(u.id)) return { id: u.id, plan: paid?.plan ?? u.plan, status: "suspended" };   // the flag wins over whatever status was written
     if (u.status === "revoked" || !paid) return u;
-    return { id: u.id, plan: paid.plan, status: paid.status, ...(paid.until !== undefined ? { planUntil: paid.until } : {}) };
+    return { id: u.id, plan: paid.plan, status: paid.status, ...(paid.until !== undefined ? { planUntil: paid.until } : {}), ...(paid.renewsOn !== undefined ? { renewsOn: paid.renewsOn } : {}) };
+  }
+  async signIn(hash: string, u: User, o: SignIn) {
+    const used = this.#nonces.get(u.id) ?? new Map<string, number>();
+    for (const [id, until] of used) if (until < o.now) used.delete(id);
+    if (used.has(o.nonceId)) return false;
+    used.set(o.nonceId, o.nonceUntil);
+    this.#nonces.set(u.id, used);
+    this.#emails.set(u.id, o.email);
+    this.#users.set(hash, u);
+    return true;
+  }
+  async account(hash: string, now: number) {
+    const user = await this.userByTokenHash(hash);
+    return user ? { user, spent: this.#spentNow(user.id, now), email: this.#emails.get(user.id) ?? null } : null;
+  }
+  async dropToken(hash: string) { return this.#users.delete(hash); }
+  async dropAllTokens(ownerId: string) {
+    let n = 0;
+    for (const [hash, u] of this.#users) if (u.id === ownerId) { if (u.status !== "revoked") n++; this.#users.delete(hash); }
+    return n;
   }
   async setOwnerPlan(ownerId: string, plan: OwnerPlan, at?: number) {
     const was = this.#plans.get(ownerId);
@@ -70,7 +108,7 @@ export class MemoryStore implements Store {
     this.#plans.set(ownerId, { plan, at: at !== undefined ? Math.max(at, was?.at ?? 0) : was?.at });
     return true;
   }
-  async listOwnerIds() { return [...new Set([...this.#users.values()].map((u) => u.id))]; }
+  async listOwnerIds() { return [...new Set([...[...this.#users.values()].map((u) => u.id), ...this.#emails.keys()])]; }
   async isSuspended(ownerId: string) { return this.#suspended.has(ownerId); }
   async planOfOwner(ownerId: string) {
     const paid = this.#plans.get(ownerId);
@@ -113,5 +151,5 @@ export class MemoryStore implements Store {
   async end(userId: string) { this.#running.set(userId, Math.max(0, (this.#running.get(userId) ?? 0) - 1)); }
   inFlight(userId: string) { return this.#running.get(userId) ?? 0; }
   /** Everything held, for a test that checks no text or secret is among it. */
-  dump() { return { users: [...this.#users], suspended: [...this.#suspended], plans: [...this.#plans], log: this.#log, spent: [...this.#spent], running: [...this.#running], held: [...this.#held], records: this.records }; }
+  dump() { return { users: [...this.#users], emails: [...this.#emails], nonces: [...this.#nonces].map(([o, m]) => [o, [...m]]), suspended: [...this.#suspended], plans: [...this.#plans], log: this.#log, spent: [...this.#spent], running: [...this.#running], held: [...this.#held], records: this.records }; }
 }

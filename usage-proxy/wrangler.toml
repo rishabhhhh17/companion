@@ -4,16 +4,22 @@
 #
 # No account id is written here: wrangler reads it from your own login (wrangler login) or CLOUDFLARE_ACCOUNT_ID.
 #
-# Secrets. Never written in this file, in the repo or in a log. Set each one with `wrangler secret put <NAME>`:
-#   ANTHROPIC_API_KEY         Squibby's own Anthropic key. Without it nothing is forwarded.
-#   METADATA_USER_ID_SECRET   at least 32 characters; the key for the opaque metadata.user_id. Back it up apart from the server:
-#                             changing it changes every id. Without it nothing is forwarded.
+# Secrets. Never written in this file, in the repo or in a log. Set each one with `wrangler secret put <NAME>`.
+# Always needed to deploy (M116): METADATA_USER_ID_SECRET, OPERATOR_KEY, GOOGLE_CLIENT_ID. The others only when their switch is on.
+#   METADATA_USER_ID_SECRET   at least 32 characters; the key for the opaque metadata.user_id, and (under its own label) for the
+#                             sign in nonce. Back it up apart from the server: changing it changes every id. Without it nothing
+#                             is forwarded and nobody can sign in.
 #   OPERATOR_KEY              at least 32 characters; the operator's key for POST /v1/operator (suspend and restore one person).
 #   GOOGLE_CLIENT_ID          Sign in with Google's client id (not secret, but kept with the others).
-#   DODO_WEBHOOK_SECRET       Dodo's webhook signing secret (starts with whsec_).
-#   DODO_PRODUCTS             the product table, as JSON (see dodo-products.example.json).
-#   PROXY_ON                  the switch. Not needed to deploy: without it, or with anything but "on", nothing is forwarded.
-#                             Turn on: `wrangler secret put PROXY_ON` and type on. Turn off: `wrangler secret delete PROXY_ON`.
+#   ANTHROPIC_API_KEY         Squibby's own Anthropic key. Without it nothing is forwarded. Needed to deploy only once PROXY_ON is set.
+#   DODO_PAYMENTS_API_KEY     Dodo's API key (dodo_test_ first), for checkouts and the billing portal. Needed once payments are on.
+#   DODO_WEBHOOK_SECRET       Dodo's webhook signing secret (starts with whsec_). Needed once payments are on.
+#   DODO_PRODUCTS             the product table, as JSON (see dodo-products.example.json). Needed once payments are on.
+#   PROXY_ON                  the switch for model requests. Not needed to deploy: without it, or with anything but "on", nothing
+#                             is forwarded (sign in, /v1/me and sign out still work). Turn on: `wrangler secret put PROXY_ON` and
+#                             type on. Turn off: `wrangler secret delete PROXY_ON`. Delete it, never set it to off: the deploy
+#                             check reads only the name, so a PROXY_ON set to off still asks for ANTHROPIC_API_KEY.
+#   PAYMENTS_ON               the payments switch, off the same way. Set, it makes the deploy need the three Dodo secrets above.
 #   LOOP_ON                   the fixing loop's own switch (M100). Off the same way: the loop's tools are refused for every
 #                             sign in token until the go live checklist turns it on.
 # Not used: STRIPE_WEBHOOK_SECRET. Stripe's webhook is not built on this server; Dodo Payments is the provider.

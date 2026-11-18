@@ -9,9 +9,11 @@ const copy = <T>(v: T): T => (v === undefined ? v : structuredClone(v));
 export class FakeStorage implements StorageLike {
   data = new Map<string, unknown>();
   calls = 0;
+  /** Rows written: every put and delete (M116: GET /v1/me and the nonce route must write none). */
+  writes = 0;
   async get<T>(key: string) { this.calls++; await yieldNow(); return copy(this.data.get(key)) as T | undefined; }
-  async put(entries: Record<string, unknown>) { this.calls++; await yieldNow(); for (const [k, v] of Object.entries(entries)) this.data.set(k, copy(v)); }
-  async delete(keys: string[]) { this.calls++; await yieldNow(); let n = 0; for (const k of keys) if (this.data.delete(k)) n++; return n; }
+  async put(entries: Record<string, unknown>) { this.calls++; this.writes++; await yieldNow(); for (const [k, v] of Object.entries(entries)) this.data.set(k, copy(v)); }
+  async delete(keys: string[]) { this.calls++; this.writes++; await yieldNow(); let n = 0; for (const k of keys) if (this.data.delete(k)) n++; return n; }
   async list<T>(o: { prefix: string }) {
     this.calls++; await yieldNow();
     return new Map([...this.data].filter(([k]) => k.startsWith(o.prefix)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([k, v]) => [k, copy(v) as T]));

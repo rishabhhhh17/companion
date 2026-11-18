@@ -11,7 +11,7 @@
 // It needs nothing from Cloudflare at build time: the object talks through `fetch`, and the types below are the small part of the
 // Durable Object API it uses, so the tests run it on a fake of that API (test/fake-do.ts) with Bun alone.
 import { budgetCheck, dayKey, monthKey, type Plan, type Spent } from "./plans.ts";
-import type { Store, SuspensionRecord, UsageRecord, User, OwnerPlan } from "./store.ts";
+import type { Account, SignIn, Store, SuspensionRecord, UsageRecord, User, OwnerPlan } from "./store.ts";
 import type { DodoLedger, LinkBook } from "./dodo.ts";
 
 /** The part of Durable Object storage used here (the key value calls, on SQLite backed objects too). */
@@ -89,7 +89,21 @@ async function spentNow(s: StorageLike, now: number): Promise<Spent> {
 function userOf(ownerId: string, t: Tok, plan: OwnerPlan | undefined, suspended: boolean): User {
   if (suspended) return { id: ownerId, plan: plan?.plan ?? t.plan, status: "suspended" };
   if (t.status === "revoked" || !plan) return { id: ownerId, plan: t.plan, status: t.status };
-  return { id: ownerId, plan: plan.plan, status: plan.status, ...(plan.until !== undefined ? { planUntil: plan.until } : {}) };
+  return { id: ownerId, plan: plan.plan, status: plan.status, ...(plan.until !== undefined ? { planUntil: plan.until } : {}), ...(plan.renewsOn !== undefined ? { renewsOn: plan.renewsOn } : {}) };
+}
+/** The owner's token list with one token added (or rewritten), and the hashes dropped past MAX_TOKENS_KEPT. */
+function withToken(list: [string, Tok][], hash: string, tok: Tok): { list: [string, Tok][]; dropped: string[] } {
+  list = [...list];
+  const i = list.findIndex(([h]) => h === hash);
+  if (i >= 0) list[i] = [hash, tok]; else list.push([hash, tok]);
+  const dropped: string[] = [];
+  while (list.length > MAX_TOKENS_KEPT) {
+    const stopped = list.findIndex(([h, t]) => t.status === "revoked" && h !== hash);
+    const j = stopped >= 0 ? stopped : list.findIndex(([h]) => h !== hash);
+    dropped.push(list[j][0]);
+    list = [...list.slice(0, j), ...list.slice(j + 1)];
+  }
+  return { list, dropped };
 }
 
 /** Keeping as little as we can (RECORD_KEEP_MS): at most once a day per person, drop records past the keep time, day totals
@@ -110,18 +124,36 @@ const OPS: Record<string, Op> = {
   // ---- owner:<id> ----
   // Returns the hashes dropped past MAX_TOKENS_KEPT, so their token objects can be cleared too.
   "owner.addToken": async (s, a: { hash: string; tok: Tok }) => {
-    let list = await ownerTokens(s);
-    const i = list.findIndex(([h]) => h === a.hash);
-    if (i >= 0) list[i] = [a.hash, a.tok]; else list.push([a.hash, a.tok]);
-    const dropped: string[] = [];
-    while (list.length > MAX_TOKENS_KEPT) {
-      const stopped = list.findIndex(([h, t]) => t.status === "revoked" && h !== a.hash);
-      const j = stopped >= 0 ? stopped : list.findIndex(([h]) => h !== a.hash);
-      dropped.push(list[j][0]);
-      list = [...list.slice(0, j), ...list.slice(j + 1)];
-    }
+    const { list, dropped } = withToken(await ownerTokens(s), a.hash, a.tok);
     await s.put({ tokens: list });
     return dropped;
+  },
+  // M116 sign in: the nonce is checked and marked used, the email kept and the token added, in this one write. Used nonces
+  // are kept only until they would have run out anyway.
+  "owner.signIn": async (s, a: { hash: string; tok: Tok; email: string; nonce: { id: string; until: number }; now: number }) => {
+    const nonces = ((await s.get<[string, number][]>("nonces")) ?? []).filter(([, until]) => until >= a.now);
+    if (nonces.some(([id]) => id === a.nonce.id)) return { used: true, dropped: [] };
+    const { list, dropped } = withToken(await ownerTokens(s), a.hash, a.tok);
+    await s.put({ tokens: list, email: a.email, nonces: [...nonces, [a.nonce.id, a.nonce.until]] });
+    return { used: false, dropped };
+  },
+  // M116 GET /v1/me: reads only.
+  "owner.me": async (s, a: { ownerId: string; hash: string; now: number }): Promise<Account | null> => {
+    const t = (await ownerTokens(s)).find(([h]) => h === a.hash);
+    if (!t) return null;
+    const user = userOf(a.ownerId, t[1], await s.get<OwnerPlan>("plan"), (await s.get<boolean>("suspended")) === true);
+    return { user, spent: await spentNow(s, a.now), email: (await s.get<string>("email")) ?? null };
+  },
+  "owner.dropToken": async (s, a: { hash: string }) => {
+    const list = await ownerTokens(s), kept = list.filter(([h]) => h !== a.hash);
+    if (kept.length === list.length) return false;
+    await s.put({ tokens: kept });
+    return true;
+  },
+  "owner.dropAll": async (s) => {
+    const list = await ownerTokens(s);
+    if (list.length) await s.delete(["tokens"]);
+    return { hashes: list.map(([h]) => h), stopped: list.filter(([, t]) => t.status !== "revoked").length };
   },
   "owner.user": async (s, a: { ownerId: string; hash: string }) => {
     const t = (await ownerTokens(s)).find(([h]) => h === a.hash);
@@ -284,6 +316,31 @@ export class DurableStore implements Store {
   planOfOwner(ownerId: string) { return this.call<string | null>(OWNER(ownerId), "owner.planOf"); }
   setOwnerPlan(ownerId: string, plan: OwnerPlan, at?: number) { return this.call<boolean>(OWNER(ownerId), "owner.setPlan", { plan, ...(at !== undefined ? { at } : {}) }); }
   suspensions() { return this.call<SuspensionRecord[]>(DIRECTORY, "dir.logs"); }
+  async signIn(hash: string, u: User, o: SignIn) {
+    const r = await this.call<{ used: boolean; dropped: string[] }>(OWNER(u.id), "owner.signIn", { hash, tok: { plan: u.plan, status: u.status }, email: o.email, nonce: { id: o.nonceId, until: o.nonceUntil }, now: o.now });
+    if (r.used) return false;
+    if (!(await this.call<boolean>(TOKEN(hash), "token.set", { ownerId: u.id }))) throw new Error("That token belongs to someone else.");
+    await this.call(DIRECTORY, "dir.addOwner", { ownerId: u.id });
+    for (const h of r.dropped) await this.call(TOKEN(h), "token.drop", { ownerId: u.id }).catch(() => {});
+    return true;
+  }
+  async account(hash: string, now: number) {
+    const ownerId = await this.call<string | null>(TOKEN(hash), "token.get");
+    return ownerId === null ? null : this.call<Account | null>(OWNER(ownerId), "owner.me", { ownerId, hash, now });
+  }
+  async dropToken(hash: string) {
+    const ownerId = await this.call<string | null>(TOKEN(hash), "token.get");
+    if (ownerId === null) return false;
+    // The owner's list first: from then on the token finds nobody, even if clearing its own small object fails.
+    const dropped = await this.call<boolean>(OWNER(ownerId), "owner.dropToken", { hash });
+    await this.call(TOKEN(hash), "token.drop", { ownerId });
+    return dropped;
+  }
+  async dropAllTokens(ownerId: string) {
+    const r = await this.call<{ hashes: string[]; stopped: number }>(OWNER(ownerId), "owner.dropAll");
+    for (const h of r.hashes) await this.call(TOKEN(h), "token.drop", { ownerId });
+    return r.stopped;
+  }
 }
 
 /** Dodo's once only ledger: event ids in the payments object, the newest applied time in each owner's own object. */

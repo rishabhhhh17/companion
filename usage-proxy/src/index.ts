@@ -6,6 +6,9 @@ export { verifyStripeSignature, entitlementFromEvent, type Entitlement } from ".
 export { DODO_SUBSCRIPTION_EVENTS, DODO_TIMESTAMP_TOLERANCE_SEC, MemoryDodoLedger, MemoryLinkBook, constantTimeEqual, createDodoWebhook, decideDodoEvent, entitledPlan, parseDodoProducts, verifyDodoWebhook, type DodoEntitlement, type DodoLedger, type LinkBook, type SafeDodoEvent } from "./dodo.ts";
 export { PAYMENT_PROVIDERS, paymentProviderFromSetting, webhookPathFor, webhookRouteFor, type PaymentProvider } from "./payments.ts";
 export { USER_ID_SECRET_SETTING, MIN_SECRET_CHARS, deriveUserId, findOwnerByUserId, secretProblem } from "./userid.ts";
-export { issueToken } from "./accounts.ts";
+export { issueToken, issueSignInToken } from "./accounts.ts";
+export { createAccountRoutes, planNow, GOOGLE_SIGNIN_PATH as SIGNIN_PATH, ME_PATH, NONCE_PATH, SIGNOUT_ALL_PATH, SIGNOUT_PATH, type MeStatus } from "./account-routes.ts";
+export { makeNonce, checkNonce, NONCE_TTL_MS } from "./nonce.ts";
+export { createRateLimiter, SIGNIN_TRIES_PER_MINUTE } from "./ratelimit.ts";
 export { runOperator } from "./operator.ts";
 export { createGoogleVerifier, GOOGLE_CLIENT_ID_SETTING, GOOGLE_ISSUERS, GOOGLE_JWKS_URL, type GoogleCheck, type GoogleIdentity } from "./google.ts";

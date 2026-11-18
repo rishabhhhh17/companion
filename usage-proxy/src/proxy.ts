@@ -10,14 +10,15 @@ import { hashToken, tokenFromHeaders } from "./tokens.ts";
 import { UsageSniffer, costOf, usageFromJson } from "./usage.ts";
 import { PRODUCT, PRODUCT_S } from "./names.ts";
 import { deriveUserId, secretProblem } from "./userid.ts";
-import { issueToken } from "./accounts.ts";
 import type { GoogleCheck } from "./google.ts";
+import { accountStoreFailed, createAccountRoutes, isAccountPath } from "./account-routes.ts";
+import { error, readCapped } from "./http.ts";
 
-/** Sign in with Google (M21): POST a Google ID token here, get a sign in token back. Behind the same switch as everything else. */
-export const GOOGLE_SIGNIN_PATH = "/v1/signin/google";
-const SIGNIN_MAX_BODY_BYTES = 16 * 1024;
+/** Sign in with Google (M21): POST a Google ID token here, get a sign in token back. M116: served ahead of the switch, with
+ *  the other account routes (account-routes.ts). */
+export { GOOGLE_SIGNIN_PATH } from "./account-routes.ts";
 
-export type SafeEvent = { kind: "refused" | "request" | "upstream_error" | "signin"; userId?: string; reason?: string; model?: string; usd?: number; status?: number; complete?: boolean };
+export type SafeEvent = { kind: "refused" | "request" | "upstream_error" | "signin" | "signout"; userId?: string; reason?: string; model?: string; usd?: number; status?: number; complete?: boolean };
 export type Deps = {
   store: Store;
   anthropicKey: string;
@@ -38,32 +39,18 @@ export type Deps = {
   waitUntil?: (p: Promise<unknown>) => void;
   /** Checks a Google ID token (createGoogleVerifier in google.ts, with the GOOGLE_CLIENT_ID setting). Missing: the sign in route answers 503. */
   googleSignIn?: (idToken: unknown) => Promise<GoogleCheck>;
+  /** M116: the payments switch (PAYMENTS_ON), as GET /v1/me tells the app. Missing means off. */
+  paymentsOn?: () => boolean;
+  /** M116: true while this address may try to sign in again (ratelimit.ts). Missing: no limit. */
+  signinLimit?: (address: string) => boolean;
 };
 
-const error = (status: number, type: string, message: string, headers: Record<string, string> = {}) =>
-  new Response(JSON.stringify({ type: "error", error: { type, message } }), { status, headers: { "content-type": "application/json", ...headers } });
 const PASS_BACK = ["content-type", "request-id", "retry-after", "cache-control"];
 /** The answer when the store cannot finish a step before anything was forwarded (M99 review): the API's own error shape, so the
  *  app can show a plain sentence, never a server's own error page. The Worker answers its other routes' store failures alike. */
 export const STORE_FAILED_MESSAGE = `${PRODUCT_S} included usage could not be checked just now. Nothing was sent to Claude. Try again in a moment.`;
 export const storeFailed = () => error(503, "api_error", STORE_FAILED_MESSAGE);
 
-/** The body as text, read only up to the cap: a body with no length that never ends is refused, not read to the end. Null when over. */
-async function readCapped(req: Request, cap = MAX_BODY_BYTES): Promise<string | null> {
-  if (!req.body) return "";
-  const reader = req.body.getReader(), chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > cap) { await reader.cancel().catch(() => {}); return null; }
-    chunks.push(value);
-  }
-  const all = new Uint8Array(total); let o = 0;
-  for (const c of chunks) { all.set(c, o); o += c.byteLength; }
-  return new TextDecoder().decode(all);
-}
 /** Only an https address (or this machine, for a test) may be the place requests go: our key travels there. */
 function checkUpstream(base: string): string {
   let u: URL;
@@ -94,29 +81,9 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
   const doFetch = d.fetch ?? fetch, upstream = checkUpstream(d.upstream ?? "https://api.anthropic.com"), now = d.now ?? Date.now, log = d.log ?? (() => {}), maxInFlight = d.maxInFlight ?? 4;
   const refuse = (reason: string, res: Response, userId?: string) => { log({ kind: "refused", reason, status: res.status, ...(userId ? { userId } : {}) }); return res; };
 
-  /** Google ID token in, sign in token out. The ID token, email and name are never logged; only the owner id is. */
-  const signInWithGoogle = async (req: Request): Promise<Response> => {
-    if (!d.googleSignIn) return refuse("signin_not_set_up", error(503, "api_error", `Sign in with Google is not set up on this ${PRODUCT} server yet.`));
-    const bad = () => refuse("signin_bad_body", error(400, "invalid_request_error", "The sign in request is not in the expected form."));
-    if (Number(req.headers.get("content-length") ?? 0) > SIGNIN_MAX_BODY_BYTES) return bad();
-    const raw = await readCapped(req, SIGNIN_MAX_BODY_BYTES);
-    if (raw === null) return bad();
-    let idToken: unknown;
-    try { idToken = (JSON.parse(raw) as { idToken?: unknown })?.idToken; } catch { return bad(); }
-    if (typeof idToken !== "string" || idToken.length === 0) return bad();
-    const checked = await d.googleSignIn(idToken);
-    if (!checked.ok) {
-      if (checked.reason === "keys_unavailable" || checked.reason === "not_configured") return refuse(`signin_${checked.reason}`, error(503, "api_error", "Google sign in cannot be checked right now. Try again in a moment."));
-      return refuse(`signin_${checked.reason}`, error(401, "authentication_error", "Google sign in did not work. Try signing in again."));
-    }
-    const who = checked.identity;
-    const plan = (await d.store.planOfOwner?.(who.ownerId)) ?? "free";
-    const issued = await issueToken(d.store, who.ownerId, plan);
-    if (!issued.ok) return refuse("suspended", error(403, "permission_error", issued.message), who.ownerId);
-    log({ kind: "signin", userId: who.ownerId });
-    return new Response(JSON.stringify({ token: issued.token, plan, email: who.email, name: who.name ?? null, picture: who.picture ?? null }),
-      { status: 200, headers: { "content-type": "application/json", "cache-control": "no-store" } });
-  };
+  // M116: the account routes come before the switch and the Anthropic key, so people can make an account while forwarding is off.
+  const accountRoute = createAccountRoutes({ store: d.store, userIdSecret: d.userIdSecret, googleSignIn: d.googleSignIn, now, log,
+    paymentsOn: d.paymentsOn, loopOn: d.loopOn, signinLimit: d.signinLimit });
 
   const overBudget = (b: ReturnType<typeof budgetCheck>, userId: string) => {
     // Only reached when the hold did not fit, so a check that now passes (a hold let go meanwhile) still counts as the day.
@@ -130,16 +97,18 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
 
   return async (req) => {
     try { return await handle(req); }
-    catch { return refuse("store_failed", storeFailed()); }   // never the error itself: it could carry something it should not
+    // Never the error itself: it could carry something it should not. An account route gets its own sentence (no Claude words).
+    catch { return refuse("store_failed", isAccountPath(new URL(req.url).pathname) ? accountStoreFailed() : storeFailed()); }
   };
 
   async function handle(req: Request): Promise<Response> {
+    const url = new URL(req.url);
+    const account = await accountRoute(req, url);
+    if (account) return account;
     if (!d.enabled()) return refuse("disabled", error(503, "api_error", `${PRODUCT_S} included usage is not switched on yet. Use your own Claude key in Settings for now.`));
     if (secretProblem(d.userIdSecret)) return refuse("no_user_id_secret", error(503, "api_error", `${PRODUCT_S} included usage is not ready yet. Nothing was sent to Claude. Try again later, or use your own Claude key in Settings.`));
     // M99: a server with no Anthropic key set forwards nothing (it would only send the person's request to a certain refusal).
     if (typeof d.anthropicKey !== "string" || d.anthropicKey.trim() === "") return refuse("no_anthropic_key", error(503, "api_error", `${PRODUCT_S} included usage is not ready yet. Nothing was sent to Claude. Try again later.`));
-    const url = new URL(req.url);
-    if (req.method === "POST" && url.pathname === GOOGLE_SIGNIN_PATH) return signInWithGoogle(req);
     const token = tokenFromHeaders(req.headers);
     if (!token) return refuse("no_token", error(401, "authentication_error", `Sign in to ${PRODUCT} again.`));
     const user = await d.store.userByTokenHash(await hashToken(token));
