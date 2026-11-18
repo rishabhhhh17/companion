@@ -1026,6 +1026,25 @@ mod tests {
         assert_eq!(list["tasks"][0]["still"].as_u64(), Some(1));
     }
     #[test]
+    fn m105_a_review_names_the_tool_that_finished_and_codex_waiting_carries_no_words() {
+        // M105: the shared fixtures (read by the runner's suite and the pages too). The shell passes these through as they are;
+        // here it checks the shape it may forward: `by` and `tool` are one of the seven tools' ids, and another tool's waiting
+        // line has no message (Codex's hook hands over no words).
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let lines: Vec<Value> = events.lines().filter(|l| l.contains("\"id\":\"m105e")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(lines.len(), 4);
+        let tools = ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf"];
+        let mut named = Vec::new();
+        for e in &lines {
+            let who = e.get("by").or_else(|| e.get("tool")).and_then(|v| v.as_str()).unwrap();
+            assert!(tools.contains(&who), "{who}");
+            named.push(who.to_string());
+            if e["type"] == "hook.waiting" { assert!(e.get("message").is_none(), "Codex's waiting line carries no words"); }
+            if e["type"] == "review.batch" || e["type"] == "review.result" { assert!(e["batch"].as_str().is_some_and(|b| b.starts_with("rv_") && b.len() == 13)); }
+        }
+        assert_eq!(named, ["codex", "codex", "cursor", "codex"]);
+    }
+    #[test]
     fn m79_the_weekly_summary_passes_only_for_the_chosen_project_and_its_events_and_the_package_findings_read() {
         // M79: the shared fixtures (read by the runner's suite and the pages too).
         let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");

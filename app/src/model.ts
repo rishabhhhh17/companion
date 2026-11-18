@@ -319,7 +319,11 @@ export type Model = {
   /** M85: the asks History shows: the person's own tool told to ask first, and Squibby's own cards, each with its reason. */
   askedRows?: AskedRowView[];
   /** M77: Claude Code is waiting for the person in this project (the waiting hook): the notch's amber mark and its line. */
-  claudeWaiting?: { project: string; message?: string } | null;
+  /** M105: tool, the AI tool that waits when it is not Claude Code (Codex's PermissionRequest hook; it has no message). */
+  claudeWaiting?: { project: string; message?: string; tool?: DoneSignalTool } | null;
+  /** M105: an AI tool said it finished and the review of its changes is in: which tool, for which card, and when the result
+   *  came (toolFinished.ts says the notch's line from it while that card is open). */
+  toolFinished?: { project: string; tool: DoneSignalTool; batch: string; at: number } | null;
   /** M90: the person's own AI tool said it is working (hook.busy, from its guard hook as it runs a command): each project
    *  and when it last said so (the event's own time, so a replayed one is the past): Flowflow peeks out of the notch
    *  watching (peekOut.ts). That project's done hook ends only its own entry; Stop everything ends them all. */
@@ -614,6 +618,8 @@ function reduceOne(m: Model, e: Ev): Model {
   const hadReview = m.review ?? null;
   const rv = reviewReduce(hadReview, e);
   if (rv !== hadReview) m = { ...m, review: rv };
+  // M105: a tool's finished work was reviewed: remember which tool and when, for the notch's line.
+  if (e.type === "review.result" && e.ok === true && rv && rv.batch === e.batch && rv.stage === "reviewed" && rv.by) m = { ...m, toolFinished: { project: rv.project, tool: rv.by, batch: rv.batch, at: Date.now() } };
   if (e.type === "protocol.error" && e.failed === "review.fix" && hadReview) return m;
   const ed = everydayReduce(m.everyday, e, m.showme?.req);
   const n = reduceRest(ed === m.everyday ? m : { ...m, everyday: ed }, e);
@@ -887,7 +893,7 @@ function reduceRest(m: Model, e: Ev): Model {
       const back = Object.entries(m.workIn).find(([a, w]) => to && w.project === to && away[a] === undefined && !["idle", "done", "error"].includes(m.agents[a] ?? ""));
       const task: Task | null = back ? { agent: back[0], project: to, ...(back[1].checkpoint ? { checkpoint: back[1].checkpoint } : {}), label: back[1].label, lines: [], costUsd: 0 } : null;
       m = { ...m, folder: to || null, away, driveAway: plan && plan !== to ? plan : null, currentCheckpoint: task?.checkpoint };
-      return { ...m, bisect: null, eh: null, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, receipt: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], reviewHistory: [], savedRows: [], askedRows: [], caught: null, claudeWaiting: null, guardSaved: null, guardAsked: null, followUp: "idle", error: null, notice: null, task };
+      return { ...m, bisect: null, eh: null, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, receipt: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], reviewHistory: [], savedRows: [], askedRows: [], caught: null, claudeWaiting: null, toolFinished: null, guardSaved: null, guardAsked: null, followUp: "idle", error: null, notice: null, task };
     }
     case "app.showme": {
       if (e.stage === "done") return { ...m, showme: null };
@@ -1014,7 +1020,9 @@ function reduceRest(m: Model, e: Ev): Model {
     case "hook.waiting": {
       if (typeof e.project !== "string") return m;
       if (e.waiting !== true) return m.claudeWaiting && m.claudeWaiting.project === e.project ? { ...m, claudeWaiting: null } : m;
-      return { ...m, claudeWaiting: { project: e.project, ...(typeof e.message === "string" && e.message ? { message: e.message.slice(0, 120) } : {}) } };
+      // M105: another tool (Codex) waits with no words; Claude Code's own notice keeps its short message.
+      const tool = (DONE_SIGNAL_TOOLS as readonly unknown[]).includes(e.tool) && e.tool !== "claude" ? (e.tool as DoneSignalTool) : undefined;
+      return { ...m, claudeWaiting: { project: e.project, ...(tool ? { tool } : typeof e.message === "string" && e.message ? { message: e.message.slice(0, 120) } : {}) } };
     }
     case "cost.pause": return m.away[e.agent] !== undefined ? m : { ...m, costPause: { agent: String(e.agent) } };
     case "cost.resolved": return m.costPause?.agent === e.agent ? { ...m, costPause: null, ...(e.choice !== "keep" ? { notice: S.costPause.resolved[e.choice as "stop" | "undo"] } : {}) } : m;

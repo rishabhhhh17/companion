@@ -15,8 +15,10 @@ type ListTool = { id: string; apps: string[]; programs: string[]; folders: strin
 export const LIST: readonly ListTool[] = (list as { tools: ListTool[] }).tools;
 
 /** The hooks Connect adds for each tool, in the order they are added. The start block stays its own row in Settings. */
+/** M105: Codex's waiting signal (its PermissionRequest hook) is added by Connect too, but a Codex connected before it existed
+ *  still counts as connected (OPTIONAL_HOOKS): its row in Settings offers it. */
 export const CONNECT_HOOKS: Readonly<Record<ToolId, readonly HookKind[]>> = {
-  claude: ["done", "guard", "waiting"], codex: ["done", "guard"], cursor: ["done", "guard"], copilot: ["done", "guard"], antigravity: ["done", "guard"], gemini: ["done", "guard"], windsurf: ["done", "guard"],
+  claude: ["done", "guard", "waiting"], codex: ["done", "guard", "waiting"], cursor: ["done", "guard"], copilot: ["done", "guard"], antigravity: ["done", "guard"], gemini: ["done", "guard"], windsurf: ["done", "guard"],
 };
 
 /** The tool's name as people know it. */
@@ -45,11 +47,15 @@ export function findTools(found: Found): { here: ToolId[]; notHere: ToolId[] } {
 /** The rows of one tool that Connect owns, from the engine's state. */
 export const connectRows = (st: DoneState | null, tool: ToolId): DoneRow[] => (st?.tools ?? []).filter((r) => r.tool === tool && CONNECT_HOOKS[tool].includes(r.hook));
 
-/** A tool is connected when every hook Connect adds is on; partly when some are. */
+export const OPTIONAL_HOOKS: Readonly<Partial<Record<ToolId, readonly HookKind[]>>> = { codex: ["waiting"] };
+/** A tool is connected when every hook Connect adds is on (an optional one aside, M105); partly when some are. */
 export function connection(st: DoneState | null, tool: ToolId): "on" | "partly" | "off" {
   const rows = connectRows(st, tool);
+  const optional = OPTIONAL_HOOKS[tool] ?? [];
   const on = rows.filter((r) => r.on).length;
-  return rows.length > 0 && on === CONNECT_HOOKS[tool].length ? "on" : on > 0 ? "partly" : "off";
+  const needed = CONNECT_HOOKS[tool].filter((h) => !optional.includes(h));
+  const neededOn = rows.filter((r) => r.on && needed.includes(r.hook)).length;
+  return rows.length > 0 && neededOn === needed.length ? "on" : on > 0 ? "partly" : "off";
 }
 /** Whether any tool is connected (the Now row shows only while none is). */
 export const anyConnected = (st: DoneState | null): boolean => DONE_TOOLS.some((t) => connection(st, t) === "on");

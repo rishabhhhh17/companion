@@ -5,7 +5,7 @@
 // (later), with their own review if one ran, and take its place once it is closed. Nothing here
 // starts work: Review them, Fix it and Looks fine are the person's presses (card.tsx sends them), and Fix it asks first.
 import { replayOf, type ReplayView } from "./replay.ts";
-import { proofOk, REVIEW_AWAY, REVIEW_CHECKS, REVIEW_CLOSED_HOW, REVIEW_LANES, REVIEW_RATINGS, REVIEW_REASONS, REVIEW_SILENCE_LINES, REVIEW_TOUCHES, type Command, type CodeLine, type ReviewChecks, type ReviewFile, type ReviewKeyPlace, type ReviewProof, type ReviewRating, type ReviewReason, type ReviewReasonKind, type ReviewTouch, type ReviewUntold } from "../../protocol/index.ts";
+import { DONE_SIGNAL_TOOLS, type DoneSignalTool, proofOk, REVIEW_AWAY, REVIEW_CHECKS, REVIEW_CLOSED_HOW, REVIEW_LANES, REVIEW_RATINGS, REVIEW_REASONS, REVIEW_SILENCE_LINES, REVIEW_TOUCHES, type Command, type CodeLine, type ReviewChecks, type ReviewFile, type ReviewKeyPlace, type ReviewProof, type ReviewRating, type ReviewReason, type ReviewReasonKind, type ReviewTouch, type ReviewUntold } from "../../protocol/index.ts";
 import { addMemory } from "./commands.ts";
 import { untoldOf } from "./safetyNet.ts";
 import { hasKeyShape, redact } from "../../runner/src/redact.ts";
@@ -61,6 +61,8 @@ export type ReviewCard = {
   keys?: ReviewKeyPlace[];
   /** M57 feature 1: Copy for my AI was pressed on this card, so closing it is "sent back" in History. */
   sentBack?: boolean;
+  /** M105: the AI tool whose done signal said these changes (it finished then). Who finished, never who wrote each file. */
+  by?: DoneSignalTool;
 };
 
 type Ev = Record<string, unknown> & { type?: string };
@@ -68,6 +70,8 @@ type Ev = Record<string, unknown> & { type?: string };
 const str = (v: unknown, max = MAX_TEXT): string | null => (typeof v === "string" ? v.slice(0, max) : null);
 const isBatch = (v: unknown): v is string => typeof v === "string" && BATCH.test(v);
 const isProject = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+/** M105: one of the seven tools' ids, or nothing. */
+const toolOf = (v: unknown): DoneSignalTool | undefined => ((DONE_SIGNAL_TOOLS as readonly unknown[]).includes(v) ? (v as DoneSignalTool) : undefined);
 const whole = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : null);
 const strings = (v: unknown, max: number): string[] | null => (Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]).slice(0, max).map((x) => x.slice(0, MAX_TEXT)) : null);
 function filesOf(v: unknown): ReviewFile[] | null {
@@ -171,8 +175,10 @@ function reduceOne(r: ReviewCard | null, e: Ev): ReviewCard | null {
       const base = same ? r! : fresh(e.project, e.batch);
       const away = (REVIEW_AWAY as readonly unknown[]).includes(e.away) ? (e.away as ReviewCard["away"]) : undefined;
       const keys = keysOf(e.keys);
-      const { away: _was, keys: _k, ...rest } = base;
-      return { ...rest, project: e.project, files, count, capped: e.capped === true, secretFiles, auto: e.auto === true, ...(away ? { away } : {}), ...(keys ? { keys } : {}) };
+      const { away: _was, keys: _k, by: _b, ...rest } = base;
+      // M105: the tool that finished, as this event says it (a batch that grew keeps its tool on the engine's side).
+      const by = toolOf(e.by);
+      return { ...rest, project: e.project, files, count, capped: e.capped === true, secretFiles, auto: e.auto === true, ...(away ? { away } : {}), ...(keys ? { keys } : {}), ...(by ? { by } : {}) };
     }
     case "review.started": {
       if (!isProject(e.project) || !isBatch(e.batch)) return r;
@@ -194,7 +200,9 @@ function reduceOne(r: ReviewCard | null, e: Ev): ReviewCard | null {
       if (!d) return r;
       const { files, count, capped, secretFiles, ...result } = d;
       const { fixAfter, ...base } = r ?? fresh(e.project, e.batch);
-      const done: ReviewCard = { ...base, stage: "reviewed", files, count, capped, secretFiles, asked: false, fix: null, note: null, result };
+      // M105: the result names the tool too (a done signal may come after the batch was said).
+      const by = toolOf(e.by) ?? base.by;
+      const done: ReviewCard = { ...base, stage: "reviewed", files, count, capped, secretFiles, asked: false, fix: null, note: null, result, ...(by ? { by } : {}) };
       // M69: Fix it was pressed on the key warning before the review: its own question shows now (never a fix unasked).
       return fixAfter && canFix(done) ? { ...done, fix: "confirm" } : done;
     }

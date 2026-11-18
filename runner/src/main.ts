@@ -145,7 +145,8 @@ const review = new ReviewService({
 // being reviewed ends its quiet time at once. The hook is written only after the person's yes (donesignal.add, confirm).
 // M90: the person's own tool working (its guard hook ran), said for Flowflow's peek out of the notch; its done hook ends it.
 const toolBusy = new ToolBusy({ emit: (e) => say(e) });
-const doneSignals = new DoneSignals(settings.data, { onDone: (p) => { guard.activity(p); toolBusy.done(p); review.doneSignal(p); } });
+// M105: the tool that finished credits the batch it moves on; Codex's waiting signal is said as hook.waiting with its tool.
+const doneSignals = new DoneSignals(settings.data, { onDone: (p, tool) => { guard.activity(p); toolBusy.done(p); review.doneSignal(p, tool); }, onWaiting: (p, tool) => guard.toolWaiting(p, tool) });
 doneSignals.start();
 // M78: the start block Claude Code's SessionStart hook prints, and the project's notes search index. Both are copies of the
 // notes files, written only while the person has the start hook set up; copies left from a hook that is gone are removed.

@@ -83,7 +83,8 @@ describe("hook.busy", () => {
   test("the engine wires it: the guard's busy, the done hook's done, and Stop everything", () => {
     const main = require("node:fs").readFileSync(new URL("../src/main.ts", import.meta.url), "utf8") as string;
     expect(main).toContain("busy: (p) => toolBusy.seen(p),");
-    expect(main).toContain("const doneSignals = new DoneSignals(settings.data, { onDone: (p) => { guard.activity(p); toolBusy.done(p); review.doneSignal(p); } });");
+    // M105 (changed on purpose): the done signal names the tool that finished, and Codex's waiting signal goes to the guard.
+    expect(main).toContain("const doneSignals = new DoneSignals(settings.data, { onDone: (p, tool) => { guard.activity(p); toolBusy.done(p); review.doneSignal(p, tool); }, onWaiting: (p, tool) => guard.toolWaiting(p, tool) });");
     expect(main).toContain(`interrupts.register("guard", { stop: () => { guard.stopWaits(); toolBusy.stop(); }, close: () => guard.stop() });`);
   });
 });

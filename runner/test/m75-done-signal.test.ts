@@ -97,7 +97,8 @@ describe("the hook Squibby adds, only after a yes", () => {
     const s = new DoneSignals(data);
     s.add(p, "claude");
     const cmd = JSON.parse(readFileSync(join(p, HOOK_FILE.claude), "utf8")).hooks.Stop[0].hooks[0].command as string;
-    const marker = s.markerFor(p, false)!;
+    // M105 (changed on purpose): each tool touches its own marker, <token>.<tool>.
+    const marker = s.markerFor(p, false, "claude")!;
     expect(cmd).toBe(hookCommand(marker));
     // The turn's JSON, as the tool gives it, with words in it: none of it may land anywhere.
     const input = JSON.stringify({ session_id: "s1", cwd: p, hook_event_name: "Stop", last_assistant_message: "I changed the secret SECRET-WORDS-123" });

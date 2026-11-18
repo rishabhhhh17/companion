@@ -26,8 +26,9 @@ const VERSIONED: &[&str] = &["cursor", "copilot"];
 /// The index of tokens and what Squibby made, in the engine's data folder (donesignal.ts DONE_INDEX).
 pub const INDEX: &str = "done-signals.json";
 /// The events Squibby's hooks sit under (donesignal.ts HOOK_EVENT): the done signal, the guard and the waiting hook (M77),
-/// and the start block (M78).
-pub const EVENTS: &[&str] = &["Stop", "PreToolUse", "Notification", "SessionStart", "stop", "beforeShellExecution", "BeforeTool", "AfterAgent"];
+/// and the start block (M78). M105: Codex's waiting signal under PermissionRequest (a touch of the done folder, like the
+/// done signal, so it is found the same way).
+pub const EVENTS: &[&str] = &["Stop", "PreToolUse", "Notification", "SessionStart", "stop", "beforeShellExecution", "BeforeTool", "AfterAgent", "PermissionRequest"];
 
 // ---------- a small JSON reader and writer that keeps the order of keys ----------
 // The app's serde_json sorts the keys of an object, which would reorder the person's file. This keeps them as written.
@@ -398,6 +399,26 @@ mod tests {
         assert!(!t.project.join(".devin").exists(), "the file and folder Squibby made go");
         let ts = include_str!("../../../runner/src/donesignal.ts");
         assert!(ts.contains("gemini: \".gemini/settings.json\", windsurf: \".devin/hooks.v1.json\""), "the runner writes the same files");
+    }
+    #[test]
+    fn m105_codexs_waiting_line_and_each_tools_own_done_marker_go_and_the_persons_own_permission_request_hook_stays() {
+        let t = t("m105");
+        create_dir_all(t.project.join(".codex")).unwrap();
+        // Today's lines: the done signal touches <token>.codex, the waiting signal <token>.codex.wait (no output, exit 0).
+        let done = format!("/usr/bin/touch -- '{}/done/0123456789abcdef01234567.codex' 2>/dev/null; printf '{{}}'", t.data.display());
+        let wait = format!("/usr/bin/touch -- '{}/done/0123456789abcdef01234567.codex.wait' 2>/dev/null; exit 0", t.data.display());
+        let theirs = r#"{ "matcher": "Bash", "hooks": [ { "type": "command", "command": "./notify.sh" } ] }"#;
+        fwrite(t.project.join(".codex/hooks.json"), format!("{{\n  \"hooks\": {{\n    \"Stop\": [ {{ \"hooks\": [ {{ \"type\": \"command\", \"command\": {} }} ] }} ],\n    \"PermissionRequest\": [ {theirs}, {{ \"hooks\": [ {{ \"type\": \"command\", \"command\": {} }} ] }} ]\n  }}\n}}\n", serde_json::to_string(&done).unwrap(), serde_json::to_string(&wait).unwrap())).unwrap();
+        index_with(&t, &["codex"], &["codex"]);
+        assert_eq!(remove(&t.project, &t.data), vec![".codex/hooks.json"]);
+        let v: serde_json::Value = serde_json::from_str(&fs::read_to_string(t.project.join(".codex/hooks.json")).unwrap()).unwrap();
+        assert_eq!(v, serde_json::json!({ "hooks": { "PermissionRequest": [ { "matcher": "Bash", "hooks": [ { "type": "command", "command": "./notify.sh" } ] } ] } }), "the person's own hook stays, alone");
+        // With nothing else in it, the file and folder Squibby made go.
+        fwrite(t.project.join(".codex/hooks.json"), format!("{{ \"hooks\": {{ \"PermissionRequest\": [ {{ \"hooks\": [ {{ \"type\": \"command\", \"command\": {} }} ] }} ] }} }}", serde_json::to_string(&wait).unwrap())).unwrap();
+        assert_eq!(remove(&t.project, &t.data), vec![".codex/hooks.json"]);
+        assert!(!t.project.join(".codex").exists());
+        let ts = include_str!("../../../runner/src/donesignal.ts");
+        assert!(ts.contains("CODEX_WAITING_EVENT = \"PermissionRequest\"") && ts.contains("`/usr/bin/touch -- ${shQuote(marker)} 2>/dev/null; exit 0`"), "the runner writes the same event and the same touch");
     }
     #[test]
     fn this_file_never_runs_git_and_the_runners_rule_is_the_same() {

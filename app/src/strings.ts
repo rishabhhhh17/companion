@@ -3871,7 +3871,8 @@ export const S = {
     partLabel: {
       done: (tool: string) => `Start a review when ${tool} is done`,
       guard: (tool: string) => `Save a copy before ${tool} runs a destructive command`,
-      waiting: () => "Say in the notch when Claude Code waits for you",
+      // M105: Codex can say it waits too.
+      waiting: (tool: string) => `Say in the notch when ${tool} waits for you`,
       start: () => "Give Claude Code your notes as each session starts",
     } as Record<"done" | "guard" | "waiting" | "start", (tool: string) => string>,
     connectWhat: (tool: string) => `Each line only tells ${PRODUCT} that ${tool} is done, or about to run a destructive command or read saved logins. Nothing is blocked unless you choose that in Settings, and nothing ${tool} says is kept.`,
@@ -4209,7 +4210,9 @@ export const S = {
       undo: "Undo last change",
       check: "Check my project",
       home: "Open Home",
-    } as Record<"stop" | "seeWhy" | "answer" | "claude" | "pick" | "review" | "fix" | "undo" | "check" | "home", string>,
+      // M105: a tool finished and its review is in; the pill says the result's own words (S.m105.pill) instead.
+      finished: "See what finished",
+    } as Record<"stop" | "seeWhy" | "answer" | "claude" | "pick" | "review" | "fix" | "undo" | "check" | "home" | "finished", string>,
     changes: (n: number) => (n === 1 ? "1 change to review" : `${n} changes to review`),
     // What VoiceOver hears for the greeting button and the dot.
     openChat: (greet: string) => `${greet}. Open the chat`,
@@ -4289,5 +4292,45 @@ export const S = {
       wrong: (n: number) => (n === 1 ? "1 wrong change caught and then fixed or undone" : `${n} wrong changes caught and then fixed or undone`),
       live: (n: number) => (n === 1 ? "1 ask before a live system" : `${n} asks before a live system`),
     },
+  },
+  // M105: which tool finished, and did it work (docs/milestones/M105-which-tool-finished.md). "Finished" is what the tool's
+  // own done signal said; the result is the review's. Never who wrote each file (M57's honest words).
+  m105: {
+    // The notch's line and the hover's tooltip: "Codex finished in shop: works".
+    finished: (tool: string, project: string, result: string) => (project ? `${tool} finished in ${project}: ${result}` : `${tool} finished: ${result}`),
+    result: {
+      works: "works",
+      fine: "looks fine",
+      problems: (n: number) => (n === 1 ? "1 problem" : `${n} problems`),
+      look: (n: number) => (n === 1 ? "1 thing to look at" : `${n} things to look at`),
+    },
+    // The one glowing pill: it opens the review card, where Undo is.
+    pill: {
+      works: "See what changed",
+      fine: "See what changed",
+      problems: (n: number) => (n === 1 ? "See the problem" : `See ${n} problems`),
+      look: (n: number) => (n === 1 ? "See what to look at" : `See ${n} things`),
+    },
+    // Home's side list, under the tool's name.
+    side: {
+      works: "Finished, works",
+      fine: "Finished, looks fine",
+      problems: (n: number) => (n === 1 ? "Finished, 1 problem" : `Finished, ${n} problems`),
+      look: (n: number) => (n === 1 ? "Finished, 1 to look at" : `Finished, ${n} to look at`),
+    },
+    // Another tool than Claude Code waits for the person (Codex's PermissionRequest hook). No words of its question travel.
+    waiting: (tool: string, project: string) => (project ? `${tool} is waiting for you in ${project}` : `${tool} is waiting for you`),
+    waitingShort: (tool: string) => `${tool} is waiting for you`,
+    waitingLine: (tool: string) => `Answer it in ${tool}. The notch clears when ${tool} moves on.`,
+    waitingAct: (tool: string) => `${tool} is waiting`,
+    // Settings: which tools can say they wait.
+    waitingNote: "Claude Code and Codex can also say in the notch when they wait for you. Cursor, the VS Code agent, Antigravity, Gemini CLI and Windsurf cannot tell when they wait, so for them the notch says only when they finish.",
+    // The Codex waiting row and its card.
+    waitTitle: (tool: string) => `${tool}: tell me in the notch when it waits for me`,
+    waitRowLine: (tool: string) => `When ${tool} is about to ask for your approval, the notch says ${tool} is waiting for you. Nothing of its question travels.`,
+    askTitle: (tool: string) => `Add the waiting signal for ${tool}?`,
+    askWhat: (tool: string) => `When ${tool} is about to ask for your approval, it touches an empty file in ${PRODUCT_S} own folder. Nothing is read from ${tool} and its question never travels. ${PRODUCT} never answers for you: you approve in ${tool} as before.`,
+    // Remove's line for the waiting row.
+    removed: (tool: string) => `${tool} will no longer say in the notch when it waits.`,
   },
 } as const;

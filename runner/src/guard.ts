@@ -326,6 +326,15 @@ export class HookGuard {
   }
   /** For tests: how many waits are running now (guard requests and waiting marks). */
   waits(): { requests: number; marks: number; timers: number } { return { requests: this.releases.size, marks: this.waitingNow.size, timers: this.waitingTimers.size }; }
+  /** M105: another tool waits for the person (Codex's PermissionRequest hook touched its marker). No words travel: only the
+   *  tool's id. Cleared the same way as Claude Code's mark: the next hook event for the project, Stop everything, or the
+   *  timer. */
+  toolWaiting(project: string, tool: string): void {
+    const p = resolve(project);
+    this.waitingNow.add(p);
+    this.o.emit({ type: "hook.waiting", project: p, waiting: true, tool });
+    this.arm(p);
+  }
   /** The next hook event for a project (a guard request, the done marker) ends its waiting mark. */
   activity(project: string): void { this.clear(resolve(project)); }
   private clear(project: string): void {

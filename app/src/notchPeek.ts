@@ -24,6 +24,7 @@ import type { IconName } from "./icons.tsx";
 import { QUICK_LOOK, whenWords } from "./notchQuick.ts";
 import { looksLikeCopy } from "./practice.ts";
 import { S } from "./strings.ts";
+import { finishedNow, waitingTool } from "./toolFinished.ts";
 
 /** Where a press opens Home (island_go's argument): an arrival Home accepts (arrival.rs, home.ts arrivalFrom), or none (Now). */
 export type Go = { then?: Record<string, string> };
@@ -38,7 +39,8 @@ const askable = (m: Model): boolean => m.runnerUp && m.connected !== "none" && !
 
 // ---------- the AI tools ----------
 
-export type ToolState = "waiting" | "watching" | "partly";
+/** M105: finished, the tool said it finished and the review of its changes is in (its words say the result). */
+export type ToolState = "waiting" | "watching" | "partly" | "finished";
 export type ToolPeek = { tool: DoneTool; name: string; mark: string; state: ToolState; words: string; colour: Colour; go: Go };
 /** At most this many tool cards in the hover panel (560 points wide); the rest are a count. Home's side list shows all. */
 export const TOOLS_SHOWN = 3;
@@ -46,20 +48,25 @@ export const TOOLS_SHOWN = 3;
 /** The AI tools connected in this project, each with what it is doing now, as far as its hooks say: Claude Code waiting on
  *  you (its waiting hook, hook.waiting; only Claude Code has one, so only it can say so), connected and watching, or half
  *  connected. Waiting comes first. Null while the engine has not answered (nothing is guessed). */
-export function toolPeeks(m: Model, st: DoneState | null): ToolPeek[] | null {
+export function toolPeeks(m: Model, st: DoneState | null, now: number = Date.now()): ToolPeek[] | null {
   if (!st) return null;
   const project = projectOf(m);
   const waiting = !!m.claudeWaiting && !!project && samePlace(m.claudeWaiting.project, project);
+  // M105: the tool waiting (Claude Code, or Codex by its PermissionRequest hook), and the one that just finished.
+  const waits = waitingTool(m);
+  const fin = finishedNow(m, now);
   const out: ToolPeek[] = [];
   for (const tool of DONE_TOOLS) {
     const c = connection(st, tool);
-    const w = tool === "claude" && waiting && c !== "off";
+    const w = tool === waits && waiting && c !== "off";
     if (c === "off" && !w) continue;
-    const state: ToolState = w ? "waiting" : c === "on" ? "watching" : "partly";
-    out.push({ tool, name: S.doneSignal.tool[tool], mark: S.m84.mark[tool], state, words: S.m84.toolState[state],
-      colour: state === "waiting" ? MEANING_COLOUR.question : state === "partly" ? MEANING_COLOUR.review : MEANING_COLOUR.ready,
-      // Waiting: Now, where Home says it with Claude Code's own short notice. Otherwise Your AI tools in Settings.
-      go: state === "waiting" ? NOW_GO : TOOLS_GO });
+    const f = !w && fin?.tool === tool ? fin : null;
+    const state: ToolState = w ? "waiting" : f ? "finished" : c === "on" ? "watching" : "partly";
+    out.push({ tool, name: S.doneSignal.tool[tool], mark: S.m84.mark[tool], state, words: f ? f.side : S.m84.toolState[state as Exclude<ToolState, "finished">],
+      colour: state === "waiting" ? MEANING_COLOUR.question : f ? f.colour : state === "partly" ? MEANING_COLOUR.review : MEANING_COLOUR.ready,
+      // Waiting: Now, where Home says it with Claude Code's own short notice. Finished: the review card (and its Undo).
+      // Otherwise Your AI tools in Settings.
+      go: state === "waiting" ? NOW_GO : f ? { then: { do: "review" } } : TOOLS_GO });
   }
   return [...out.filter((t) => t.state === "waiting"), ...out.filter((t) => t.state !== "waiting")];
 }

@@ -51,6 +51,7 @@ import { PACKAGE_NOTES, packageReasons, type PackageLookup } from "./osv.ts";
 import { dirname as dirOf } from "node:path";
 import { committedSince } from "./gitcommit.ts";
 import { findingsOf, outcomeOf, stillCount, type FixCheck, type FixOutcome } from "./fixcheck.ts";
+import type { DoneTool } from "../donesignal.ts";
 
 /** The commands whose work can write in the project (a task, a plan, Undo, an install, a check or a ship step that builds
  *  it, the shared memory files): main.ts wraps each in around(), so nothing they change is ever counted as the other
@@ -139,7 +140,8 @@ type Away = (typeof REVIEW_AWAY)[number];
  *  itself, and its project's checks and scripts run only when the person asks for them. */
 /** began (M101): when the batch's first change was written (ms), for the commit check: never the starting point's time,
  *  which can be hours older than the change. */
-type Batch = { id: string; project: string; from: string; to: string; files: FileChange[]; count: number; capped: boolean; secretFiles: string[]; frozen: boolean; away?: Away; began?: number };
+/** M105: by, the tool whose done signal said this batch (it finished then); absent when no tool said so. */
+type Batch = { id: string; project: string; from: string; to: string; files: FileChange[]; count: number; capped: boolean; secretFiles: string[]; frozen: boolean; away?: Away; began?: number; by?: DoneTool };
 /** Changes of the other tool set aside while the engine's own work, a review or an earlier batch was in the way: said as
  *  their own batch once that is over. to: null while the engine's work still runs. only: the files that are the other
  *  tool's (null: every file from..to). quiet: wait for the folder to be quiet first. stops: Stop everything's count when
@@ -391,12 +393,19 @@ export class ReviewService {
   /** M75 (roadmap 19, F30): the other tool said "done in this folder" (donesignal.ts). For the project being watched, with
    *  changes waiting, the batch is said after a short settle instead of the quiet time; anything else does nothing. The
    *  signal carries no content: what is reviewed is read from the folder, as always. True when it moved a batch on. */
-  doneSignal(project: string): boolean {
+  /** M105: by, the tool that said it is done: the batch it moves on is credited to it (review.batch and review.result say
+   *  `by`). With nothing waiting, an open batch not yet credited is credited to it; nothing else is. */
+  doneSignal(project: string, by?: DoneTool | null): boolean {
     let p: string;
     try { p = resolve(project); } catch { return false; }
     if (!this.batcher || p !== this.watching) return false;
-    return this.batcher.settle(this.deps.doneSettleMs ?? DONE_SETTLE_MS);
+    const moved = this.batcher.settle(this.deps.doneSettleMs ?? DONE_SETTLE_MS);
+    if (by && moved) this.doneBy = by;
+    else if (by && this.open && !this.open.by) this.open.by = by;
+    return moved;
   }
+  /** M105: the tool whose done signal moved the batch that is being measured now, until that batch is said. */
+  private doneBy: DoneTool | null = null;
   private ownOf(p: string): number { return this.ownBy.get(p) ?? 0; }
 
   private startWatching(p: string): void {
@@ -407,7 +416,7 @@ export class ReviewService {
     if (!b.start()) return;
     for (let i = 0; i < this.ownOf(p); i++) b.holdOwn();
     this.batcher = b; this.watching = p;
-    this.open = null; this.dirty.clear(); this.dirtyCapped = false; this.reviewed.clear();
+    this.open = null; this.dirty.clear(); this.dirtyCapped = false; this.reviewed.clear(); this.doneBy = null;
     this.startProblem = null;
     this.unguard?.(); this.made = []; this.paused = false;
     try { this.unguard = store.guard(() => this.inUse()); } catch { this.unguard = null; }   // a store that cannot keep them: the newest 100 still stay
@@ -644,6 +653,9 @@ export class ReviewService {
     const env = (await store.envChanged(from, to)).filter((f) => (!only || only.has(f)) && !changed.some((c) => c.file === f));
     const files: FileChange[] = [...changed, ...env.map((file) => ({ file, kind: "modified" as const }))].sort((a, b) => a.file.localeCompare(b.file));
     const old = this.open;
+    // M105: credited to the tool whose done signal moved it, or, for a batch that grew, to the one its earlier part was.
+    const by = this.doneBy ?? (old && old.from === from ? old.by : undefined);
+    this.doneBy = null;
     if (!files.length) {
       this.open = null;
       // Nothing differs any more (the changes were put back): nothing is waiting to be reviewed.
@@ -656,7 +668,7 @@ export class ReviewService {
     // with a later save (which used to drop its mark and, in Automatic, review the evening's changes by themselves).
     // M101: when its first change was written; a batch that grows keeps the earliest.
     const began = Math.min(old && old.from === from && old.began ? old.began : Infinity, firstWrite(store, p, from, files));
-    const b: Batch = { id: `rv_${randomBytes(5).toString("hex")}`, project: p, from, to, files, count: files.length, capped: capped || files.length > this.maxFiles(), secretFiles: files.filter((f) => isEnvFile(f.file)).map((f) => f.file), frozen: frozen || !!away, ...(away ? { away } : {}), began };
+    const b: Batch = { id: `rv_${randomBytes(5).toString("hex")}`, project: p, from, to, files, count: files.length, capped: capped || files.length > this.maxFiles(), secretFiles: files.filter((f) => isEnvFile(f.file)).map((f) => f.file), frozen: frozen || !!away, ...(away ? { away } : {}), began, ...(by && !away ? { by } : {}) };
     this.open = b;
     if (!store.note(PENDING)) { store.setNote(PENDING, from); store.setNote(PENDING_OWN, null); }
     // A safe review whose card this newer batch replaces on the page can never be closed there: its History row says so.
@@ -667,7 +679,7 @@ export class ReviewService {
     const gen = this.gen;
     const keys = this.deps.setting("review.keyWarning") !== true ? [] : await this.keyPlaces(store, from, to, files).catch(() => []);
     if (gen !== this.gen || this.open !== b) return null;
-    this.deps.emit({ type: "review.batch", project: p, batch: b.id, files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20), auto: this.auto(), ...(away ? { away } : {}), ...(keys.length ? { keys } : {}) });
+    this.deps.emit({ type: "review.batch", project: p, batch: b.id, files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20), auto: this.auto(), ...(away ? { away } : {}), ...(keys.length ? { keys } : {}), ...(b.by ? { by: b.by } : {}) });
     if (this.auto() && auto !== null && auto === this.stops && !away) void this.reviewBatch(b, true, auto, false).catch(() => undefined);
     return b;
   }
@@ -1151,7 +1163,7 @@ export class ReviewService {
         type: "review.result", project: b.project, batch: b.id, ok: true, rating: shown.rating, touches, summary: clip(redact(summary), 400), notes,
         reasons: withLines(shown.reasons, after), files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20),
         checks, ...(checksNote ? { checksNote } : {}), ...(checksDetail ? { checksDetail } : {}), sendBack: sendBackText(review), lane, usdEstimate: Math.round(usd * 1e6) / 1e6, ...(note ? { note } : {}),
-        ...(ruleFiles.length ? { ruleFiles } : {}), ...(shown.hidden ? { hidden: shown.hidden } : {}), untold, ...(replay ? { replay } : {}),
+        ...(ruleFiles.length ? { ruleFiles } : {}), ...(shown.hidden ? { hidden: shown.hidden } : {}), untold, ...(replay ? { replay } : {}), ...(b.by ? { by: b.by } : {}),
       });
       if (sheet && this.deps.setting("replay.model") === true && !rulesOnly && !checksOnly) void this.replayByModel(b, sheet, abort.signal, gen);
       // M57 feature 1: one row in the task log. Names of files only, the summary with secrets hidden; no file text.

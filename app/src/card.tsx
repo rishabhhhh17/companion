@@ -114,6 +114,7 @@ import { AiToolsNowRow, useDoneState } from "./aiToolsScreen.tsx";
 import { StatusStrip } from "./statusStrip.tsx";
 import { homeFacts, type NotchFactId } from "./notchQuick.ts";
 import { sideTools, todayLine } from "./notchPeek.ts";
+import { waitingTool, waitingWhy } from "./toolFinished.ts";
 import { TodayLine } from "./todayLine.tsx";
 import { NowRunway } from "./runwayRing.tsx";
 import { anyConnected } from "./aiTools.ts";
@@ -3110,7 +3111,8 @@ export function Card() {
         : <div className="notice" role="status">{m.notice}</div>)}
       {/* M77: the person's own Claude Code waits for them (the waiting hook): the same line as the notch, with Claude Code's own
           short notice under it, never the question. */}
-      {m.claudeWaiting && <div className="notice" role="status" data-kind="claude-waiting"><b>{S.guard.waitingWhy(shortProjectName(m.claudeWaiting.project))}.</b> {m.claudeWaiting.message ? `${m.claudeWaiting.message}. ` : ""}{S.guard.waitingLine}</div>}
+      {/* M105: Codex waiting says so in its name, with where to answer; no words of its question travel. */}
+      {m.claudeWaiting && <div className="notice" role="status" data-kind="claude-waiting" data-tool={waitingTool(m)}><b>{waitingWhy(m, shortProjectName(m.claudeWaiting.project))}.</b> {m.claudeWaiting.message ? `${m.claudeWaiting.message}. ` : ""}{waitingTool(m) === "claude" ? S.guard.waitingLine : S.m105.waitingLine(S.doneSignal.tool[waitingTool(m)])}</div>}
       {updateReady && (
         <div className="notice" role="status">
           <span>{S.homeUpdateReady(updateReady)}</span>{" "}

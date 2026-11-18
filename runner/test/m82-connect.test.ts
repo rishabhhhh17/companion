@@ -31,7 +31,9 @@ describe("Connect and Disconnect, through the engine's own hooks", () => {
   test("each tool's Connect set is hooks that tool has; Claude Code's adds the waiting signal, never the start block", () => {
     for (const t of DONE_TOOLS) for (const h of CONNECT_HOOKS[t]) expect(TOOL_HOOKS[t]).toContain(h);
     expect([...CONNECT_HOOKS.claude]).toEqual(["done", "guard", "waiting"]);
-    for (const t of DONE_TOOLS.filter((x) => x !== "claude")) expect([...CONNECT_HOOKS[t]]).toEqual(["done", "guard"]);
+    // M105: Codex also has a waiting signal (PermissionRequest), so its Connect set adds it.
+    expect([...CONNECT_HOOKS.codex]).toEqual(["done", "guard", "waiting"]);
+    for (const t of DONE_TOOLS.filter((x) => x !== "claude" && x !== "codex")) expect([...CONNECT_HOOKS[t]]).toEqual(["done", "guard"]);
   });
 
   test("Connect adds exactly that tool's hooks, and Disconnect takes them out again", () => {
@@ -81,7 +83,7 @@ describe("Connect and Disconnect, through the engine's own hooks", () => {
     expect(readFileSync(join(p, ".cursor/hooks.json"), "utf8")).toBe(bad);
     // Other tools in the same project still connect.
     for (const c of connectCommands(p, st, "codex")) run(s, c as never);
-    expect(onHooks(s, p).sort()).toEqual(["codex:done", "codex:guard"]);
+    expect(onHooks(s, p).sort()).toEqual(["codex:done", "codex:guard", "codex:waiting"]);
   });
 
   test("no project, no commands", () => {

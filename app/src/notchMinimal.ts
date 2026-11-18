@@ -26,6 +26,7 @@ import type { Go } from "./notchPeek.ts";
 import type { IslandLineKind } from "./home.ts";
 import { S } from "./strings.ts";
 import { firstName, NAME_SHOWN_MAX } from "./notchHello.ts";
+import { finishedNow, waitingTool } from "./toolFinished.ts";
 
 // ---------- the greeting ----------
 
@@ -41,6 +42,8 @@ const projectOf = (m: Model): string => m.task?.project ?? m.folder ?? "";
 const nameOf = (project: string): string => project.split("/").filter(Boolean).at(-1) ?? "";
 const samePlace = (a: string, b: string): boolean => a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
 const claudeWaitsHere = (m: Model): boolean => { const p = projectOf(m); return !!p && !!m.claudeWaiting && samePlace(m.claudeWaiting.project, p); };
+/** M105: "Claude is waiting for you", or the same in Codex's name when Codex is the one waiting. */
+const waitsWords = (m: Model): string => { const t = waitingTool(m); return t === "claude" ? S.m93.line.claude : S.m105.waitingShort(S.doneSignal.tool[t]); };
 const reviewWaits = (m: Model): number => { const rv = m.review; return rv && rv.stage !== "reviewed" && rv.count > 0 ? rv.count : 0; };
 
 export type HoverLine = { words: string; colour: Colour };
@@ -65,17 +68,20 @@ export function hoverLine(m: Model, now: number, o: LineInput = {}): HoverLine |
   const L = S.m93.line;
   if (!m.runnerUp) return line(L.off, "off");
   // The island's own line that Claude waits for you is said in the panel's words, in the waiting colour.
-  if (o.note && o.noteKind === "claudeWaiting" && claudeWaitsHere(m)) return line(L.claude, "waiting");
+  if (o.note && o.noteKind === "claudeWaiting" && claudeWaitsHere(m)) return line(waitsWords(m), "waiting");
   if (o.note) return line(o.note, "note");
   if (m.connected === "none") return line(L.notReady, "notConnected");
   if (o.job) return line(o.job, "working");
   if (m.approvals.length > 0) return line(L.questions(m.approvals.length), "questions");
-  if (claudeWaitsHere(m)) return line(L.claude, "waiting");
+  if (claudeWaitsHere(m)) return line(waitsWords(m), "waiting");
   const project = projectOf(m);
   if (!nameOf(project)) return null;
   const n = reviewWaits(m);
   if (o.reviewKey && n > 0) return line(S.panel.reviewKey, "failing");
   if (n > 0) return line(L.changes(n), "changes");
+  // M105: an AI tool finished and its review is in: which tool, and whether it works.
+  const fin = finishedNow(m, now);
+  if (fin) return { words: fin.line, colour: fin.colour };
   if (homeStatus(m, project, now).kind === "failing") return line(L.failed, "failing");
   if ((o.unseen ?? 0) > 0) return line(S.panel.unseen(o.unseen!), "ready");
   return null;
@@ -86,7 +92,9 @@ export function hoverLine(m: Model, now: number, o: LineInput = {}): HoverLine |
 export type HoverActionId = keyof typeof S.m96.act;
 export type HoverAction = { id: HoverActionId; label: string; look: { colour: Colour; icon: IconName };
   /** Where island_go opens Home; null only for Stop, which sends the stop command itself. */
-  go: Go | null };
+  go: Go | null;
+  /** M105: the pill's small dot, for a finished tool whose review found something (it waits for the person). */
+  dot?: boolean };
 export type ActionInput = { layout: "quick" | "job"; on?: (t: ToolId) => boolean; /** panel.showButtons */ buttons?: boolean };
 
 const ACT: Record<HoverActionId, { go: Go | null; look: { colour: Colour; icon: IconName }; tool: ToolId | null }> = {
@@ -100,6 +108,8 @@ const ACT: Record<HoverActionId, { go: Go | null; look: { colour: Colour; icon: 
   // M96: the receipt's own Undo question, asked in Home (nothing is undone without the person's yes there).
   undo: { go: { then: { do: "undo" } }, look: { colour: "grey", icon: "undo" }, tool: QUICK_TOOL.undo },
   check: { go: { then: { do: "find" } }, look: QUICK_LOOK.check, tool: QUICK_TOOL.check },
+  // M105: the review card of the tool that finished, where its result and Undo are (M101). It reviews nothing by itself.
+  finished: { go: { then: { do: "review" } }, look: QUICK_LOOK.review, tool: QUICK_TOOL.review },
   home: { go: {}, look: { colour: "grey", icon: "now" }, tool: null },
 };
 const make = (id: HoverActionId): HoverAction => ({ id, label: S.m96.act[id], look: ACT[id].look, go: ACT[id].go });
@@ -115,16 +125,21 @@ export function hoverAction(m: Model, now: number, o: ActionInput): HoverAction 
   if (!m.runnerUp) return make("seeWhy");
   if (m.connected === "none") return make("home");
   if (m.approvals.length > 0) return make("answer");
-  if (claudeWaitsHere(m)) return make("claude");
+  // M105: Codex waiting says so in Codex's name (its question is in Codex; Home says where to answer).
+  if (claudeWaitsHere(m)) return waitingTool(m) === "claude" ? make("claude") : { ...make("claude"), label: S.m105.waitingAct(S.doneSignal.tool[waitingTool(m)]) };
   const project = projectOf(m);
   const on = o.on ?? (() => true);
+  const fin = nameOf(project) && reviewWaits(m) === 0 ? finishedNow(m, now) : null;
   // Undo last change follows the Undo tool's switch (F20): with it off the pill offers the check it would offer anyway.
   const id: HoverActionId = !nameOf(project) ? "pick"
     : reviewWaits(m) > 0 ? "review"
+    : fin ? "finished"
     : (() => { const k = homeStatus(m, project, now).kind; return k === "failing" ? "fix" : k === "unchecked" || k === "changed" ? "check" : undoCan(m, project) && on(QUICK_TOOL.undo!) ? "undo" : "check"; })();
   if (o.buttons === false) return make("home");
   const tool = ACT[id].tool;
-  return tool === null || on(tool) ? make(id) : make("home");
+  if (tool !== null && !on(tool)) return make("home");
+  // M105: the pill says the result ("See 2 problems", "See what changed"), with a dot when something was found.
+  return id === "finished" && fin ? { ...make(id), label: fin.pill, ...(fin.problems ? { dot: true } : {}) } : make(id);
 }
 // ---------- M96: the pill's words ----------
 
@@ -136,7 +151,7 @@ export type HoverPill = { words: string; dot: boolean };
 export function hoverPill(a: HoverAction, m: Model): HoverPill {
   const n = reviewWaits(m);
   const words = a.id === "review" && n > 0 ? S.m96.changes(n) : a.label;
-  return { words, dot: WAITS.has(a.id) };
+  return { words, dot: WAITS.has(a.id) || a.dot === true };
 }
 
 // ---------- the size ----------

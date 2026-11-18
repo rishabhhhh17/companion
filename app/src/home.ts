@@ -4,6 +4,7 @@
 import { askedLineOf, characterWords, lookState, receiptVerdict, resultShown, stateLabel, visualState, waitsForAnswer, type CharacterState, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 import { nameOf } from "./watch.ts";
+import { finishedNow, waitingWhy } from "./toolFinished.ts";
 
 export type Tab = "now" | "did" | "learn" | "memory" | "settings";
 export const TABS: readonly Tab[] = ["now", "did", "learn", "memory", "settings"];
@@ -81,7 +82,8 @@ export function need(m: Model): Need | null {
   if (m.stuck) return { key: `stuck:${m.stuck.index}:${m.stuck.title}`, tab: "now", why: S.stuckTitle, question: true };
   if (m.costPause) return { key: `cost:${m.costPause.agent}`, tab: "now", why: S.costPause.title, question: true };
   // M77: the person's own Claude Code waits for them (the waiting hook): the amber mark, and the line names the project.
-  if (m.claudeWaiting) return { key: `claudeWaiting:${m.claudeWaiting.project}`, tab: "now", why: S.guard.waitingWhy(m.claudeWaiting.project.split("/").filter(Boolean).at(-1) ?? ""), question: true };
+  // M105: Codex can say it waits too (its PermissionRequest hook): the same mark, in Codex's name.
+  if (m.claudeWaiting) return { key: `claudeWaiting:${m.claudeWaiting.project}`, tab: "now", why: waitingWhy(m, m.claudeWaiting.project.split("/").filter(Boolean).at(-1) ?? ""), question: true };
   if (m.signIn) return { key: `signIn:${m.signIn.agent}:${m.signIn.stage}`, tab: "now", why: S.signInTurn.title, question: true };
   if (m.paused) return { key: `paused:${m.paused.reason}`, tab: "now", why: S.pausedTitle, question: true };
   if (m.plan) return { key: `plan:${m.plan.agent}:${m.plan.steps.length}`, tab: "now", why: S.planTitle, question: true };
@@ -350,6 +352,10 @@ function islandLineBase(m: Model, o: { update?: string | null; now?: number }): 
   if (v === "error") return cut(stateLabel("error"));
   const fw = failingWatch(m);
   if (fw) return cut(S.watch.islandFailing(nameOf(fw as never)));
+  // M105: an AI tool finished and its changes were reviewed: which tool, and whether it works ("Codex finished in shop:
+  // 2 problems"), while that card is open and the result is fresh.
+  const fin = finishedNow(m, o.now ?? Date.now());
+  if (fin) return cut(fin.line);
   if (m.connected === "none") return S.islandNotConnected;
   if (o.update) return cut(S.islandUpdate(o.update));
   return "";

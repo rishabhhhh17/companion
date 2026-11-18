@@ -33,6 +33,8 @@ export function doneAsk(row: DoneRow): { title: string; where: string; what: str
   const tool = S.doneSignal.tool[row.tool];
   // M85 review: Update on an older line of Squibby's says it replaces that line, and what the new one does.
   if (row.on && row.stale) return { title: S.doneSignal.updateTitle(row.file), where: S.doneSignal.updateWhere(row.file), what: row.adds, notes: [row.hook !== "guard" ? S.doneSignal.updatePlain : CAN_ASK.includes(row.tool) ? S.doneSignal.updateAsks(tool) : S.doneSignal.updateSame(tool), S.doneSignal.askGit], yes: S.doneSignal.updateYes };
+  // M105: Codex's waiting signal: its own card (it touches an empty file; nothing of the question travels).
+  if (row.hook === "waiting" && row.tool !== "claude") return { title: S.m105.askTitle(tool), where: S.doneSignal.askWhere(row.file, row.creates), what: row.adds, notes: [S.m105.askWhat(tool), S.doneSignal.askGit, ...(row.tool === "codex" ? [S.doneSignal.askCodex] : [])], yes: S.doneSignal.yes };
   // M80: another tool's guard names that tool; Claude Code's keeps its own words.
   const other = row.hook === "guard" && row.tool !== "claude";
   const title = row.hook === "done" ? S.doneSignal.askTitle(tool) : other ? S.doneSignal.guardOther.askTitle(tool) : S.doneSignal.askTitleFor[row.hook];
@@ -46,6 +48,7 @@ export function doneAsk(row: DoneRow): { title: string; where: string; what: str
 /** M80 walk: what Remove says, by the kind of row. */
 export function removedLine(row: Pick<DoneRow, "tool" | "hook">): string {
   const tool = S.doneSignal.tool[row.tool];
+  if (row.hook === "waiting" && row.tool !== "claude") return S.m105.removed(tool);
   return row.hook === "done" ? S.doneSignal.removed(tool) : row.hook === "guard" ? S.doneSignal.removedGuard(tool) : S.doneSignal.removedOther;
 }
 /** M77: a row's label and its line in Settings: the done signal rows are named by tool, the others by what they do. */
@@ -53,5 +56,7 @@ export function hookLabel(row: Pick<DoneRow, "tool" | "hook">): { label: string;
   // M80 walk: each row says what it does in its label; the saved copy is explained once, in the group's own line.
   if (row.hook === "done") return { label: S.doneSignal.guardOther.doneRow(S.doneSignal.tool[row.tool]), line: null };
   if (row.hook === "guard") return { label: row.tool === "claude" ? S.doneSignal.hookTitle.guard : S.doneSignal.guardOther.title(S.doneSignal.tool[row.tool]), line: null };
+  // M105: Codex's waiting row, in its name.
+  if (row.hook === "waiting" && row.tool !== "claude") return { label: S.m105.waitTitle(S.doneSignal.tool[row.tool]), line: S.m105.waitRowLine(S.doneSignal.tool[row.tool]) };
   return { label: S.doneSignal.hookTitle[row.hook], line: S.doneSignal.hookLine[row.hook] };
 }

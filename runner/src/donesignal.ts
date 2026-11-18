@@ -36,6 +36,10 @@
 // Gemini CLI's read_file, Antigravity's view_file; the VS Code agent's hook already sees every tool). Only the path is read.
 // Cursor's beforeReadFile is not used: it hands the hook the file's contents. A tool that cannot ask may block a read of
 // saved logins, only when the person chose Block in Settings (GUARD_BLOCK); otherwise every tool still goes on as before.
+// M105 (which tool finished): each tool's done hook touches its own marker, <token>.<tool>, so the review can say which tool
+// finished. A marker with no tool on it (a line written before M105) still works: it is credited to the one tool whose done
+// line is on, else to no tool. Codex also gets a waiting hook on PermissionRequest ("runs when Codex is about to ask for
+// approval"): it touches <token>.codex.wait, prints nothing, exits 0 and never answers the approval. Neither reads its input.
 // Nothing here runs git or writes the person's git (rule 10). Every other line of the file is kept as it was, a file that is
 // not plain JSON is refused and left alone, and Remove takes out only Squibby's own entry (found by its marker path).
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmdirSync, rmSync, statSync, watch as fsWatch } from "node:fs";
@@ -52,6 +56,8 @@ export const HOOK_KINDS = ["done", "guard", "waiting", "start"] as const;
 export type HookKind = (typeof HOOK_KINDS)[number];
 /** The event each kind sits under in the tool's hooks file. */
 export const HOOK_EVENT: Readonly<Record<HookKind, string>> = { done: "Stop", guard: "PreToolUse", waiting: "Notification", start: "SessionStart" };
+/** M105: Codex's waiting hook sits under PermissionRequest (learn.chatgpt.com/docs/hooks, seen 15 Nov 2026). */
+export const CODEX_WAITING_EVENT = "PermissionRequest";
 /** The matcher of each kind (Stop has none). */
 /** M78: SessionStart matches on how the session started. resume is left out: a resumed conversation already holds its
  *  block, and printing it again would change the start of the conversation ([verify] on a real Mac). */
@@ -60,11 +66,12 @@ export const HOOK_EVENT: Readonly<Record<HookKind, string>> = { done: "Stop", gu
 export const HOOK_MATCHER: Readonly<Partial<Record<HookKind, string>>> = { guard: "Bash|Read", waiting: "permission_prompt|idle_prompt", start: "startup|clear|compact" };
 /** The hooks each tool may have. M80: the other tools have the done signal and the guard (their waiting and start contracts
  *  differ or are missing, so those stay Claude Code's). */
-export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting", "start"], codex: ["done", "guard"], cursor: ["done", "guard"], copilot: ["done", "guard"], antigravity: ["done", "guard"], gemini: ["done", "guard"], windsurf: ["done", "guard"] };
+export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting", "start"], codex: ["done", "guard", "waiting"], cursor: ["done", "guard"], copilot: ["done", "guard"], antigravity: ["done", "guard"], gemini: ["done", "guard"], windsurf: ["done", "guard"] };
 /** M80: the event a hook sits under in each tool. Cursor names its own; the rest use Claude Code's names. */
 export const eventOf = (tool: DoneTool, hook: HookKind): string =>
   tool === "cursor" ? (hook === "guard" ? "beforeShellExecution" : "stop")
   : tool === "gemini" ? (hook === "guard" ? "BeforeTool" : "AfterAgent")
+  : tool === "codex" && hook === "waiting" ? CODEX_WAITING_EVENT
   : HOOK_EVENT[hook];
 /** M80: Antigravity's file holds named hooks at the top level; Squibby's are named with the internal name (never the product
  *  name, which changes: protocol/names.json). */
@@ -87,6 +94,22 @@ export const WAITING_TIMEOUT_S = 5;
 export const START_DIR = "start";
 export const START_TIMEOUT_S = 5;
 const TOKEN = /^[0-9a-f]{24}$/;
+/** M105: a marker's file name: the project's token, then the tool that touched it (none on a line from before M105), then
+ *  `.wait` for a waiting signal. */
+const MARK = /^([0-9a-f]{24})(?:\.([a-z]+))?(\.wait)?$/;
+export const WAIT_SUFFIX = "wait";
+/** M105: the name of a tool's done marker, and of its waiting marker. */
+export const markerName = (token: string, tool: DoneTool, wait = false): string => `${token}.${tool}${wait ? `.${WAIT_SUFFIX}` : ""}`;
+/** M105: what a marker's name says: the token, the tool (null on an older line) and whether it is a waiting signal. Null
+ *  for any other name, or a tool that is not one of DONE_TOOLS. */
+export function markerOf(name: string): { token: string; tool: DoneTool | null; wait: boolean } | null {
+  const m = MARK.exec(name);
+  if (!m) return null;
+  const tool = m[2] ?? null;
+  if (tool !== null && !(DONE_TOOLS as readonly string[]).includes(tool)) return null;
+  if (m[3] && tool === null) return null;
+  return { token: m[1]!, tool: tool as DoneTool | null, wait: !!m[3] };
+}
 
 /** A path inside single quotes for /bin/sh: a quote in it is closed, escaped and opened again. */
 const shQuote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
@@ -94,6 +117,10 @@ const shQuote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 export const hookCommand = (marker: string): string => `/usr/bin/touch -- ${shQuote(marker)} 2>/dev/null; printf '{}'`;
 /** The entry added to the file's hooks.Stop list. */
 export const hookEntry = (marker: string) => ({ hooks: [{ type: "command", command: hookCommand(marker) }] });
+/** M105: Codex's waiting command. It touches its marker and prints nothing at all (no decision: Codex asks the person as it
+ *  always does), says nothing on error and always ends with 0. It never reads its input. */
+export const waitTouchCommand = (marker: string): string => `/usr/bin/touch -- ${shQuote(marker)} 2>/dev/null; exit 0`;
+export const waitTouchEntry = (marker: string) => ({ hooks: [{ type: "command", command: waitTouchCommand(marker) }] });
 /** M77: the first words of the guard and waiting commands: Squibby's guard folder, and the check that its engine is alive.
  *  Remove finds Squibby's entries by this opening. */
 const guardOpening = (guardDir: string, go = "exit 0") => `d=${shQuote(guardDir)}; p=$(cat "$d/${GUARD_PID}" 2>/dev/null) && kill -0 "$p" 2>/dev/null || { ${go}; };`;
@@ -219,7 +246,9 @@ export class DoneSignals {
   private startDir: string;
   private index: string;
   private w: { close(): void } | null = null;
-  constructor(private data: string, private o: { onDone?: (project: string) => void; watch?: typeof fsWatch } = {}) {
+  /** onDone: the project, and the tool that finished (M105; null when an older line cannot say and more than one tool's done
+   *  line is on). onWaiting (M105): a tool other than Claude Code is waiting for the person (Codex's PermissionRequest). */
+  constructor(private data: string, private o: { onDone?: (project: string, tool: DoneTool | null) => void; onWaiting?: (project: string, tool: DoneTool) => void; watch?: typeof fsWatch } = {}) {
     this.dir = join(resolve(data), DONE_DIR);
     this.guardDir = join(resolve(data), GUARD_DIR);
     this.startDir = join(resolve(data), START_DIR);
@@ -248,10 +277,11 @@ export class DoneSignals {
     }
     return t;
   }
-  /** The marker file the project's hook touches (made with a new token if there is none yet). */
-  markerFor(project: string, make = true): string | null {
+  /** The marker file the project's hook touches (made with a new token if there is none yet). M105: with a tool, that tool's
+   *  own marker (<token>.<tool>); without, the marker of a line written before M105 (<token>), which still works. */
+  markerFor(project: string, make = true, tool?: DoneTool, wait = false): string | null {
     const t = this.tokenFor(project, make);
-    return t ? join(this.dir, t) : null;
+    return t ? join(this.dir, tool ? markerName(t, tool, wait) : t) : null;
   }
   /** The project a marker's file name belongs to, or null. */
   projectOf(name: string): string | null {
@@ -264,13 +294,16 @@ export class DoneSignals {
   private entryOf(tool: DoneTool, kind: HookKind, token: string | null): unknown {
     const t = token ?? "<made when you say yes>";
     if (kind === "guard") return guardEntryFor(tool, this.guardDir, t);
-    if (kind === "waiting") return waitingEntry(this.guardDir, t);
+    // M105: Codex's waiting hook only touches its own marker; Claude Code's hands over its short notice, as before.
+    if (kind === "waiting") return tool === "claude" ? waitingEntry(this.guardDir, t) : waitTouchEntry(join(this.dir, markerName(t, tool, true)));
     if (kind === "start") return startEntry(this.startDir, t);
-    return doneEntryFor(tool, join(this.dir, t));
+    return doneEntryFor(tool, join(this.dir, markerName(t, tool)));
   }
   /** Whether an entry under an event is Squibby's own of this kind for this project. */
   private oursOf(entry: unknown, kind: HookKind, token: string): boolean {
+    // M105: a done line of before M105 (<token>) and of today (<token>.<tool>) are both ours.
     if (kind === "done") return ours(entry, join(this.dir, token));
+    if (kind === "waiting" && ours(entry, `${join(this.dir, token)}.`)) return true;
     if (kind === "start") return commandsOf(entry).some((c) => c.startsWith(`s=${shQuote(this.startDir)};`) && c.includes(`/${token}.md"`));
     return commandsOf(entry).some((c) => c.startsWith(`d=${shQuote(this.guardDir)};`) && c.includes(`/${token}.`));
   }
@@ -414,13 +447,23 @@ export class DoneSignals {
   }
   stop() { try { this.w?.close(); } catch { /* closed */ } this.w = null; }
   private names(): string[] { try { return readdirSync(this.dir); } catch { return []; } }
-  /** A marker arrived: it is removed, and its project is told. Anything else in the folder is left alone. */
+  /** A marker arrived: it is removed, and its project is told, with the tool that touched it (M105). Anything else in the
+   *  folder is left alone. */
   private take(name: string, tell: boolean) {
-    if (!TOKEN.test(name)) return;
+    const k = markerOf(name);
+    if (!k) return;
     const f = join(this.dir, name);
     if (!existsSync(f)) return;
     try { rmSync(f, { force: true }); } catch { /* gone already */ }
-    const p = this.projectOf(name);
-    if (tell && p) this.o.onDone?.(p);
+    const p = this.projectOf(k.token);
+    if (!tell || !p) return;
+    if (k.wait) { if (k.tool) this.o.onWaiting?.(p, k.tool); return; }
+    this.o.onDone?.(p, k.tool ?? this.creditOf(p));
+  }
+  /** M105: who an older done line (no tool on its marker) stands for: the one tool whose done line is on in the project, or
+   *  null when it is none or more than one. Reads only the tools' own hook files in the project. */
+  creditOf(project: string): DoneTool | null {
+    const on = DONE_TOOLS.filter((t) => TOOL_HOOKS[t].includes("done") && this.plan(project, t, "done").on);
+    return on.length === 1 ? on[0]! : null;
   }
 }

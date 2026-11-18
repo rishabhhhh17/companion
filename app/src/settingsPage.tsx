@@ -786,7 +786,7 @@ function DoneSignalRows() {
   // M77: the two more Claude Code hooks (a saved copy before a destructive command, Claude is waiting for you) sit in the
   // same group, each with the same card and the same one press Remove.
   return (<>
-    <Row id={fixedAnchor("doneSignal")} label={S.doneSignal.title} description={`${S.doneSignal.line} ${S.doneSignal.fallback}`} />
+    <Row id={fixedAnchor("doneSignal")} label={S.doneSignal.title} description={`${S.doneSignal.line} ${S.doneSignal.fallback} ${S.m105.waitingNote}`} />
     {rows.map((r) => { const l = hookLabel(r); return (
       <Row key={`${r.tool}-${r.hook}`} indent label={l.label} description={`${r.on ? `${S.doneSignal.on}: ${r.file}` : S.doneSignal.off}${l.line ? `. ${l.line}` : ""}${r.stale ? `. ${S.doneSignal.stale}` : ""}`}
         control={r.on

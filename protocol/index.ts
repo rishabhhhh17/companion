@@ -622,7 +622,9 @@ export type LoginOutcome = (typeof LOGIN_OUTCOMES)[number];
 export type AskedRowView = { id: number; at: string; command: string; reason: string; by: "tool" | "squibby"; answer?: "once" | "always" | "no" | "expired"; kind?: "login"; outcome?: LoginOutcome; tool?: DoneSignalTool };
 /** M77: Claude Code is waiting for the person in this project (a permission or its idle prompt), or no longer is. message:
  *  Claude Code's own short notification (120 characters, redacted), never the question itself. */
-export type HookWaiting = Envelope & { type: "hook.waiting"; project: string; waiting: boolean; message?: string };
+/** M105: tool, the AI tool that waits when it is not Claude Code (Codex's PermissionRequest hook); absent means Claude Code.
+ *  Codex's hook hands over no words, so its line never has a message. */
+export type HookWaiting = Envelope & { type: "hook.waiting"; project: string; waiting: boolean; message?: string; tool?: DoneSignalTool };
 /** M90: the person's own AI tool is working in a project (its guard hook saw it run a command), or is done (its done hook).
  *  Said at most once every few seconds per project; only the project, never the command. Flowflow peeks out watching. */
 export type HookBusy = Envelope & { type: "hook.busy"; project: string; busy: boolean };
@@ -723,7 +725,9 @@ export const REVIEW_AWAY = ["closed", "notWatching"] as const;
  *  lines the batch added. Where each key is (file and line, at most 10), never its text. Absent when the setting is off or
  *  nothing like a key was added. */
 export type ReviewKeyPlace = { file: string; line: number; lines?: CodeLine[] };
-export type ReviewBatchEvent = Envelope & { type: "review.batch"; project: string; batch: string; files: ReviewFile[]; count: number; capped: boolean; secretFiles: string[]; auto: boolean; away?: (typeof REVIEW_AWAY)[number]; keys?: ReviewKeyPlace[] };
+/** M105: by, the AI tool whose done signal said this batch (it finished then); absent when no tool said so. It names who
+ *  finished, never who wrote each file. */
+export type ReviewBatchEvent = Envelope & { type: "review.batch"; project: string; batch: string; files: ReviewFile[]; count: number; capped: boolean; secretFiles: string[]; auto: boolean; away?: (typeof REVIEW_AWAY)[number]; keys?: ReviewKeyPlace[]; by?: DoneSignalTool };
 export type ReviewStarted = Envelope & { type: "review.started"; project: string; batch: string; proof: boolean };
 /** M57 feature 4: when a newer batch was reviewed, the rules looked again at an earlier review's reasons that were still
  *  open, with no model. fixed: the places (in that review's reasons) of those that no longer hold ("Changed since, this no
@@ -753,6 +757,8 @@ export type ReviewUndone = Envelope & { type: "review.undone"; project: string; 
 // words, with no model, or at the day's limit, and note says why) and what it cost.
 export type ReviewResultEvent = Envelope & {
   type: "review.result"; project: string; batch?: string; ok: boolean; reason?: string;
+  /** M105: the AI tool whose done signal said this batch (review.batch's by). */
+  by?: DoneSignalTool;
   rating?: ReviewRating; touches?: ReviewTouch[]; summary?: string; notes?: string[]; reasons?: ReviewReason[]; files?: ReviewFile[]; count?: number; capped?: boolean;
   secretFiles?: string[]; checks?: ReviewChecks; checksNote?: string; sendBack?: string; lane?: (typeof REVIEW_LANES)[number]; usdEstimate: number;
   /** M77b: when the checks failed, their own output (secrets hidden), shown only behind Details; checksNote stays the plain line. */
@@ -1157,7 +1163,7 @@ const COMMANDS: Record<string, Check[]> = {
 
 const EVENTS: Record<string, Check[]> = {
   // M52, the review of every change (runner/src/review/service.ts).
-  "review.batch": [str("project"), str("batch"), filesListOk("files"), whole("count"), bool("capped"), textList("secretFiles"), bool("auto"), opt("away", oneOf("away", [...REVIEW_AWAY])), opt("keys", keyPlacesOk)],
+  "review.batch": [str("project"), str("batch"), filesListOk("files"), whole("count"), bool("capped"), textList("secretFiles"), bool("auto"), opt("away", oneOf("away", [...REVIEW_AWAY])), opt("keys", keyPlacesOk), opt("by", oneOf("by", [...DONE_SIGNAL_TOOLS]))],
   "review.started": [str("project"), str("batch"), bool("proof")],
   "review.undoPlan": [str("project"), batchOk, bool("ok"), opt("why", oneOf("why", [...REVIEW_UNDO_WHY])), opt("files", fileNames("files", 50)), opt("count", whole("count")), opt("later", fileNames("later", 50)), opt("env", fileNames("env", 20)), opt("cannot", fileNames("cannot", 50)), opt("committed", bool("committed")),
     (m) => (m.ok === true ? (Array.isArray(m.files) && Number.isInteger(m.count) ? null : 'a plan that can be done names its "files" and "count"') : (m.why ? null : 'a plan that cannot be done says "why"'))],
@@ -1165,7 +1171,7 @@ const EVENTS: Record<string, Check[]> = {
     (m) => (m.ok === true || m.why ? null : 'a put back that did not happen says "why"')],
   "review.replay": [str("project"), str("batch"), replayOk],
   "review.recheck": [str("project"), str("batch"), str("by"), (m) => (Array.isArray(m.fixed) && m.fixed.length > 0 && m.fixed.every((n) => Number.isInteger(n) && (n as number) >= 0) ? null : '"fixed" must be a list of whole numbers from 0'), bool("closed")],
-  "review.result": [str("project"), bool("ok"), num("usdEstimate"), opt("batch", str("batch")), opt("checksNote", (m) => (typeof m.checksNote === "string" ? null : '"checksNote" must be text')), opt("checksDetail", (m) => (typeof m.checksDetail === "string" ? null : '"checksDetail" must be text')), opt("note", str("note")), opt("ruleFiles", textList("ruleFiles")), opt("hidden", whole("hidden")), opt("untold", untoldOk), opt("replay", replayOk), reviewOk],
+  "review.result": [str("project"), bool("ok"), num("usdEstimate"), opt("batch", str("batch")), opt("checksNote", (m) => (typeof m.checksNote === "string" ? null : '"checksNote" must be text')), opt("checksDetail", (m) => (typeof m.checksDetail === "string" ? null : '"checksDetail" must be text')), opt("note", str("note")), opt("ruleFiles", textList("ruleFiles")), opt("hidden", whole("hidden")), opt("untold", untoldOk), opt("replay", replayOk), opt("by", oneOf("by", [...DONE_SIGNAL_TOOLS])), reviewOk],
   // payments spec sections 2, 3 and 9 (runner/src/plan.ts); protocol/fixtures/plan-cases.jsonl is run by both suites.
   "plan.usage": [whole("used"), whole("limit"), day("resetsOn"), bool("everUsed")],
   "plan.limit": [oneOf("reason", [...PLAN_LIMITS]), opt("resetsOn", day("resetsOn")), opt("command", str("command")),
@@ -1275,7 +1281,9 @@ const EVENTS: Record<string, Check[]> = {
   "guard.saved": [str("project"), str("checkpoint"), (m) => (typeof m.command === "string" && m.command.length > 0 && Array.from(m.command).length <= 80 ? null : '"command" must be a short text, at most 80 characters')],
   "guard.asked": [str("project"), (m) => (typeof m.command === "string" && m.command.length > 0 && Array.from(m.command).length <= 80 ? null : '"command" must be a short text, at most 80 characters'), (m) => (typeof m.reason === "string" && m.reason.length > 0 && Array.from(m.reason).length <= 300 ? null : '"reason" must be text, at most 300 characters'), (m) => (loginOk(m as Record<string, unknown>) ? null : '"kind" login must come with "outcome": asked, ran or blocked, and "tool" must be one of the AI tools')],
   "hook.busy": [str("project"), bool("busy")],
-  "hook.waiting": [str("project"), bool("waiting"), opt("message", (m) => (typeof m.message === "string" && Array.from(m.message).length <= 120 ? null : '"message" must be text, at most 120 characters'))],
+  "hook.waiting": [str("project"), bool("waiting"), opt("message", (m) => (typeof m.message === "string" && Array.from(m.message).length <= 120 ? null : '"message" must be text, at most 120 characters')), opt("tool", oneOf("tool", [...DONE_SIGNAL_TOOLS])),
+    // M105: another tool's waiting signal carries no words.
+    (m) => (m.tool !== undefined && m.tool !== "claude" && m.message !== undefined ? 'another tool\'s waiting signal has no "message"' : null)],
   "cost.pause": [str("agent"), str("project"), (m) => (Object.keys(m).some((k) => /usd|cost|amount|spent|limit/i.test(k)) ? "the cost pause carries no amount" : null)],
   "cost.resolved": [str("agent"), oneOf("choice", [...COST_CHOICES])],
   "proof.signIn": [str("agent"), oneOf("stage", [...SIGN_IN_STAGES]), opt("percent", (m) => (typeof m.percent === "number" && m.percent >= 0 && m.percent <= 100 ? null : '"percent" must be a number from 0 to 100')), opt("reason", str("reason"))],

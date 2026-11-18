@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Which AI tool finished, and did it work: 18 Nov 2026
+
+- **The notch names the tool that finished.** When Codex, Cursor, Claude Code or another connected AI tool says it is done, the notch says which one and what the review found: "Codex finished in shop: works", or "... 2 problems". One press opens the review card, where Undo is.
+- **"Works" only when your checks passed.** If nothing was found but your project's own checks did not run, it says "looks fine" instead.
+- **Codex can tell you it is waiting.** With Codex's waiting signal on, the notch goes amber and says "Codex is waiting for you" when Codex is about to ask for your approval. Nothing of its question is read, and Squibby never answers for you.
+- **Home's list of AI tools says the same.** Each tool shows "Finished, works", "Finished, 2 problems" or "Waiting on you".
+- **Older setups keep working.** A done signal set up before today still starts the review. Settings shows it as older with Update, and nothing is rewritten until you say yes.
+- **Honest about what each tool can say.** Settings now says plainly that Cursor, the VS Code agent, Antigravity, Gemini CLI and Windsurf cannot tell when they wait, so for them the notch says only when they finish.
+
 ## Smoother notch and fewer stuck screens: 18 Nov 2026
 
 - **Pulling Flowflow out of the notch always lets go.** Drag its face out of the notch or the small chat, and when you let go it lands where you dropped it, snaps to an edge, or tucks back in over the notch. Before, it could stay stuck under the pointer.
