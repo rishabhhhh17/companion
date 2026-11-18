@@ -11,15 +11,16 @@
 // It needs nothing from Cloudflare at build time: the object talks through `fetch`, and the types below are the small part of the
 // Durable Object API it uses, so the tests run it on a fake of that API (test/fake-do.ts) with Bun alone.
 import { budgetCheck, dayKey, monthKey, type Plan, type Spent } from "./plans.ts";
-import { bestPlan, keptSub, type Account, type Billing, type DodoMode, type FinishAsk, type ReportCredit, type ReportRemoved, type SignIn, type StartAsk, type Started, type Store, type Sub, type SubChange, type SuspensionRecord, type UsageRecord, type User, type OwnerPlan } from "./store.ts";
+import { bestPlan, carriedFor, chargeableSub, keptSub, liveSubCount, shownPlan, usageSummary, type Account, type Billing, type Carry, type Deleted, type DodoMode, type FinishAsk, type OwnerPage, type OwnerUsage, type RefundNeeded, type Release, type ReportCredit, type ReportRemoved, type ReportUse, type SignIn, type StartAsk, type Started, type Store, type Sub, type SubChange, type SuspensionRecord, type UsageRecord, type User, type OwnerPlan } from "./store.ts";
 import type { DodoLedger, LinkBook } from "./dodo.ts";
+import { DELETED_PREFIX, deletedLineLive, deletedUntil, isDeletedMarker, type DeletedLine } from "./deleted.ts";
 
 /** The part of Durable Object storage used here (the key value calls, on SQLite backed objects too). */
 export interface StorageLike {
   get<T = unknown>(key: string): Promise<T | undefined>;
   put(entries: Record<string, unknown>): Promise<void>;
   delete(keys: string[]): Promise<number>;
-  list<T = unknown>(options: { prefix: string; reverse?: boolean; limit?: number }): Promise<Map<string, T>>;
+  list<T = unknown>(options: { prefix: string; reverse?: boolean; limit?: number; startAfter?: string }): Promise<Map<string, T>>;
 }
 export type StateLike = { storage: StorageLike };
 export type StubLike = { fetch(input: string, init?: RequestInit): Promise<Response> };
@@ -112,9 +113,42 @@ const bookedFor = (t: Totals | undefined, now: number): Spent =>
   ({ day: t && t.day === dayKey(now) ? t.dayUsd : 0, month: t && t.month === monthKey(now) ? t.monthUsd : 0 });
 async function spentNow(s: StorageLike, now: number, l?: Live): Promise<Spent> {
   const held = alive((l ?? (await liveOf(s))).holds, now).reduce((n, h) => n + h.usd, 0);
-  const booked = bookedFor((await newestRecord(s))?.totals, now);
+  const booked = await bookedNow(s, now);
   return { day: booked.day + held, month: booked.month + held };
 }
+/** What is booked for `now`'s day and month: the newest record's totals, plus what a deleted account carried over (M116 step 5). */
+async function bookedNow(s: StorageLike, now: number): Promise<Spent> {
+  const booked = bookedFor((await newestRecord(s))?.totals, now), carried = carriedFor(await s.get<Carry>("carry"), now);
+  return { day: booked.day + carried.day, month: booked.month + carried.month };
+}
+/** M116 step 5: why this owner's account cannot be deleted now, or null. */
+async function deleteRefusal(s: StorageLike, now: number): Promise<Exclude<Deleted, { ok: true }>["why"] | null> {
+  if ((await s.get<boolean>("suspended")) === true) return "suspended";
+  if ((await billingRec(s)).subs.some(([, x]) => chargeableSub(x))) return "live_sub";
+  if (alive((await liveOf(s)).running, now).length > 0) return "busy";
+  return null;
+}
+/** The deleted line for this owner as of `now`: this day's and month's spend, and the sign in nonces still good. */
+async function deletedLineOf(s: StorageLike, now: number): Promise<DeletedLine> {
+  const b = await bookedNow(s, now);
+  const nonces = ((await s.get<[string, number][]>("nonces")) ?? []).filter(([, until]) => until >= now);
+  return { at: now, day: dayKey(now), dayUsd: b.day, month: monthKey(now), monthUsd: b.month, nonces, until: deletedUntil(now, nonces) };
+}
+/** M116 step 5 review: the deleted lines past their `until` go. Each line has an index key `dx:<until>:<key>`, in time order, so
+ *  this reads only the lines that are due (and one more), never the whole list. */
+async function pruneDeleted(s: StorageLike, now: number): Promise<void> {
+  for (;;) {
+    const batch = await s.list<string>({ prefix: "dx:", limit: DELETE_MAX / 2 });
+    const due: string[] = [];
+    let reachedLive = batch.size < DELETE_MAX / 2;
+    for (const [k, key] of batch) { if (Number(k.slice(3, 18)) <= now) due.push(k, `del:${key}`); else { reachedLive = true; break; } }
+    await deleteAll(s, due);
+    if (reachedLive || due.length === 0) break;
+  }
+}
+const deletedIndex = (until: number, key: string) => `dx:${pad(until)}:${key}`;
+/** Every key an object holds, a batch at a time (for deleting an account's object whole). */
+async function allKeys(s: StorageLike): Promise<string[]> { return [...(await s.list({ prefix: "" })).keys()]; }
 /** Only these fields: counts, cost, model, time. Whatever else a caller passed is not kept. */
 const keptFields = (r: UsageRecord): UsageRecord => ({ userId: r.userId, model: r.model, usd: r.usd, at: r.at, complete: r.complete, usage: {
   input_tokens: r.usage.input_tokens, output_tokens: r.usage.output_tokens, cache_read_input_tokens: r.usage.cache_read_input_tokens,
@@ -197,12 +231,57 @@ const OPS: Record<string, Op> = {
   },
   // M116 sign in: the nonce is checked and marked used, the email kept and the token added, in this one write. Used nonces
   // are kept only until they would have run out anyway.
-  "owner.signIn": async (s, a: { hash: string; tok: Tok; email: string; nonce: { id: string; until: number }; now: number }) => {
-    const nonces = ((await s.get<[string, number][]>("nonces")) ?? []).filter(([, until]) => until >= a.now);
+  // M116 step 5: coming back after a delete (`line`, the kept deleted line): its nonces stay used, and its day and month spend
+  // is carried over once, onto an owner that has booked nothing yet.
+  "owner.signIn": async (s, a: { hash: string; tok: Tok; email: string; nonce: { id: string; until: number }; now: number; line?: DeletedLine }) => {
+    const kept = ((await s.get<[string, number][]>("nonces")) ?? []).filter(([, until]) => until >= a.now);
+    const nonces = [...kept, ...(a.line?.nonces ?? []).filter(([id, until]) => until >= a.now && !kept.some(([k]) => k === id))];
     if (nonces.some(([id]) => id === a.nonce.id)) return { used: true, dropped: [] };
     const { list, dropped } = withToken(await ownerTokens(s), a.hash, a.tok);
-    await s.put({ tokens: list, email: a.email, nonces: [...nonces, [a.nonce.id, a.nonce.until]] });
+    const carry: Record<string, unknown> = {};
+    if (a.line && (await s.get("carry")) === undefined && !(await newestRecord(s))) carry.carry = { day: a.line.day, dayUsd: a.line.dayUsd, month: a.line.month, monthUsd: a.line.monthUsd };
+    await s.put({ tokens: list, email: a.email, nonces: [...nonces, [a.nonce.id, a.nonce.until]], ...carry });
     return { used: false, dropped };
+  },
+  // M116 step 5: is anyone here (an email or a token)? A deleted account's object holds nothing.
+  "owner.present": async (s) => (await s.get("email")) !== undefined || (await ownerTokens(s)).length > 0,
+  // M116 step 5, POST /v1/report/use: the oldest unused credit, in one step.
+  "owner.useReport": async (s, a: { now: number; useId?: string }): Promise<ReportUse> => {
+    const b = await billingRec(s), unused = () => b.reports.filter(([, c]) => c.state === "unused").length;
+    if (a.useId && b.reports.some(([, c]) => c.useId === a.useId)) return { ok: true, left: unused() };
+    let pick: ReportCredit | undefined;
+    for (const [, c] of b.reports) if (c.state === "unused" && (!pick || c.at < pick.at)) pick = c;
+    if (!pick) return { ok: false };
+    pick.state = "used"; pick.usedAt = a.now;
+    if (a.useId) pick.useId = a.useId;
+    await s.put({ billing: b });
+    return { ok: true, left: unused() };
+  },
+  // M116 step 5, account delete, first step: reads only. The refusal, or the deleted line as of now.
+  "owner.deleteInfo": async (s, a: { now: number }) => {
+    const why = await deleteRefusal(s, a.now);
+    return why ? { ok: false, why } : { ok: true, line: await deletedLineOf(s, a.now) };
+  },
+  // The second step: checked again, then everything the object holds is deleted. What other objects must forget comes back.
+  "owner.wipe": async (s, a: { now: number }) => {
+    const why = await deleteRefusal(s, a.now);
+    if (why) return { ok: false, why };
+    const line = await deletedLineOf(s, a.now), b = await billingRec(s);
+    const hashes = (await ownerTokens(s)).map(([h]) => h);
+    const customerIds = [...new Set([b.customerId, ...b.subs.map(([, x]) => x.customerId)].filter((x): x is string => !!x))];
+    const paymentIds = b.reports.map(([id]) => id);
+    await deleteAll(s, await allKeys(s));
+    return { ok: true, line, hashes, customerIds, paymentIds };
+  },
+  // M116 step 5, the operator's `usage`: reads only.
+  "owner.usage": async (s, a: { month: string; now: number }): Promise<OwnerUsage> => {
+    let tokenPlan: string | null = null;
+    for (const [, t] of await ownerTokens(s)) if (t.status !== "revoked") tokenPlan = t.plan;
+    const records = [...(await s.list<KeptRecord>({ prefix: "rec:" })).values()].filter((r) => !(r as { seed?: boolean }).seed).map(keptFields);
+    return {
+      plan: shownPlan(await s.get<OwnerPlan>("plan"), tokenPlan, a.now), email: (await s.get<string>("email")) ?? null,
+      liveSubs: liveSubCount((await billingRec(s)).subs, a.now), ...usageSummary(records, a.month, a.now),
+    };
   },
   // M116 GET /v1/me: reads only.
   "owner.me": async (s, a: { ownerId: string; hash: string; now: number }): Promise<Account | null> => {
@@ -385,6 +464,43 @@ const OPS: Record<string, Op> = {
     await s.put({ logs: n, [`l:${pad(n, 12)}`]: { ownerId: r.ownerId, kind: r.kind, at: r.at, ...(r.caseId ? { caseId: r.caseId } : {}) } });
   },
   "dir.logs": async (s) => [...(await s.list<SuspensionRecord>({ prefix: "l:" })).values()],
+  // M116 step 5: an owner leaves the list when their account is deleted (the counter stays, so numbers are never reused).
+  "dir.removeOwner": async (s, a: { ownerId: string }) => {
+    const n = await s.get<number>(`id:${a.ownerId}`);
+    if (n === undefined) return;
+    await s.delete([`id:${a.ownerId}`, `o:${pad(n, 12)}`]);
+  },
+  // The kept deleted lines, by their HMAC key (deleted.ts).
+  // M116 step 5 review: a line goes at its `until` (the end of its month, at least 3 days after the delete); a line past it
+  // reads as none, and the due ones are deleted here.
+  "dir.deletedGet": async (s, a: { key: string; now: number }) => {
+    await pruneDeleted(s, a.now);
+    const l = await s.get<DeletedLine>(`del:${a.key}`);
+    return l && deletedLineLive(l, a.now) ? l : null;
+  },
+  "dir.deletedPut": async (s, a: { key: string; line: DeletedLine }) => {
+    const l = a.line, was = await s.get<DeletedLine>(`del:${a.key}`);
+    await pruneDeleted(s, l.at);
+    if (was && was.until !== l.until) await s.delete([deletedIndex(was.until, a.key)]);
+    await s.put({ [`del:${a.key}`]: { at: l.at, day: l.day, dayUsd: l.dayUsd, month: l.month, monthUsd: l.monthUsd, nonces: l.nonces, until: l.until }, [deletedIndex(l.until, a.key)]: a.key });
+  },
+  "dir.deletedDrop": async (s, a: { key: string }) => {
+    const was = await s.get<DeletedLine>(`del:${a.key}`);
+    await s.delete([`del:${a.key}`, ...(was ? [deletedIndex(was.until, a.key)] : [])]);
+  },
+  // M116 step 5 review: a deleted owner's suspension log lines keep their kind, date and case, under the deleted marker
+  // (DELETED_PREFIX and the HMAC) instead of the owner id. The log is small: suspensions are rare.
+  "dir.forgetLog": async (s, a: { ownerId: string; marker: string }) => {
+    const out: Record<string, SuspensionRecord> = {};
+    for (const [k, r] of await s.list<SuspensionRecord>({ prefix: "l:" })) if (r.ownerId === a.ownerId) out[k] = { ...r, ownerId: a.marker };
+    if (Object.keys(out).length) await s.put(out);
+  },
+  // M116 step 5 review: one page of the owner list, after the cursor (an owner's number in the list).
+  "dir.ownerPage": async (s, a: { after?: number; limit: number }): Promise<OwnerPage> => {
+    const page = await s.list<string>({ prefix: "o:", limit: a.limit, ...(a.after !== undefined ? { startAfter: `o:${pad(a.after, 12)}` } : {}) });
+    const keys = [...page.keys()], last = keys[keys.length - 1];
+    return { owners: [...page.values()], next: page.size === a.limit && last ? Number(last.slice(2)) : null };
+  },
 
   // ---- payments ----
   "pay.claim": async (s, a: { id: string; now: number }) => {
@@ -396,8 +512,23 @@ const OPS: Record<string, Op> = {
     return true;
   },
   "pay.release": async (s, a: { id: string }) => { await s.delete([`h:${a.id}`]); },
+  // M116 step 5 review: money for a deleted account, for the operator to refund (Dodo ids only).
+  "pay.flagRefund": async (s, a: { r: RefundNeeded }) => {
+    const r = a.r;
+    if ((await s.get(`rn:${r.id}`)) !== undefined) return;
+    await s.put({ [`rn:${r.id}`]: { id: r.id, kind: r.kind, at: r.at, eventType: r.eventType, ...(r.customerId ? { customerId: r.customerId } : {}) } });
+  },
+  "pay.refunds": async (s) => [...(await s.list<RefundNeeded>({ prefix: "rn:" })).values()],
+  "pay.clearRefund": async (s, a: { id: string }) => (await s.delete([`rn:${a.id}`])) > 0,
   "pay.link": async (s, a: { customerId: string }) => (await s.get<string>(`c:${a.customerId}`)) ?? null,
   "pay.setLink": async (s, a: { customerId: string; userId: string }) => { await s.put({ [`c:${a.customerId}`]: a.userId }); },
+  // M116 step 5: a deleted account's customer links and report payments point at its marker (DELETED_PREFIX + key) from now on,
+  // so a late event finds no person. Only entries that point at this owner are changed.
+  "pay.forget": async (s, a: { ownerId: string; customerIds: string[]; paymentIds: string[]; marker: string }) => {
+    const out: Record<string, string> = {};
+    for (const k of [...a.customerIds.map((c) => `c:${c}`), ...a.paymentIds.map((p) => `r:${p}`)]) if ((await s.get<string>(k)) === a.ownerId) out[k] = a.marker;
+    if (Object.keys(out).length) await s.put(out);
+  },
   // M116: which owner a report payment belongs to, so a refund (whose metadata is its own) finds the credit. The first one stays.
   // `removed`: a full refund or a lost dispute for this payment came before the payment itself (marker `x:`).
   "pay.setReportOwner": async (s, a: { paymentId: string; ownerId: string }) => {
@@ -416,6 +547,20 @@ const OPS: Record<string, Op> = {
     if ((await s.get<number>(`x:${a.paymentId}`)) === undefined) await s.put({ [`x:${a.paymentId}`]: a.at });
     return null;
   },
+
+  // ---- releases (M116 step 5: the update feed) ----
+  "rel.set": async (s, a: { platform: string; r: Release }) => {
+    const r = a.r;
+    await s.put({ [`p:${a.platform}`]: { version: r.version, notes: r.notes, url: r.url, signature: r.signature, pubDate: r.pubDate } });
+  },
+  "rel.get": async (s, a: { platform: string }) => (await s.get<Release>(`p:${a.platform}`)) ?? null,
+  "rel.stop": async (s, a: { platform: string }) => {
+    const r = await s.get<Release>(`p:${a.platform}`);
+    if (!r || r.stopped) return false;
+    await s.put({ [`p:${a.platform}`]: { ...r, stopped: true } });
+    return true;
+  },
+  "rel.all": async (s) => [...(await s.list<Release>({ prefix: "p:" }))].map(([k, r]) => [k.slice(2), r]),
 };
 
 // ---------- the Store the proxy uses, on top of the objects ----------
@@ -424,6 +569,7 @@ export const OWNER = (id: string) => `owner:${id}`;
 export const TOKEN = (hash: string) => `token:${hash}`;
 export const DIRECTORY = "directory";
 export const PAYMENTS = "payments";
+export const RELEASES = "releases";
 
 /** Calls one object. A failure is a plain error with no detail. The proxy answers it with a plain 503 (nothing was sent), and the
  *  Worker answers any other route's store failure the same way, never with Cloudflare's own error page. */
@@ -473,11 +619,16 @@ export class DurableStore implements Store {
   setOwnerPlan(ownerId: string, plan: OwnerPlan, at?: number) { return this.call<boolean>(OWNER(ownerId), "owner.setPlan", { plan, ...(at !== undefined ? { at } : {}) }); }
   suspensions() { return this.call<SuspensionRecord[]>(DIRECTORY, "dir.logs"); }
   async signIn(hash: string, u: User, o: SignIn) {
-    const r = await this.call<{ used: boolean; dropped: string[] }>(OWNER(u.id), "owner.signIn", { hash, tok: { plan: u.plan, status: u.status }, email: o.email, nonce: { id: o.nonceId, until: o.nonceUntil }, now: o.now });
+    // M116 step 5: a person coming back after a delete. Their kept line is read first (its spend and nonces go onto the owner
+    // in the same write as the token), and dropped last. If dropping it fails, the owner holds data again, so it no longer
+    // counts as deleted, and the carry is never taken twice (only onto an owner that has booked nothing).
+    const line = o.deletedKey ? await this.call<DeletedLine | null>(DIRECTORY, "dir.deletedGet", { key: o.deletedKey, now: o.now }) : null;
+    const r = await this.call<{ used: boolean; dropped: string[] }>(OWNER(u.id), "owner.signIn", { hash, tok: { plan: u.plan, status: u.status }, email: o.email, nonce: { id: o.nonceId, until: o.nonceUntil }, now: o.now, ...(line ? { line } : {}) });
     if (r.used) return false;
     if (!(await this.call<boolean>(TOKEN(hash), "token.set", { ownerId: u.id }))) throw new Error("That token belongs to someone else.");
     await this.call(DIRECTORY, "dir.addOwner", { ownerId: u.id });
     for (const h of r.dropped) await this.call(TOKEN(h), "token.drop", { ownerId: u.id }).catch(() => {});
+    if (line && o.deletedKey) await this.call(DIRECTORY, "dir.deletedDrop", { key: o.deletedKey }).catch(() => {});
     return true;
   }
   async account(hash: string, now: number) {
@@ -509,10 +660,45 @@ export class DurableStore implements Store {
   }
   async removeReport(paymentId: string, at = this.clock()): Promise<ReportRemoved> {
     const ownerId = await this.call<string | null>(PAYMENTS, "pay.reportOwnerOrMark", { paymentId, at });
-    if (ownerId === null) return { result: "unknown" };
+    if (ownerId === null || isDeletedMarker(ownerId)) return { result: "unknown" };   // a deleted account's payment: nothing to take back
     const result = await this.call<ReportRemoved["result"]>(OWNER(ownerId), "owner.removeReport", { paymentId, at });
     return result === "unknown" ? { result } : { result, ownerId };
   }
+  useReport(ownerId: string, a: { now: number; useId?: string }) { return this.call<ReportUse>(OWNER(ownerId), "owner.useReport", a); }
+  /** M116 step 5. The refusal is read first, writing nothing. Then the kept line is written, then the owner's object is wiped
+   *  (checked again in that same step), then the other objects forget the owner. A line written for an account whose wipe
+   *  then fails or is refused is harmless: the owner still holds data, so it does not count as deleted (isDeletedOwner), and it
+   *  is dropped when the person next signs in. What the other objects fail to forget is counted in `leftovers`: the account is
+   *  gone either way (its tokens find nobody), and a late payment event still finds the owner deleted. */
+  async deleteAccount(ownerId: string, a: { key: string; now: number }): Promise<Deleted> {
+    const info = await this.call<{ ok: false; why: Exclude<Deleted, { ok: true }>["why"] } | { ok: true; line: DeletedLine }>(OWNER(ownerId), "owner.deleteInfo", { now: a.now });
+    if (!info.ok) return info;
+    await this.call(DIRECTORY, "dir.deletedPut", { key: a.key, line: info.line });
+    const w = await this.call<{ ok: false; why: Exclude<Deleted, { ok: true }>["why"] } | { ok: true; line: DeletedLine; hashes: string[]; customerIds: string[]; paymentIds: string[] }>(OWNER(ownerId), "owner.wipe", { now: a.now });
+    if (!w.ok) return w;
+    let leftovers = 0;
+    const tidy = async (step: () => Promise<unknown>) => { try { await step(); } catch { leftovers++; } };
+    if (JSON.stringify(w.line) !== JSON.stringify(info.line)) await tidy(() => this.call(DIRECTORY, "dir.deletedPut", { key: a.key, line: w.line }));
+    await tidy(() => this.call(DIRECTORY, "dir.removeOwner", { ownerId }));
+    await tidy(() => this.call(DIRECTORY, "dir.forgetLog", { ownerId, marker: `${DELETED_PREFIX}${a.key}` }));
+    if (w.customerIds.length || w.paymentIds.length)
+      await tidy(() => this.call(PAYMENTS, "pay.forget", { ownerId, customerIds: w.customerIds, paymentIds: w.paymentIds, marker: `${DELETED_PREFIX}${a.key}` }));
+    for (const h of w.hashes) await tidy(() => this.call(TOKEN(h), "token.drop", { ownerId }));
+    return { ok: true, leftovers };
+  }
+  async isDeletedOwner(ownerId: string, key: string, now: number) {
+    if ((await this.call<DeletedLine | null>(DIRECTORY, "dir.deletedGet", { key, now })) === null) return false;
+    return !(await this.call<boolean>(OWNER(ownerId), "owner.present"));
+  }
+  ownerPage(a: { after?: number; limit: number }) { return this.call<OwnerPage>(DIRECTORY, "dir.ownerPage", a); }
+  async flagRefund(r: RefundNeeded) { await this.call(PAYMENTS, "pay.flagRefund", { r }); }
+  refundsNeeded() { return this.call<RefundNeeded[]>(PAYMENTS, "pay.refunds"); }
+  clearRefund(id: string) { return this.call<boolean>(PAYMENTS, "pay.clearRefund", { id }); }
+  ownerUsage(ownerId: string, a: { month: string; now: number }) { return this.call<OwnerUsage>(OWNER(ownerId), "owner.usage", a); }
+  async setRelease(platform: string, r: Release) { await this.call(RELEASES, "rel.set", { platform, r }); }
+  release(platform: string) { return this.call<Release | null>(RELEASES, "rel.get", { platform }); }
+  stopRelease(platform: string) { return this.call<boolean>(RELEASES, "rel.stop", { platform }); }
+  releases() { return this.call<[string, Release][]>(RELEASES, "rel.all"); }
 }
 
 /** Dodo's once only ledger: event ids in the payments object, the newest applied time in each owner's own object. */

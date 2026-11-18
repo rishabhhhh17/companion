@@ -13,6 +13,7 @@
 // Both POST routes refuse unless payments are switched on here (PAYMENTS_ON) and Dodo's webhook is served (PAYMENT_PROVIDER is
 // dodo), so an old app cannot open a checkout that nothing would ever turn into Pro. Logs hold a kind, an owner id and the item.
 import { planNow } from "./account-routes.ts";
+import { PRO_INCLUDES_REPORT } from "./plans.ts";
 import { createCheckout, createPortal, dodoMode, dodoSetup, type DodoApi } from "./dodo-api.ts";
 import { isCheckoutItem, USER_ID_KEY, type DodoCatalog, type DodoEntitlement, type DodoWebhookDeps, type SubDetail } from "./dodo.ts";
 import { error, jsonNoStore, readCapped } from "./http.ts";
@@ -21,15 +22,16 @@ import type { SafeEvent } from "./proxy.ts";
 import { createRateLimiter } from "./ratelimit.ts";
 import { liveSub, type Billing, type DodoMode, type Store } from "./store.ts";
 import { hashToken, tokenFromHeaders } from "./tokens.ts";
+import { deletedKey } from "./deleted.ts";
+import { secretProblem } from "./userid.ts";
 
 export const CHECKOUT_PATH = "/v1/checkout";
 export const PORTAL_PATH = "/v1/portal";
 export const PAID_PATH = "/paid";
 export const PAID_DONE_PATH = "/paid/done";
 export const PAID_CANCELLED_PATH = "/paid/cancelled";
-/** F25, M116 section 9 call 3: Pro includes the report (to be confirmed by the founder). While it does, a Pro person is never
- *  sold the report. */
-export const PRO_INCLUDES_REPORT = true;
+/** F25, M116 section 9 call 3 (kept in plans.ts, so the account routes read the same one). */
+export { PRO_INCLUDES_REPORT };
 /** Checkout and portal presses per account a minute, counted in this server instance's memory (writes nothing). */
 export const BILLING_PRESSES_PER_MINUTE = 10;
 const BILLING_MAX_BODY_BYTES = 4096;
@@ -164,9 +166,15 @@ export function portalCustomer(b: Billing, mode: DodoMode, now: number): string 
 }
 
 /** What the Dodo webhook writes, on any store: the plan per subscription (the owner's is the best of them), the customer id,
- *  and the report credits. */
-export function storeHooks(store: Store): Pick<DodoWebhookDeps, "apply" | "reports" | "saveCustomer"> {
+ *  and the report credits. M116 step 5: with the user id secret, it also knows a deleted account (deleted.ts), whose late
+ *  events change nothing; money that still reached Dodo for one is kept as a refund line for the operator. */
+export function storeHooks(store: Store, userIdSecret?: () => string | undefined): Pick<DodoWebhookDeps, "apply" | "reports" | "saveCustomer" | "deleted" | "refundNeeded"> {
   return {
+    deleted: async (userId, now) => {
+      const secret = userIdSecret?.();
+      return !!secret && !secretProblem(secret) && store.isDeletedOwner(userId, await deletedKey(userId, secret), now);
+    },
+    refundNeeded: (r) => store.flagRefund(r),
     apply: (e: DodoEntitlement, at: number, detail?: SubDetail) => detail
       ? store.applySubscription(e.userId, detail.subscriptionId, {
         plan: e.plan, status: e.status, ...(e.until !== undefined ? { until: e.until } : {}),

@@ -1,19 +1,31 @@
 // The operator's tool for cutting one person off, and for letting them back. The command line wrapper is scripts/suspend.ts; this
 // holds the logic so it can be tested. It prints ids and plain sentences only: never a token, a hash, the secret, a plan or any text.
+// M116 step 5: two more commands, chosen by the first word: `usage` (operator-usage.ts, the founder's usage view, read only)
+// and `release` (updates.ts: show, set and stop the update feed's release). M116 step 5 review: `refunds` lists the payments
+// that reached Dodo for a deleted account, and `refunds done <id>` clears one. Anything else is suspend and restore, as before.
 import type { Store } from "./store.ts";
 import { USER_ID_SECRET_SETTING, findOwnerByUserId, secretProblem } from "./userid.ts";
+import { runRefunds, runUsage } from "./operator-usage.ts";
+import { runRelease } from "./updates.ts";
 
-export type OperatorResult = { code: number; lines: string[] };
+/** `data`: for a script that reads the answer (the `usage` pages), never shown as is. */
+export type OperatorResult = { code: number; lines: string[]; data?: unknown };
 const USAGE = [
   "Usage:",
   "  bun scripts/suspend.ts --user-id <the id Anthropic reported> [--apply] [--case <reference>]",
   "  bun scripts/suspend.ts --owner <our owner id> [--apply] [--case <reference>]",
   "  add --restore to let the person back in. Without --apply nothing is changed (a dry run).",
   "  <reference> is a short case number of ours (letters, digits, - and _ only), never a message.",
+  "  usage [--month YYYY-MM] [--email <address>]   the founder's usage view (read only)",
+  "  release show | set ... | stop ...              the update feed (see release with no options)",
+  "  refunds [done <id>]                            payments for deleted accounts to refund in Dodo",
 ];
 const CASE = /^[A-Za-z0-9_-]{1,40}$/;
 
 export async function runOperator(argv: string[], env: Record<string, string | undefined>, store: Store, now: () => number): Promise<OperatorResult> {
+  if (argv[0] === "usage") return runUsage(argv.slice(1), store, now);
+  if (argv[0] === "release") return runRelease(argv.slice(1), env, store, now);
+  if (argv[0] === "refunds") return runRefunds(argv.slice(1), store);
   const bad = (why: string): OperatorResult => ({ code: 2, lines: [why, ...USAGE] });
   let userId: string | undefined, owner: string | undefined, caseId: string | undefined, apply = false, restore = false;
   for (let i = 0; i < argv.length; i++) {

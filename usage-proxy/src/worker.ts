@@ -18,7 +18,9 @@
 //   DODO_API_BASE             M116: Dodo's address, a plain var in wrangler.toml: https://test.dodopayments.com (the default)
 //                             or https://live.dodopayments.com. It must agree with the key (dodo_test_ or dodo_live_), or no
 //                             checkout or portal is made (dodo-api.ts).
-//   OPERATOR_KEY              the operator's own key for POST /v1/operator (suspend and restore). Without it that route is not served.
+//   OPERATOR_KEY              the operator's own key for POST /v1/operator (suspend and restore, M116: `usage` and `release`).
+//                             Without it that route is not served. scripts/usage-report.ts reads it from the founder's Keychain.
+//   RELEASES_REPO             M116: the public releases repo (owner/name), a plain var. `release set` takes only a file there.
 //   UPSTREAM_BASE             only for `wrangler dev` against a stand in model on this machine (https only, loopback aside).
 //   DEV_TOKENS                only for `wrangler dev`: "on" serves POST /v1/dev/token, which gives a test sign in token, and only
 //                             when the request's address and UPSTREAM_BASE are both this machine. scripts/deploy.sh --apply
@@ -38,6 +40,7 @@ import { USER_ID_SECRET_SETTING } from "./userid.ts";
 import { DurableDodoLedger, DurableLinkBook, DurableStore, type NamespaceLike } from "./store-do.ts";
 import { PRODUCT } from "./names.ts";
 import { createRateLimiter, SIGNIN_TRIES_PER_MINUTE } from "./ratelimit.ts";
+import { createUpdateRoute, RELEASES_REPO_SETTING, UPDATE_PATH_PREFIX } from "./updates.ts";
 
 export { StoreObject } from "./store-do.ts";
 
@@ -55,6 +58,7 @@ export type Env = {
   DODO_WEBHOOK_SECRET?: string;
   DODO_PRODUCTS?: string;
   OPERATOR_KEY?: string;
+  RELEASES_REPO?: string;
   UPSTREAM_BASE?: string;
   DEV_TOKENS?: string;
 };
@@ -75,7 +79,7 @@ export const DEV_TOKEN_PATH = "/v1/dev/token";
 export const DEV_ONLY_SETTINGS = ["DEV_TOKENS", "UPSTREAM_BASE"] as const;
 /** The operator's key must be at least this long, like the user id secret. */
 export const MIN_OPERATOR_KEY_CHARS = 32;
-const OPERATOR_MAX_BODY = 4096;
+const OPERATOR_MAX_BODY = 8192;   // a release's notes and signature fit
 
 /** M100 review: the fixing loop's switch (LOOP_ON), read the same way as the main one: off unless on, 1 or true. */
 export function loopSwitchOn(value: unknown): boolean { return switchOn(value); }
@@ -89,7 +93,7 @@ export function switchOn(value: unknown): boolean {
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 const logLine = (e: SafeEvent | SafeDodoEvent | { kind: "operator"; code: number } | { kind: "refused"; reason: string }) => console.log(JSON.stringify(e));
 
-type Parts = { proxy: (req: Request) => Promise<Response>; dodo: (req: Request) => Promise<Response>; billing: (req: Request, url: URL) => Promise<Response | null>; store: DurableStore };
+type Parts = { proxy: (req: Request) => Promise<Response>; dodo: (req: Request) => Promise<Response>; billing: (req: Request, url: URL) => Promise<Response | null>; update: (req: Request, url: URL) => Promise<Response | null>; store: DurableStore };
 // Google's keys are fetched once per server instance and kept as long as Google says, so the checker is kept per client id.
 // Everything else is made fresh for each request (it is cheap), so one request's waitUntil is never used for another's work.
 const googleCheckers = new Map<string, ReturnType<typeof createGoogleVerifier>>();
@@ -131,7 +135,7 @@ function partsFor(env: Env, ctx: Ctx, now: () => number): Parts {
     // M116: the plan is kept per subscription on the owner's own object, and an event older than one already applied for that
     // subscription is skipped there in the same step (false: answered and logged as stale). The owner's plan is the best of
     // their subscriptions. Report credits are keyed by payment_id.
-    ...storeHooks(store),
+    ...storeHooks(store, () => env.METADATA_USER_ID_SECRET),
     paymentProducts: async (paymentId) => { const api = dodoApi(); return api ? paymentProducts(api, paymentId) : null; },
     // Customer ids are kept with the Dodo mode of DODO_API_BASE. The webhook secret and the address are switched to live
     // together on the go live checklist, so an event's mode is the address's.
@@ -146,7 +150,8 @@ function partsFor(env: Env, ctx: Ctx, now: () => number): Parts {
     catalog, dodoBase: () => env.DODO_API_BASE, dodoKey: () => env.DODO_PAYMENTS_API_KEY,
     pressLimit: billingPresses,
   });
-  return { proxy, dodo, billing, store };
+  const update = createUpdateRoute({ store, log: logLine });
+  return { proxy, dodo, billing, update, store };
 }
 
 async function operatorRoute(req: Request, env: Env, store: DurableStore, now: () => number): Promise<Response> {
@@ -158,7 +163,7 @@ async function operatorRoute(req: Request, env: Env, store: DurableStore, now: (
   let argv: unknown;
   try { const text = await req.text(); if (text.length > OPERATOR_MAX_BODY) return json(400, { error: "That request is too big." }); argv = (JSON.parse(text) as { argv?: unknown })?.argv; } catch { argv = undefined; }
   if (!Array.isArray(argv) || !argv.every((a) => typeof a === "string")) return json(400, { error: "Send {\"argv\": [...]} with the same options as scripts/suspend.ts." });
-  const r = await runOperator(argv as string[], { [USER_ID_SECRET_SETTING]: env.METADATA_USER_ID_SECRET }, store, now);
+  const r = await runOperator(argv as string[], { [USER_ID_SECRET_SETTING]: env.METADATA_USER_ID_SECRET, [RELEASES_REPO_SETTING]: env.RELEASES_REPO }, store, now);
   logLine({ kind: "operator", code: r.code });
   // 200 only when the step happened (or a dry run worked); otherwise 422 with the same body, so a script can tell from the status.
   return json(r.code === 0 ? 200 : 422, r);
@@ -182,6 +187,7 @@ export async function handle(req: Request, env: Env, ctx: Ctx, now: () => number
     const path = new URL(req.url).pathname;
     if (path === OPERATOR_PATH || path === DEV_TOKEN_PATH) return json(503, { error: "The store could not finish that step. Nothing was changed. Try again in a moment." });
     if (path.startsWith("/webhooks/")) return json(503, { outcome: "apply_failed", message: "Something went wrong on our side. Nothing was changed, and the sender can deliver this again." });
+    if (path.startsWith(UPDATE_PATH_PREFIX)) return json(503, { error: "Updates could not be checked just now. Try again later." });
     if (isAccountPath(path) || isBillingPath(path)) return accountStoreFailed();
     return storeFailed();
   }
@@ -196,6 +202,9 @@ async function route(req: Request, env: Env, ctx: Ctx, now: () => number): Promi
     const t = await issueToken(parts.store, "dev:stand-in", "pro");
     return t.ok ? json(200, { token: t.token, owner: "dev:stand-in" }) : json(403, { error: t.message });
   }
+  // M116 step 5: the update feed, with no token, ahead of everything that reads one.
+  const update = await parts.update(req, url);
+  if (update) return update;
   // M116: checkout, portal and the /paid return page, ahead of the proxy and its switch.
   const billing = await parts.billing(req, url);
   if (billing) return billing;

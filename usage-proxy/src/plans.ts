@@ -11,6 +11,9 @@ export const PLANS: Record<string, Plan> = {
   free: { name: "free", dailyUsd: 0.2, monthlyUsd: 2 },
   pro: { name: "pro", dailyUsd: 0.75, monthlyUsd: 5 },
 };
+/** F25, M116 section 9 call 3: Pro includes the report (to be confirmed by the founder). While it does, a Pro person is never
+ *  sold the report, and starts one without spending a credit. */
+export const PRO_INCLUDES_REPORT = true;
 /** An unknown plan name is never better than free. */
 export const planOf = (name: unknown): Plan => (typeof name === "string" && Object.hasOwn(PLANS, name) ? PLANS[name] : PLANS.free);
 

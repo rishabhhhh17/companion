@@ -16,10 +16,10 @@ export class FakeStorage implements StorageLike {
   async get<T>(key: string) { this.calls++; await yieldNow(); return copy(this.data.get(key)) as T | undefined; }
   async put(entries: Record<string, unknown>) { this.calls++; this.writes++; this.rows += Object.keys(entries).length; await yieldNow(); for (const [k, v] of Object.entries(entries)) this.data.set(k, copy(v)); }
   async delete(keys: string[]) { if (keys.length > 128) throw new Error("Cloudflare takes at most 128 keys in one delete"); this.calls++; this.writes++; this.rows += keys.length; await yieldNow(); let n = 0; for (const k of keys) if (this.data.delete(k)) n++; return n; }
-  /** As Cloudflare's list: keys in order, `reverse` from the end, at most `limit`. */
-  async list<T>(o: { prefix: string; reverse?: boolean; limit?: number }) {
+  /** As Cloudflare's list: keys in order, `reverse` from the end, at most `limit`, only keys after `startAfter`. */
+  async list<T>(o: { prefix: string; reverse?: boolean; limit?: number; startAfter?: string }) {
     this.calls++; await yieldNow();
-    let all = [...this.data].filter(([k]) => k.startsWith(o.prefix)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    let all = [...this.data].filter(([k]) => k.startsWith(o.prefix) && (o.startAfter === undefined || k > o.startAfter)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     if (o.reverse) all = all.reverse();
     if (o.limit !== undefined) all = all.slice(0, o.limit);
     return new Map(all.map(([k, v]) => [k, copy(v) as T]));

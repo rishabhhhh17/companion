@@ -93,6 +93,11 @@ The operator's suspend and restore work on the real store through the Worker: `P
   dropped token stops working and its small object is cleared, so the person signs in again.
 - Payment event ids: 48 hours, because Dodo retries a delivery for about 37 hours, each time signed afresh with the same id. The suspension log and the list of owners are kept while the
   service runs, because they are how a notice from Anthropic is matched to a person.
+- After "Delete my account" (M116 step 5): the owner's suspension log lines stay, with an HMAC of the owner id in place of it.
+  One "deleted" line, under the same HMAC, holds that month's spend and the sign in nonces still good; it goes at the end of
+  that month, and never sooner than 3 days after the delete (a checkout lasts 24 hours and Dodo retries for about 37). A
+  payment that still reaches Dodo for a deleted account in that time grants nothing and is kept as a refund line (Dodo ids
+  only) until the operator refunds it and runs `refunds done <id>`; `usage` shows these first.
 
 ## Telling Anthropic who a request is for, and cutting one person off (24 Oct 2026)
 

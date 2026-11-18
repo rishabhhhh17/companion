@@ -8,6 +8,14 @@
 //   GET  /v1/me             the plan, its status and dates, use as a share of the limits, and the switches. Writes nothing.
 //   POST /v1/signout        stops the token that called it.
 //   POST /v1/signout/all    stops every token of the owner.
+//   GET  /v1/switches       M116 step 5: {payments, fixing} from PAYMENTS_ON and LOOP_ON. No token. Reads no store.
+//   POST /v1/report/use     M116 step 5: spends one report credit (the oldest), or allows it on Pro while Pro includes the
+//                           report. {useId} makes a retry spend nothing more. The app starts a report only after a yes here.
+//   POST /v1/account/delete M116 step 5: {confirm: true}. Refused while a subscription could still charge (active, past due,
+//                           on hold, paused; a failed one never charges) or a model request runs. Keeps only the owner's
+//                           suspension log lines and the deleted line (deleted.ts), both under an HMAC key, never the
+//                           email or the Google id: the line holds this month's spend and goes at the month's end (at least
+//                           3 days after the delete). No trial: none exists.
 //
 // Logs hold a kind, a reason and an owner id only. Never an email, a name, a token, an ID token, a nonce or an address.
 import { issueSignInToken } from "./accounts.ts";
@@ -15,7 +23,8 @@ import type { GoogleCheck } from "./google.ts";
 import { error, jsonNoStore, readCapped } from "./http.ts";
 import { PRODUCT } from "./names.ts";
 import { checkNonce, makeNonce } from "./nonce.ts";
-import { nextReset, planOf } from "./plans.ts";
+import { nextReset, planOf, PRO_INCLUDES_REPORT } from "./plans.ts";
+import { deletedKey } from "./deleted.ts";
 import type { SafeEvent } from "./proxy.ts";
 import { clientAddress } from "./ratelimit.ts";
 import type { Store, User } from "./store.ts";
@@ -27,13 +36,21 @@ export const GOOGLE_SIGNIN_PATH = "/v1/signin/google";
 export const ME_PATH = "/v1/me";
 export const SIGNOUT_PATH = "/v1/signout";
 export const SIGNOUT_ALL_PATH = "/v1/signout/all";
+export const SWITCHES_PATH = "/v1/switches";
+export const REPORT_USE_PATH = "/v1/report/use";
+export const ACCOUNT_DELETE_PATH = "/v1/account/delete";
 const SIGNIN_MAX_BODY_BYTES = 16 * 1024;
-const ACCOUNT_PATHS = new Set([NONCE_PATH, GOOGLE_SIGNIN_PATH, ME_PATH, SIGNOUT_PATH, SIGNOUT_ALL_PATH]);
+const SMALL_BODY_BYTES = 1024;
+const USE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const ACCOUNT_PATHS = new Set([NONCE_PATH, GOOGLE_SIGNIN_PATH, ME_PATH, SIGNOUT_PATH, SIGNOUT_ALL_PATH, SWITCHES_PATH, REPORT_USE_PATH, ACCOUNT_DELETE_PATH]);
 /** True for the paths the account routes serve, so a store failure there gets the account sentence, not the model one. */
 export const isAccountPath = (path: string) => ACCOUNT_PATHS.has(path);
 /** The answer when the store fails on an account route. Nothing here is a model request, so it says nothing about Claude. */
 export const ACCOUNT_STORE_FAILED_MESSAGE = `Your ${PRODUCT} account could not be reached just now. Nothing was changed. Try again in a moment.`;
 export const accountStoreFailed = () => error(503, "api_error", ACCOUNT_STORE_FAILED_MESSAGE);
+export const NO_REPORT_WORDS = "There is no report to use. Buy the report, then start it again.";
+export const DELETE_LIVE_SUB_WORDS = "Cancel Pro in billing first, then delete. Nothing was deleted.";
+export const DELETE_BUSY_WORDS = `${PRODUCT} is still working on something for you. Try again when it finishes. Nothing was deleted.`;
 
 export type AccountDeps = {
   store: Store;
@@ -100,7 +117,8 @@ export function createAccountRoutes(d: AccountDeps): (req: Request, url: URL) =>
     const n = await checkNonce(who.nonce, s, now);
     if (!n.ok) return googleFailed(`signin_${n.reason}`);
     const plan = (await d.store.planOfOwner?.(who.ownerId)) ?? "free";
-    const issued = await issueSignInToken(d.store, who.ownerId, plan, { email: who.email, nonceId: n.id, nonceUntil: n.until, now });
+    // M116 step 5: the deleted line's key, so a person who deleted their account comes back with this month's spend.
+    const issued = await issueSignInToken(d.store, who.ownerId, plan, { email: who.email, nonceId: n.id, nonceUntil: n.until, now, deletedKey: await deletedKey(who.ownerId, s) });
     if (!issued.ok) return "nonceUsed" in issued ? googleFailed("signin_nonce_used") : refuse("suspended", error(403, "permission_error", issued.message), who.ownerId);
     d.log({ kind: "signin", userId: who.ownerId });
     // The plan in the reply is the one /v1/me would show (planNow): a kept plan whose end has passed reads as Free here too.
@@ -143,8 +161,64 @@ export function createAccountRoutes(d: AccountDeps): (req: Request, url: URL) =>
     return jsonNoStore({ stopped });
   }
 
+  /** The token's working account, or the refusal to send. Shared by report use and delete. */
+  async function working(req: Request): Promise<{ ok: true; user: User; now: number } | { ok: false; res: Response }> {
+    const token = tokenFromHeaders(req.headers);
+    if (!token) return { ok: false, res: signInAgain("no_token") };
+    const now = d.now(), user = await d.store.userByTokenHash(await hashToken(token));
+    if (!user) return { ok: false, res: signInAgain("unknown_token") };
+    if (user.status === "suspended") return { ok: false, res: refuse("suspended", error(403, "permission_error", `Your ${PRODUCT} account is paused. If you think this is a mistake, you can appeal: see the acceptable use page.`), user.id) };
+    if (user.status === "revoked" || user.status === "canceled") return { ok: false, res: signInAgain("inactive") };
+    return { ok: true, user, now };
+  }
+  /** A small JSON body, or undefined when there is none; null when it is too big or not JSON. */
+  async function smallBody(req: Request): Promise<Record<string, unknown> | undefined | null> {
+    if (Number(req.headers.get("content-length") ?? 0) > SMALL_BODY_BYTES) return null;
+    const raw = await readCapped(req, SMALL_BODY_BYTES);
+    if (raw === null) return null;
+    if (raw.trim() === "") return undefined;
+    try { const v = JSON.parse(raw); return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null; } catch { return null; }
+  }
+
+  async function useReport(req: Request): Promise<Response> {
+    const w = await working(req);
+    if (!w.ok) return w.res;
+    const body = await smallBody(req), useId = body?.useId;
+    if (body === null || (useId !== undefined && (typeof useId !== "string" || !USE_ID.test(useId))))
+      return refuse("report_bad_body", error(400, "invalid_request_error", "The report request is not in the expected form."), w.user.id);
+    if (PRO_INCLUDES_REPORT && planNow(w.user, w.now).plan !== "free") {
+      d.log({ kind: "report_use", userId: w.user.id, reason: "pro" });
+      return jsonNoStore({ ok: true, paidBy: "pro" });
+    }
+    const r = await d.store.useReport(w.user.id, { now: w.now, ...(typeof useId === "string" ? { useId } : {}) });
+    if (!r.ok) return refuse("no_report", error(402, "billing_error", NO_REPORT_WORDS), w.user.id);
+    d.log({ kind: "report_use", userId: w.user.id, reason: "credit" });
+    return jsonNoStore({ ok: true, paidBy: "credit", left: r.left });
+  }
+
+  async function deleteAccount(req: Request): Promise<Response> {
+    const w = await working(req);
+    if (!w.ok) return w.res;
+    const s = secret();
+    if (!s) return notReady("delete_no_secret");
+    const body = await smallBody(req);
+    if (!body || body.confirm !== true) return refuse("delete_bad_body", error(400, "invalid_request_error", "Send {\"confirm\": true} to delete the account."), w.user.id);
+    const r = await d.store.deleteAccount(w.user.id, { key: await deletedKey(w.user.id, s), now: w.now });
+    if (!r.ok) {
+      if (r.why === "live_sub") return refuse("delete_live_sub", error(409, "invalid_request_error", DELETE_LIVE_SUB_WORDS), w.user.id);
+      if (r.why === "busy") return refuse("delete_busy", error(409, "invalid_request_error", DELETE_BUSY_WORDS), w.user.id);
+      return refuse("suspended", error(403, "permission_error", `Your ${PRODUCT} account is paused. If you think this is a mistake, you can appeal: see the acceptable use page.`), w.user.id);
+    }
+    // No owner id in this line: the account is gone. A count of what other objects could not forget, for the operator.
+    d.log({ kind: "account_deleted", ...(r.leftovers ? { reason: `leftovers_${r.leftovers}` } : {}) });
+    return jsonNoStore({ deleted: true });
+  }
+
   return async (req, url) => {
     const p = url.pathname;
+    if (req.method === "GET" && p === SWITCHES_PATH) return jsonNoStore({ payments: d.paymentsOn?.() === true, fixing: d.loopOn?.() === true });
+    if (req.method === "POST" && p === REPORT_USE_PATH) return useReport(req);
+    if (req.method === "POST" && p === ACCOUNT_DELETE_PATH) return deleteAccount(req);
     if (req.method === "GET" && p === NONCE_PATH) return nonce();
     if (req.method === "POST" && p === GOOGLE_SIGNIN_PATH) return signIn(req);
     if (req.method === "GET" && p === ME_PATH) return me(req);

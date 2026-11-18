@@ -5,7 +5,8 @@
 //
 // Off unless the operator turns it on (see payments.ts and the README). No network, no secrets, and no request body is ever logged.
 import { PLANS } from "./plans.ts";
-import type { DodoMode } from "./store.ts";
+import type { DodoMode, RefundNeeded } from "./store.ts";
+import { isDeletedMarker } from "./deleted.ts";
 
 // ---- signature -------------------------------------------------------------------------------------------------------------------
 /** How far the webhook-timestamp may be from now, in seconds, either way. Dodo's page says to reject a timestamp "too far from the
@@ -167,7 +168,7 @@ const safeOrUndefined = (x: unknown): string | undefined => (typeof x === "strin
  *  open it. */
 async function customerIsTheirs(customerId: string, userId: string, links: LinkBook): Promise<boolean> {
   const known = await links.get(customerId);
-  return known === null || known === userId;
+  return known === null || known === userId || isDeletedMarker(known);   // M116 step 5: a deleted account's customer is free again
 }
 
 /** Who a payload belongs to: the checkout metadata first, then a link learned from a payment. */
@@ -186,7 +187,10 @@ async function ownerOf(data: Record<string, unknown>, links: LinkBook): Promise<
  *  - past_due (Dodo: access is kept in the grace period): the plan, but only until past_due_ends_at; no readable end means free.
  *  - cancelled: M116, with cancel_at_next_billing_date true and a future next_billing_date, Pro is kept until then (`cancelling`);
  *    otherwise free at once. expired: free.
- *  - on_hold, paused, failed: free with status `on_hold`, which the app shows as "payment failed, fix it in billing".
+ *  - on_hold, paused: free with status `on_hold`, which the app shows as "payment failed, fix it in billing". Both can still
+ *    charge (Dodo retries, or the person resumes), so deleting the account is refused while one exists.
+ *  - failed (Dodo could not create the subscription, and sends nothing after it): plain free, the same as ended. It can never
+ *    charge, so it never blocks a delete or a later Pro checkout (M116 step 5 review).
  *  - a product that is not in the table grants nothing; on plan_changed the person drops to free, as the old product is gone.
  */
 export async function decideDodoEvent(event: unknown, products: DodoProducts, links: LinkBook, mode: DodoMode | null = "test"): Promise<DodoDecision> {
@@ -213,11 +217,11 @@ export async function decideDodoEvent(event: unknown, products: DodoProducts, li
   const status = typeof data.status === "string" ? data.status : "";
   const free = withDetail({ kind: "set", entitlement: FREE(userId) });
   const onHold = withDetail({ kind: "set", entitlement: { userId, plan: "free", status: "on_hold" } });
-  const HOLD = ["on_hold", "paused", "failed"], ENDED = ["cancelled", "expired"];
+  const HOLD = ["on_hold", "paused"], ENDED = ["cancelled", "expired", "failed"];
   let wants: "grant" | "grace" | "free" | "hold" | "keep" | "ignore";
   switch (type) {
-    case "subscription.on_hold": case "subscription.paused": case "subscription.failed": wants = "hold"; break;
-    case "subscription.expired": wants = "free"; break;
+    case "subscription.on_hold": case "subscription.paused": wants = "hold"; break;
+    case "subscription.expired": case "subscription.failed": wants = "free"; break;
     case "subscription.cancelled": wants = cancelsLater ? "keep" : "free"; break;
     case "subscription.past_due": wants = "grace"; break;
     default:
@@ -337,7 +341,7 @@ export class MemoryDodoLedger implements DodoLedger {
 /** What the handler logs, and nothing else. Short identifiers only: no body, no email, no name, no secret. */
 export type SafeDodoEvent = {
   kind: "refused" | "bad_request" | "duplicate" | "stale" | "ignored" | "applied" | "unknown_product" | "unlinked" | "apply_failed" | "link_learned" | "link_conflict"
-    | "report_added" | "report_known" | "report_removed" | "report_kept_used" | "refund_logged" | "dispute_logged" | "lookup_failed";
+    | "report_added" | "report_known" | "report_removed" | "report_kept_used" | "refund_logged" | "dispute_logged" | "lookup_failed" | "refund_needed";
   reason?: string; eventType?: string; webhookId?: string; userId?: string; plan?: string; productId?: string; paymentId?: string;
 };
 export type DodoOutcome = "refused" | "bad_request" | "duplicate" | "stale" | "ignored" | "applied" | "unknown_product" | "unlinked" | "apply_failed";
@@ -364,10 +368,36 @@ export type DodoWebhookDeps = {
   mode?: () => DodoMode | null;
   /** M116 (V4): a payment's product ids read back from Dodo, for a payment event with no product_cart. Null: could not read. */
   paymentProducts?: (paymentId: string) => Promise<string[] | null>;
+  /** M116 step 5: true when this owner's account was deleted (and they have not signed in again) as of `now` (ms). Their late
+   *  events are answered 200 and change nothing. Missing: nobody counts as deleted, though a deleted marker in the link book
+   *  still does. */
+  deleted?: (userId: string, now: number) => Promise<boolean>;
+  /** M116 step 5 review: keep a refund line for the operator, for money that reached Dodo for a deleted account (moneyForDeleted).
+   *  Throwing makes the answer 500, so Dodo delivers it again and it is not lost. Missing: only logged. */
+  refundNeeded?: (r: RefundNeeded) => Promise<void>;
   now?: () => number;
   log?: (e: SafeDodoEvent) => void;
 };
 export const MAX_WEBHOOK_BYTES = 1_000_000;
+
+/** M116 step 5 review: a deleted account's event that means money was taken or will be. A payment that succeeded (a checkout
+ *  opened before the delete and paid after it, or a renewal), and a subscription that is live (it charges again). Nothing is
+ *  granted to a deleted account, so the operator refunds the payment, and cancels the subscription, in Dodo. Null otherwise. */
+export function moneyForDeleted(event: Record<string, unknown>, at: number): RefundNeeded | null {
+  const type = event.type, data = obj(event.data);
+  if (typeof type !== "string" || !data) return null;
+  const customerId = safeOrUndefined(obj(data.customer)?.customer_id), extra = customerId ? { customerId } : {};
+  const eventType = /^[a-z_.]{1,60}$/.test(type) ? type : "(unreadable)";
+  if (type === "payment.succeeded") {
+    const id = safeOrUndefined(data.payment_id);
+    return id ? { id, kind: "payment", at, eventType, ...extra } : null;
+  }
+  if (type.startsWith("subscription.") && ["active", "past_due", "on_hold", "paused"].includes(String(data.status))) {
+    const id = safeOrUndefined(data.subscription_id);
+    return id ? { id, kind: "subscription", at, eventType, ...extra } : null;
+  }
+  return null;
+}
 
 const answer = (status: number, outcome: DodoOutcome, message?: string) =>
   new Response(JSON.stringify({ outcome, ...(message ? { message } : {}) }), { status, headers: { "content-type": "application/json" } });
@@ -467,6 +497,17 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
 
     if (!(await d.ledger.claim(verified.id))) { log({ kind: "duplicate", eventType, webhookId }); return answer(200, "duplicate"); }
     try {
+      // M116 step 5: an event for a deleted account (by its metadata, or a customer link now marked deleted) changes nothing.
+      // Answered 200, so Dodo stops retrying it.
+      const data = obj(event.data), owner = data ? await ownerOf(data, d.links) : null;
+      if (owner && (isDeletedMarker(owner) || (d.deleted && (await d.deleted(owner, now()))))) {
+        // Money for a deleted account (a checkout opened before the delete and paid after it): nothing is granted, so the
+        // operator is told to refund it. The line is kept before the 200, so a failure here makes Dodo deliver it again.
+        const money = moneyForDeleted(event, at);
+        if (money && d.refundNeeded) await d.refundNeeded(money);
+        log({ kind: money ? "refund_needed" : "ignored", eventType, webhookId, reason: "deleted_account", ...(money?.kind === "payment" ? { paymentId: money.id } : {}) });
+        return answer(200, "ignored");
+      }
       await learnLink(event, d.links, log, eventType, webhookId);
       if (d.reports && !eventType?.startsWith("subscription.")) {
         const paid = await paymentEvent(event, eventType, webhookId);
@@ -515,6 +556,7 @@ async function learnLink(event: Record<string, unknown>, links: LinkBook, log: (
   const userId = str(obj(data.metadata)?.[USER_ID_KEY]), customerId = str(obj(data.customer)?.customer_id);
   if (!userId || !customerId) return;
   const known = await links.get(customerId);
-  if (known === null) { await links.set(customerId, userId); log({ kind: "link_learned", eventType, webhookId, userId: safeOrUndefined(userId) }); }
+  // A link marked deleted (its account was deleted) is given to the person this event names: Dodo can reuse a customer by email.
+  if (known === null || isDeletedMarker(known)) { await links.set(customerId, userId); log({ kind: "link_learned", eventType, webhookId, userId: safeOrUndefined(userId) }); }
   else if (known !== userId) log({ kind: "link_conflict", eventType, webhookId, userId: safeOrUndefined(userId) });
 }

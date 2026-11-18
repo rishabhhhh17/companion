@@ -101,10 +101,12 @@ describe("what each subscription event means (M116)", () => {
     expect(await decide(subEvent("subscription.cancelled", "cancelled", { cancel_at_next_billing_date: true, next_billing_date: iso(NOW - 20_000) }))).toMatchObject({ kind: "set", entitlement: { plan: "free" } });
     expect(await decide(subEvent("subscription.expired", "expired"))).toMatchObject({ kind: "set", entitlement: { plan: "free", status: "active" } });
   });
-  test("on_hold, failed and paused set Free with status on_hold (the app says the payment failed)", async () => {
-    for (const [type, status] of [["on_hold", "on_hold"], ["failed", "failed"], ["paused", "paused"]]) {
+  test("on_hold and paused set Free with status on_hold (the app says the payment failed); failed is plain Free", async () => {
+    for (const [type, status] of [["on_hold", "on_hold"], ["paused", "paused"]]) {
       expect(await decide(subEvent(`subscription.${type}`, status))).toMatchObject({ kind: "set", entitlement: { plan: "free", status: "on_hold" } });
     }
+    // Dodo could not create it and sends nothing after: it can never charge, so it is kept as ended, never on hold.
+    expect(await decide(subEvent("subscription.failed", "failed"))).toMatchObject({ kind: "set", entitlement: { plan: "free", status: "active" } });
   });
   test("a scheduled cancel on an active subscription is cancelling until next_billing_date; the flag back to false is active again", async () => {
     expect(await decide(subEvent("subscription.updated", "active", { cancel_at_next_billing_date: true }))).toMatchObject({ entitlement: { plan: "pro", status: "cancelling", until: NOW + 30 * DAY } });
@@ -254,7 +256,7 @@ for (const kind of TEST_STORES) describe(`${kind.name}: the Dodo webhook sets pl
     await send(h, subEvent("subscription.expired", "expired", {}, NOW - 6000), "m4");
     expect(await plan()).toBe("free");
   });
-  test("past due keeps Pro until past_due_ends_at; on hold, failed and paused drop it with status on_hold", async () => {
+  test("past due keeps Pro until past_due_ends_at; on hold and paused drop it with status on_hold, failed as ended", async () => {
     const h = hook();
     await send(h, subEvent("subscription.past_due", "past_due", { past_due_ends_at: iso(NOW + 3 * DAY) }, NOW - 9000), "m1");
     expect((await store.billingOf(OWNER_ID)).subs[0][1]).toMatchObject({ plan: "pro", status: "past_due", until: NOW + 3 * DAY });
@@ -264,7 +266,7 @@ for (const kind of TEST_STORES) describe(`${kind.name}: the Dodo webhook sets pl
       expect(await plan()).toBe("pro");
       await send(h, subEvent(`subscription.${type}`, status, {}, at++), `bad_${type}`);
       expect(await plan()).toBe("free");
-      expect((await store.billingOf(OWNER_ID)).subs[0][1]).toMatchObject({ plan: "free", status: "on_hold" });
+      expect((await store.billingOf(OWNER_ID)).subs[0][1]).toMatchObject({ plan: "free", status: type === "failed" ? "active" : "on_hold" });
     }
   });
   test("renewed and plan_changed (monthly to yearly) keep Pro and refresh the renew date", async () => {

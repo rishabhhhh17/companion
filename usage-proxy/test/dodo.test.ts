@@ -159,22 +159,23 @@ describe("what each Dodo subscription event means for a plan", () => {
     expect((await decide(event("subscription.active", "weird")).then((d) => d.kind))).toBe("ignore");
     expect((await decide(event("subscription.active", "pending")).then((d) => d.kind))).toBe("ignore");
   });
-  // M116: on_hold, paused and failed are Free with status on_hold (the app says "payment failed, fix it in billing").
+  // M116: on_hold and paused are Free with status on_hold (the app says "payment failed, fix it in billing"). M116 step 5
+  // review: failed (Dodo could not create the subscription; nothing follows it) is plain Free, as ended: it can never charge.
   const onHold: DodoEntitlement = { userId: "u9", plan: "free", status: "on_hold" };
   test("on_hold, paused, failed, expired and cancelled drop to the free plan at once", async () => {
-    for (const [type, status] of [["on_hold", "on_hold"], ["paused", "paused"], ["failed", "failed"]]) {
+    for (const [type, status] of [["on_hold", "on_hold"], ["paused", "paused"]]) {
       expect(await decide(event(`subscription.${type}`, status))).toMatchObject({ kind: "set", entitlement: onHold });
     }
-    for (const [type, status] of [["expired", "expired"], ["cancelled", "cancelled"]]) {
+    for (const [type, status] of [["failed", "failed"], ["expired", "expired"], ["cancelled", "cancelled"]]) {
       expect(await decide(event(`subscription.${type}`, status))).toMatchObject({ kind: "set", entitlement: free });
     }
   });
   test("an updated event whose status is a bad state drops to free, even if the type is only 'updated'", async () => {
-    for (const status of ["on_hold", "paused", "failed"]) expect(await decide(event("subscription.updated", status))).toMatchObject({ kind: "set", entitlement: onHold });
-    for (const status of ["cancelled", "expired"]) expect(await decide(event("subscription.updated", status))).toMatchObject({ kind: "set", entitlement: free });
+    for (const status of ["on_hold", "paused"]) expect(await decide(event("subscription.updated", status))).toMatchObject({ kind: "set", entitlement: onHold });
+    for (const status of ["failed", "cancelled", "expired"]) expect(await decide(event("subscription.updated", status))).toMatchObject({ kind: "set", entitlement: free });
   });
   test("failed never grants even if it carries an active looking status", async () => {
-    expect(await decide(event("subscription.failed", "active"))).toMatchObject({ kind: "set", entitlement: onHold });
+    expect(await decide(event("subscription.failed", "active"))).toMatchObject({ kind: "set", entitlement: free });
   });
   test("a cancel that is only scheduled (still active) keeps the plan, as cancelling until the next billing date (M116)", async () => {
     expect(await decide(event("subscription.updated", "active", { cancel_at_next_billing_date: true }))).toMatchObject({ kind: "set", entitlement: { ...pro, status: "cancelling", until: (NOW + 86400 * 30) * 1000 } });

@@ -9,7 +9,9 @@
 #   METADATA_USER_ID_SECRET   at least 32 characters; the key for the opaque metadata.user_id, and (under its own label) for the
 #                             sign in nonce. Back it up apart from the server: changing it changes every id. Without it nothing
 #                             is forwarded and nobody can sign in.
-#   OPERATOR_KEY              at least 32 characters; the operator's key for POST /v1/operator (suspend and restore one person).
+#   OPERATOR_KEY              at least 32 characters; the operator's key for POST /v1/operator (suspend and restore one person,
+#                             M116: the `usage` view and the update feed's `release` commands). Save the same value in your own
+#                             Keychain (item squibby-operator, account operator-key) for scripts/usage-report.ts.
 #   GOOGLE_CLIENT_ID          Sign in with Google's client id (not secret, but kept with the others).
 #   ANTHROPIC_API_KEY         Squibby's own Anthropic key. Without it nothing is forwarded. Needed to deploy only once PROXY_ON is set.
 #   DODO_PAYMENTS_API_KEY     Dodo's API key (dodo_test_ first), for checkouts and the billing portal. Needed once payments are on.
@@ -43,6 +45,9 @@ PAYMENT_PROVIDER = "none"
 # M116: Dodo's address. Test mode until live payments start; then https://live.dodopayments.com, with a dodo_live_ key and
 # `bun run deploy -- --live-payments`. The server makes no checkout while the address and the key's mode disagree.
 DODO_API_BASE = "https://test.dodopayments.com"
+# M116: the public repo that holds the app's update bundles (owner/name). Until it is set, `release set` refuses and every
+# update check answers "no update". Uncomment and fill in once the founder has made the repo.
+# RELEASES_REPO = "owner/squibby-releases"
 
 # One object per owner (and a few small shared ones), each doing its read, check and write as one step (src/store-do.ts).
 [[durable_objects.bindings]]

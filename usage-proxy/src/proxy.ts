@@ -19,7 +19,8 @@ import { error, readCapped } from "./http.ts";
  *  the other account routes (account-routes.ts). */
 export { GOOGLE_SIGNIN_PATH } from "./account-routes.ts";
 
-export type SafeEvent = { kind: "refused" | "request" | "upstream_error" | "signin" | "signout" | "checkout" | "portal"; userId?: string; reason?: string; model?: string; usd?: number; status?: number; complete?: boolean };
+/** `version`: only on update_check, the app version an update check came from (checked to be a version before it is logged). */
+export type SafeEvent = { kind: "refused" | "request" | "upstream_error" | "signin" | "signout" | "checkout" | "portal" | "report_use" | "account_deleted" | "update_check"; userId?: string; reason?: string; model?: string; usd?: number; status?: number; complete?: boolean; version?: string };
 export type Deps = {
   store: Store;
   anthropicKey: string;
