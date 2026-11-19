@@ -1,14 +1,31 @@
-# usage-proxy (managed usage, M13, F22): built, tested, switched off
+# usage-proxy (Squibby's server, M13, M99, M116): built, tested, not deployed
 
-The server that lets people use Squibby without their own Claude key: the app sends its requests here, this checks the user's
-plan and daily limit, adds Squibby's own Anthropic key, forwards the request, and counts what it cost.
+Squibby's own server. People make an account with one Google click, pay in their browser on Dodo's page, and Pro turns on by
+itself from Dodo's signed webhook: no license key and no code to paste (M116, T31). The app sends its model requests here with
+its sign in token; this checks the person's plan and daily limit, adds Squibby's own Anthropic key, forwards the request, and
+counts what it cost. It also serves the update feed and the switches the app reads.
 
-**It is not deployed and it is switched off.** Anthropic's terms forbid it for the Claude Code engine unless they say yes in
-writing (`docs/decisions/F22-company-pays-for-usage-gated.md`, `docs/outreach/anthropic-managed-usage-question.md`). Nothing here
+The flow, route by route:
+1. `GET /v1/signin/nonce`: a nonce the server made and signed itself, good for 10 minutes. It writes nothing.
+2. The app opens Google in the browser with that nonce; Google gives the app an ID token.
+3. `POST /v1/signin/google` with `{"idToken"}`: checked against Google's keys, the client id and the nonce (each nonce works once).
+   It answers `{token, plan, email, name, picture}`. The owner is `google:<sub>`, never the email. This works while the model
+   switch is off, so people can make an account before forwarding is on.
+4. `GET /v1/me` with the token: plan, status, until, renews on, today's and this month's use as a share of the
+   limit, and the switches. It writes nothing.
+5. `POST /v1/messages` with the token: metered against the plan and forwarded only while `PROXY_ON` is on.
+6. `POST /v1/checkout` and `POST /v1/portal`: the server makes Dodo's checkout or billing portal and answers its address. Pro and
+   the report are granted only by `POST /webhooks/dodo`, signed by Dodo, never by the return page `/paid`.
+7. `POST /v1/signout` and `POST /v1/signout/all`, `POST /v1/report/use`, `POST /v1/account/delete`, `GET /v1/switches`, and the
+   update feed `GET /v1/update/{target}/{arch}/{version}` (no token).
+
+**It is not deployed and model requests are switched off.** Only Squibby's own Messages loop and the light lanes may ever run on
+Squibby's bill (F29). Anthropic's terms forbid it for the Claude Code engine unless they say yes in writing (`docs/decisions/F22-company-pays-for-usage-gated.md`, `docs/outreach/anthropic-managed-usage-question.md`). Nothing here
 runs anywhere until you say so.
 
 Run the tests: `cd usage-proxy && bun test` (and `bun run typecheck`). No dependencies needed for the tests, no network beyond
 this Mac, no spending. Check the Cloudflare build without an account: `bun run dry-run` (needs `bun install` first, see below).
+Run the whole server on this Mac, end to end: `sh scripts/verify-dev.sh` (below).
 
 ## What is here
 | File | What it does |
@@ -18,15 +35,21 @@ this Mac, no spending. Check the Cloudflare build without an account: `bun run d
 | `src/filter.ts` | What may be forwarded: two paths, the models Squibby uses, a size limit, `max_tokens` clamped; sets `metadata.user_id` and removes any `metadata` the client sent |
 | `src/userid.ts` | The opaque user id Anthropic sees (keyed hash of the owner id) and the lookup from an id back to an owner |
 | `src/accounts.ts` | Issuing a sign in token; refused for a suspended owner |
-| `src/google.ts` | Sign in with Google (M21): checks a Google ID token (RS256 against Google's keys, issuer, audience = `GOOGLE_CLIENT_ID`, expiry, verified email) with Web Crypto; the owner is `google:<sub>`. `POST /v1/signin/google` with `{"idToken"}` answers `{token, plan, email, name, picture}`; it sits behind the same switch and secret check as every request, so while the switch is off it is refused too |
+| `src/google.ts` | Sign in with Google (M21): checks a Google ID token (RS256 against Google's keys, issuer, audience = `GOOGLE_CLIENT_ID`, expiry, verified email) with Web Crypto; the owner is `google:<sub>`. The key set comes from Google's own address, or on a local run only from the stand in Google (`GOOGLE_KEYS_URL`) |
+| `src/account-routes.ts`, `src/nonce.ts`, `src/ratelimit.ts` | M116: the sign in nonce, sign in (ahead of the model switch, 10 tries a minute per address), `/v1/me`, sign out, report use, account delete and `/v1/switches` |
+| `src/billing-routes.ts`, `src/dodo-api.ts` | M116: checkout and the billing portal, made by the server with Dodo's API (plain `fetch`), and the `/paid` return page that grants nothing |
+| `src/updates.ts` | M116: the update feed the Tauri updater reads; the operator's `release set` and `release stop` |
+| `src/deleted.ts` | M116: the small "deleted" line kept after "Delete my account", under an HMAC |
+| `src/operator-usage.ts`, `scripts/usage-report.ts` | M116: the operator's read only `usage` view (cost per account, totals by plan and model, the day's rows against the free limits), printed on the founder's Mac with the key from his Keychain |
 | `src/operator.ts`, `scripts/suspend.ts` | The operator's tool to find, suspend and restore one person (dry run by default) |
 | `src/usage.ts` | Reads token counts from a reply (streaming or not) without keeping any text; prices them with the app's own table |
 | `src/proxy.ts` | The request handler: switch, token, plan, budget, forward, stream back, book the cost |
 | `src/store.ts` | What is kept (users, spend, one small record per request, the plan a payment gave) and an in memory store for tests |
 | `src/store-do.ts` | The real store (M99): Cloudflare Durable Objects, one per owner, each doing its read, check and write as one step; small shared ones for a token's owner, the list of owners and the suspension log, and payment event ids. A running slot and a hold free themselves after 30 minutes (`LEASE_MS`). Never a body, a token (only its hash) or a key |
-| `src/worker.ts` | The Cloudflare Worker (M99): every request in, to the proxy, Google sign in, the chosen payment webhook, or the operator's route (`POST /v1/operator`, only with `OPERATOR_KEY`). `GET /v1/status` says whether the switch is on |
+| `src/entry.ts` | The module Cloudflare runs (`wrangler.toml` `main`, M116 step 6): exports only the Worker and `StoreObject`, because workerd refuses a main module that exports anything else |
+| `src/worker.ts` | The Cloudflare Worker (M99): every request in, to the update feed, billing, the account routes, the chosen payment webhook, the proxy, or the operator's route (`POST /v1/operator`, only with `OPERATOR_KEY`). `GET /v1/status` says whether the switch is on |
 | `wrangler.toml`, `scripts/deploy.sh` | The Cloudflare settings (no account id, no domain, no secret) and the deploy script: a dry run unless `--apply`, and `--apply` refuses until every secret is set |
-| `scripts/verify-dev.sh`, `scripts/stand-in-model.ts` | The local check of `wrangler dev`: one metered request to a stand in model on this Mac, no account, no key |
+| `scripts/verify-dev.sh`, `scripts/stand-in-model.ts`, `scripts/stand-in-google.ts`, `scripts/send-test-webhook.ts` | The local run of the whole server under `wrangler dev` (M116 step 6): sign in with a stand in Google, `/v1/me`, a metered request to a stand in model, a signed test webhook, sign out. No account, no key, nothing beyond this Mac |
 | `src/stripe.ts` | Checking a Stripe webhook is genuine, and turning a subscription event into a plan |
 | `src/dodo.ts` | The same for Dodo Payments: the signature check, the table of Dodo products to plans, subscription events to plans, once only and in order, and the webhook handler |
 | `src/payments.ts` | Which payment provider is on (`none`, `stripe` or `dodo`; default none) and the one webhook address each has |
@@ -36,9 +59,12 @@ this Mac, no spending. Check the Cloudflare build without an account: `bun run d
 - Go live steps, in order: `docs/launch/company-paid-go-live-checklist.md`.
 - Done in M99 (15 Nov 2026): the real store (`src/store-do.ts`, the same tests pass against it and the in memory one) and the
   Worker (`src/worker.ts`), with `wrangler.toml` and `scripts/deploy.sh`. Nothing is deployed and no account exists.
-- Still to come: the domain, the secrets on Cloudflare (the founder's), sign up with an email check, and abuse limits on new
-  accounts. Stripe's webhook is not built (Dodo Payments is the provider).
-- The app side: a "managed" route in the runner and the sign up screen.
+- Done in M116 steps 1 to 6 (19 Nov 2026): accounts with Google sign in, `/v1/me`, sign out, checkout and portal, the plan from
+  Dodo's webhooks, the report credit, account delete, the operator's `usage` view, the update feed and the switches, and the
+  local run of all of it (`scripts/verify-dev.sh`).
+- Still to come: the domain, the secrets on Cloudflare (the founder's), the real Google client and Dodo products, and the proof
+  on the real server (M116 steps 11 and 12). Stripe's webhook is not built (Dodo Payments is the provider).
+- The app side (M116 steps 7 to 10): the sign in, the token's own Keychain item, the Plan card, checkout and portal, updates.
 
 ## On Cloudflare (M99): ready, not deployed
 
@@ -49,13 +75,44 @@ this Mac, no spending. Check the Cloudflare build without an account: `bun run d
    `rm node_modules && bun install`.
 2. `bun run dry-run`: builds the Worker into `dist/` and checks that it holds the store and that the `STORE` binding resolves.
    Deploys nothing and needs no account.
-3. `sh scripts/verify-dev.sh`: starts `wrangler dev` on this Mac with made up settings and a stand in model, and makes one metered
-   request through it. No account, no key.
-4. When the founder is ready: `wrangler login` (his own), then `wrangler secret put <NAME>` for each of `ANTHROPIC_API_KEY`,
-   `METADATA_USER_ID_SECRET`, `OPERATOR_KEY`, `GOOGLE_CLIENT_ID`, `DODO_WEBHOOK_SECRET` and `DODO_PRODUCTS` (what each is: the
-   comment at the top of `wrangler.toml`). Then `bun run deploy`, which refuses while any is missing, and while `DEV_TOKENS` or
-   `UPSTREAM_BASE` (local only) is set there or written as a var in `wrangler.toml`. It prints plain sentences only; what wrangler said goes to `dist/`.
-5. The switch: `wrangler secret put PROXY_ON` and type on. Off: `wrangler secret delete PROXY_ON`. Without it nothing is forwarded.
+3. `sh scripts/verify-dev.sh`: runs the whole server on this Mac (see "Running the whole server on this Mac" below).
+4. When the founder is ready: `wrangler login` (his own), then `wrangler secret put <NAME>` for each secret the deploy needs (what
+   each is: the comment at the top of `wrangler.toml`). Always `METADATA_USER_ID_SECRET`, `OPERATOR_KEY` and `GOOGLE_CLIENT_ID`;
+   `ANTHROPIC_API_KEY` only once `PROXY_ON` is set; `DODO_PAYMENTS_API_KEY`, `DODO_WEBHOOK_SECRET` and `DODO_PRODUCTS` only once
+   payments are on. Then `bun run deploy`, which refuses while a needed one is missing, and while `DEV_TOKENS`, `UPSTREAM_BASE` or
+   `GOOGLE_KEYS_URL` (local only) is set there or written as a var in `wrangler.toml`. It prints plain sentences only; what
+   wrangler said goes to `dist/`.
+5. The switches: `wrangler secret put PROXY_ON` and type on. Off: `wrangler secret delete PROXY_ON`. Without it nothing is
+   forwarded, but sign in, `/v1/me` and sign out still work. `PAYMENTS_ON` and `LOOP_ON` work the same way.
+
+### Running the whole server on this Mac (M116 step 6)
+`sh scripts/verify-dev.sh` starts `wrangler dev --local` on 127.0.0.1 with made up settings in a `.dev.vars` file (removed after
+the run), and three stand ins, all on this Mac: a model (`scripts/stand-in-model.ts`), Google (`scripts/stand-in-google.ts`,
+which makes its own key pair and signs ID tokens for one made up person) and Dodo's webhook (`scripts/send-test-webhook.ts`,
+signed with a made up `whsec_` secret). No Cloudflare, Google or Dodo account, no real key, nothing beyond this Mac. It then
+proves, each with a `PASS:` line:
+1. Sign in: the server's nonce, the stand in's ID token for it, a sign in token on the free plan. The same nonce again is refused.
+2. `/v1/me` answers the free plan.
+3. One metered request goes to the stand in model with the server's key, never the token, and `/v1/me` then shows today's use.
+4. A signed `subscription.active` webhook for that person turns Pro on, and `/v1/me` says so. An unsigned `subscription.expired` (a forged cancel) is refused and Pro stays.
+5. After sign out the token gets 401.
+6. The server's log holds no sign in token, ID token, email or key.
+
+The Worker reads the stand in's keys only through `GOOGLE_KEYS_URL`, and only when both the request and that address are this
+machine; anywhere else it uses Google's own keys. A real deploy refuses the setting. `bun test` runs the same script against a
+stand in for `wrangler dev` (Bun serving the real Worker on a fake of the Durable Object API,
+`test/dev-stand-in-worker.ts`), so the steps are proven on every test run. The run under real workerd passed on this Mac on
+19 Nov 2026 (wrangler 4.156.0, its own workerd, Node 24 or later: wrangler refuses Node 18). It needs the two pinned tools
+installed: `rm node_modules && bun install`, or install them in another folder and point `WRANGLER` at that wrangler. The local
+store is kept in a temporary folder the script removes, so each run starts empty.
+
+That first real run found three things Bun allows and Cloudflare's runtime refuses, now fixed and tested on a workerd shaped
+fetch (`test/workerd-fetch.test.ts`) and an exports check (`test/deploy.test.ts`):
+- The main module may export only handlers and classes, so `wrangler.toml` now points at `src/entry.ts`, which exports only
+  the Worker and `StoreObject`. `src/worker.ts` still holds everything else.
+- `fetch` with `redirect: "error"` throws, so the Google key fetch uses `"manual"` and counts a redirect as no keys.
+- The global `fetch` called as a method of another object throws "Illegal invocation", so Dodo's calls call it as a plain
+  function. Without this fix every checkout and portal link would have failed (nothing charged).
 
 The operator's suspend and restore work on the real store through the Worker: `POST /v1/operator` with
 `Authorization: Bearer <OPERATOR_KEY>` and `{"argv": [...]}`, the same options as `scripts/suspend.ts` (a dry run unless

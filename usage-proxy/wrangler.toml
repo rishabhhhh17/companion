@@ -28,7 +28,7 @@
 # Not used: STRIPE_WEBHOOK_SECRET. Stripe's webhook is not built on this server; Dodo Payments is the provider.
 
 name = "squibby-usage"
-main = "src/worker.ts"
+main = "src/entry.ts"
 compatibility_date = "2026-10-15"
 # Only the routes below, once they are real. No workers.dev address, so nothing answers before the domain is set.
 workers_dev = false

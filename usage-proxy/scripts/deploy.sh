@@ -19,8 +19,8 @@ ALWAYS="METADATA_USER_ID_SECRET OPERATOR_KEY GOOGLE_CLIENT_ID"
 FORWARDING="ANTHROPIC_API_KEY"
 # Only once payments are on (PAYMENTS_ON is set, or PAYMENT_PROVIDER is dodo): Dodo's API key and the webhook's secrets.
 PAYMENTS="DODO_PAYMENTS_API_KEY DODO_WEBHOOK_SECRET DODO_PRODUCTS"
-# Only for a local run (wrangler dev). A real deploy refuses while either is set on Cloudflare.
-DEV_ONLY="DEV_TOKENS UPSTREAM_BASE"
+# Only for a local run (wrangler dev). A real deploy refuses while any of them is set on Cloudflare or as a var.
+DEV_ONLY="DEV_TOKENS UPSTREAM_BASE GOOGLE_KEYS_URL"
 OUT="${SQUIBBY_DIST:-dist}"
 
 apply=0
@@ -48,8 +48,11 @@ if ! "$W" deploy --dry-run --outdir "$OUT" > "$OUT/dry-run.log" 2>&1; then
   echo "The dry run did not build. What wrangler said is in $OUT/dry-run.log. Nothing was deployed."
   exit 1
 fi
-if [ ! -f "$OUT/worker.js" ] || ! grep -q "StoreObject" "$OUT/worker.js"; then
-  echo "The dry run made no Worker with the store in it ($OUT/worker.js). Nothing was deployed."
+# The bundle is named after wrangler.toml's main (src/entry.ts gives entry.js).
+BUNDLE=$(sed -n 's/^main = "\(.*\)"$/\1/p' wrangler.toml | head -n 1)
+BUNDLE=$(basename "${BUNDLE:-src/entry.ts}"); BUNDLE="${BUNDLE%.*}.js"
+if [ ! -f "$OUT/$BUNDLE" ] || ! grep -q "StoreObject" "$OUT/$BUNDLE"; then
+  echo "The dry run made no Worker with the store in it ($OUT/$BUNDLE). Nothing was deployed."
   exit 1
 fi
 if ! grep -q "env.STORE" "$OUT/dry-run.log" || ! grep -q "StoreObject" "$OUT/dry-run.log"; then

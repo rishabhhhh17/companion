@@ -32,6 +32,9 @@ export type GoogleRefusal =
 export type GoogleVerifierDeps = {
   /** Our OAuth client id (the setting GOOGLE_CLIENT_ID). Empty means every token is refused. */
   clientId: string;
+  /** M116 step 6: where Google's key set is fetched from. Only a local run sets it (the Worker's GOOGLE_KEYS_URL, this machine
+   *  only); otherwise it is Google's own address. */
+  jwksUrl?: string;
   fetch?: typeof fetch;
   now?: () => number;
 };
@@ -61,13 +64,15 @@ const str = (v: unknown, max = 512): string | undefined => (typeof v === "string
 
 /** A function that checks one Google ID token. It keeps Google's key set between calls. */
 export function createGoogleVerifier(d: GoogleVerifierDeps): (idToken: unknown) => Promise<GoogleCheck> {
-  const doFetch = d.fetch ?? fetch, now = d.now ?? Date.now;
+  const doFetch = d.fetch ?? fetch, now = d.now ?? Date.now, keysUrl = d.jwksUrl ?? GOOGLE_JWKS_URL;
   let keys = new Map<string, CryptoKey>(), fetchedAt = -Infinity, expiresAt = -Infinity;
 
   async function loadKeys(): Promise<boolean> {
     try {
-      const res = await doFetch(GOOGLE_JWKS_URL, { redirect: "error" });
-      if (!res.ok) return false;
+      // "manual", never "error": Cloudflare's runtime refuses "error" (found under real workerd in M116 step 6). A redirect is
+      // then a 3xx answer, which is not ok, so it is never followed and the keys count as unavailable.
+      const res = await doFetch(keysUrl, { redirect: "manual" });
+      if (!res.ok) { await res.body?.cancel().catch(() => {}); return false; }
       const body = await res.json() as { keys?: unknown };
       if (!Array.isArray(body?.keys)) return false;
       const next = new Map<string, CryptoKey>();

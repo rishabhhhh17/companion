@@ -24,7 +24,7 @@ case "$1 $2" in
   "deploy --dry-run")
     ${o.failDry ? "echo 'build failed'; exit 1" : ""}
     out=""; prev=""; for a in "$@"; do [ "$prev" = "--outdir" ] && out="$a"; prev="$a"; done
-    echo "export class StoreObject {}" > "$out/worker.js"
+    echo "export class StoreObject {}" > "$out/entry.js"
     echo "Your Worker has access to the following bindings:"
     ${o.noBinding ? "" : 'echo "env.STORE (StoreObject)      Durable Object"'}
     echo 'env.PAYMENT_PROVIDER ("${o.provider ?? "none"}")      Environment Variable'
@@ -125,7 +125,7 @@ describe("scripts/deploy.sh", () => {
     expect(existsSync(join(s.out, "secret-names.json"))).toBe(false);   // the list of names is not left behind
   });
   test("--apply refuses while a setting for local runs only is set on Cloudflare", () => {
-    for (const dev of ["DEV_TOKENS", "UPSTREAM_BASE"]) {
+    for (const dev of DEV_ONLY_SETTINGS) {
       const r = stub({ secrets: [...ALWAYS_SECRETS, dev] }).run(["--apply"]);
       expect(r.code).toBe(1);
       expect(r.text).toContain(`The setting ${dev} is only for a run on this Mac`);
@@ -133,7 +133,7 @@ describe("scripts/deploy.sh", () => {
     }
   });
   test("M99 review: --apply also refuses a local only setting given as a plain var, in the bindings or in wrangler.toml", () => {
-    for (const dev of ["DEV_TOKENS", "UPSTREAM_BASE"]) {
+    for (const dev of DEV_ONLY_SETTINGS) {
       const r = stub({ secrets: [...ALWAYS_SECRETS], vars: [dev] }).run(["--apply"]);
       expect(r.code).toBe(1);
       expect(r.text).toContain(`The setting ${dev} is only for a run on this Mac`);
@@ -149,6 +149,8 @@ describe("scripts/deploy.sh", () => {
     const fine = stub({ secrets: [...ALWAYS_SECRETS], toml: `name = "x"\n# UPSTREAM_BASE and DEV_TOKENS are local only\n[vars]\nMY_UPSTREAM_BASE_NOTE = "x"\n` }).run(["--apply"]);
     expect(fine.code).toBe(0);
     expect(realDeploys(fine.calls)).toEqual(["deploy"]);
+    // M116 step 6 review: the loops above cover every local only setting, the stand in Google's key address included.
+    expect(DEV_ONLY_SETTINGS).toContain("GOOGLE_KEYS_URL");
   });
   test("M116 S4: the Dodo address must be the test or the live one, and the live one needs --live-payments", () => {
     const toml = (base: string) => `name = "x"\n[vars]\nPAYMENT_PROVIDER = "none"\nDODO_API_BASE = "${base}"\n`;
@@ -185,30 +187,28 @@ describe("scripts/deploy.sh", () => {
   });
 });
 
-describe("scripts/verify-dev.sh (the wrangler dev check), on a stand in for wrangler dev", () => {
-  test("it starts the server, gets a test token, makes one metered request to the stand in model, and cleans up", () => {
-    const dir = mkdtempSync(join(tmpdir(), "squibby-m99-dev-")); dirs.push(dir);
-    const bin = join(dir, "wrangler");
-    writeFileSync(bin, `#!/bin/sh\n[ "$1" = "dev" ] || exit 9\nshift; while [ $# -gt 0 ]; do [ "$1" = "--port" ] && port="$2"; shift; done\nexec bun "${join(ROOT, "test", "dev-stand-in-worker.ts")}" --port "$port"\n`);
-    chmodSync(bin, 0o755);
-    const ports = { MODEL_PORT: String(20000 + Math.floor(Math.random() * 20000)), WORKER_PORT: String(40001 + Math.floor(Math.random() * 20000)) };
-    const p = Bun.spawnSync(["sh", join(ROOT, "scripts", "verify-dev.sh")], { env: { ...process.env, WRANGLER: bin, SQUIBBY_DIST: join(dir, "out"), ...ports }, cwd: ROOT });
-    const text = p.stdout.toString() + p.stderr.toString();
-    expect(text).toContain("PASS: one metered request");
-    expect(p.exitCode).toBe(0);
-    expect(existsSync(join(ROOT, ".dev.vars"))).toBe(false);   // the made up settings are removed after the run
-  }, 30000);
-});
+// The run of scripts/verify-dev.sh on a stand in for wrangler dev is in test/m116-local-run.test.ts (M116 step 6 replaced the
+// M99 test token with a real sign in through a stand in Google, so the older test here was removed).
 
 describe("wrangler.toml and package.json", () => {
   const toml = readFileSync(join(ROOT, "wrangler.toml"), "utf8");
   const settings = toml.split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
   test("the Worker's entry, a compatibility date, and the store bound to the class the Worker exports", async () => {
-    expect(settings).toMatch(/^main = "src\/worker\.ts"$/m);
+    expect(settings).toMatch(/^main = "src\/entry\.ts"$/m);
     expect(settings).toMatch(/^compatibility_date = "\d{4}-\d{2}-\d{2}"$/m);
     expect(settings).toMatch(/\[\[durable_objects\.bindings\]\]\s*\nname = "STORE"\s*\nclass_name = "StoreObject"/);
     expect(settings).toMatch(/\[\[migrations\]\]\s*\ntag = "v1"\s*\nnew_sqlite_classes = \["StoreObject"\]/);
     expect(typeof (await import("../src/worker.ts")).StoreObject).toBe("function");
+  });
+  test("M116 S6, found under real workerd: the main module exports only the fetch handler and the store's class", async () => {
+    // workerd refuses to start when the main module exports anything else (a list, a string, a number, a plain function).
+    const entry = (await import("../src/entry.ts")) as Record<string, unknown>;
+    expect(Object.keys(entry).sort()).toEqual(["StoreObject", "default"]);
+    expect(typeof (entry.default as { fetch?: unknown }).fetch).toBe("function");
+    const store = entry.StoreObject as { prototype?: { fetch?: unknown } };
+    expect(typeof store).toBe("function");
+    expect(typeof store.prototype?.fetch).toBe("function");   // a class with fetch, as the binding needs
+    expect(entry.default).toBe((await import("../src/worker.ts")).default);
   });
   test("no account id, no real route, no secret value, and payments off", () => {
     expect(settings).not.toMatch(/account_id/);
@@ -217,7 +217,7 @@ describe("wrangler.toml and package.json", () => {
     expect(settings).toMatch(/^PAYMENT_PROVIDER = "none"$/m);
     expect(toml).not.toMatch(/sk-ant-|whsec_[A-Za-z0-9+/=]{8,}|cmp_[A-Za-z0-9_-]{20,}/);
     expect(settings).not.toMatch(/PROXY_ON\s*=/);   // the switch is never on in the repo
-    expect(settings).not.toMatch(/DEV_TOKENS|UPSTREAM_BASE/);   // local only settings are never in the deployed file
+    for (const dev of DEV_ONLY_SETTINGS) expect(settings).not.toContain(dev);   // local only settings are never in the deployed file
   });
   test("every secret is named in a comment, by name only", () => {
     for (const name of [...ALL_SECRETS, "PROXY_ON", "PAYMENTS_ON", "LOOP_ON"]) expect(toml).toMatch(new RegExp(`^#\\s+${name}\\s`, "m"));

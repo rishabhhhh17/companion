@@ -22,10 +22,14 @@
 //                             Without it that route is not served. scripts/usage-report.ts reads it from the founder's Keychain.
 //   RELEASES_REPO             M116: the public releases repo (owner/name), a plain var. `release set` takes only a file there.
 //   UPSTREAM_BASE             only for `wrangler dev` against a stand in model on this machine (https only, loopback aside).
-//   DEV_TOKENS                only for `wrangler dev`: "on" serves POST /v1/dev/token, which gives a test sign in token, and only
-//                             when the request's address and UPSTREAM_BASE are both this machine. scripts/deploy.sh --apply
-//                             refuses while DEV_TOKENS or UPSTREAM_BASE is set on Cloudflare, or is a var in wrangler.toml
-//                             or the dry run's bindings.
+//   GOOGLE_KEYS_URL           M116 step 6, only for `wrangler dev`: where Google's key set is read from, so a stand in Google on
+//                             this machine (scripts/stand-in-google.ts) can sign the ID tokens of a local run. Used only when the
+//                             request's address and this address are both this machine; otherwise Google's own keys.
+//   DEV_TOKENS                retired in M116 step 6: it served POST /v1/dev/token (a test token for a made up owner). A local
+//                             run now signs in through the stand in Google instead, so that route is gone. The name stays in
+//                             DEV_ONLY_SETTINGS so a leftover is still noticed.
+// scripts/deploy.sh --apply refuses while any of DEV_ONLY_SETTINGS (UPSTREAM_BASE, GOOGLE_KEYS_URL, DEV_TOKENS) is set on
+// Cloudflare, or is a var in wrangler.toml or the dry run's bindings.
 // Logs are the SafeEvent lines the proxy and the webhook already make: ids, reasons, counts and dollars, never a body or a secret.
 import { createProxy, storeFailed, type SafeEvent } from "./proxy.ts";
 import { createGoogleVerifier } from "./google.ts";
@@ -35,7 +39,6 @@ import { dodoMode, dodoSetup, paymentProducts } from "./dodo-api.ts";
 import { paymentProviderFromSetting, webhookRouteFor } from "./payments.ts";
 import { runOperator } from "./operator.ts";
 import { accountStoreFailed, isAccountPath } from "./account-routes.ts";
-import { issueToken } from "./accounts.ts";
 import { USER_ID_SECRET_SETTING } from "./userid.ts";
 import { DurableDodoLedger, DurableLinkBook, DurableStore, type NamespaceLike } from "./store-do.ts";
 import { PRODUCT } from "./names.ts";
@@ -60,7 +63,7 @@ export type Env = {
   OPERATOR_KEY?: string;
   RELEASES_REPO?: string;
   UPSTREAM_BASE?: string;
-  DEV_TOKENS?: string;
+  GOOGLE_KEYS_URL?: string;
 };
 export type Ctx = { waitUntil(p: Promise<unknown>): void };
 
@@ -74,9 +77,9 @@ export const PAYMENT_SECRETS = ["DODO_PAYMENTS_API_KEY", "DODO_WEBHOOK_SECRET", 
 export const ALL_SECRETS = [...ALWAYS_SECRETS, ...FORWARDING_SECRETS, ...PAYMENT_SECRETS] as const;
 export const STATUS_PATH = "/v1/status";
 export const OPERATOR_PATH = "/v1/operator";
-export const DEV_TOKEN_PATH = "/v1/dev/token";
-/** Settings that exist only for a local run. A real deploy refuses while either is set on Cloudflare. */
-export const DEV_ONLY_SETTINGS = ["DEV_TOKENS", "UPSTREAM_BASE"] as const;
+/** Settings that exist only for a local run (DEV_TOKENS is retired and kept only so a leftover is refused). A real deploy refuses
+ *  while any of them is set on Cloudflare. */
+export const DEV_ONLY_SETTINGS = ["DEV_TOKENS", "UPSTREAM_BASE", "GOOGLE_KEYS_URL"] as const;
 /** The operator's key must be at least this long, like the user id secret. */
 export const MIN_OPERATOR_KEY_CHARS = 32;
 const OPERATOR_MAX_BODY = 8192;   // a release's notes and signature fit
@@ -94,12 +97,14 @@ const json = (status: number, body: unknown) => new Response(JSON.stringify(body
 const logLine = (e: SafeEvent | SafeDodoEvent | { kind: "operator"; code: number } | { kind: "refused"; reason: string }) => console.log(JSON.stringify(e));
 
 type Parts = { proxy: (req: Request) => Promise<Response>; dodo: (req: Request) => Promise<Response>; billing: (req: Request, url: URL) => Promise<Response | null>; update: (req: Request, url: URL) => Promise<Response | null>; store: DurableStore };
-// Google's keys are fetched once per server instance and kept as long as Google says, so the checker is kept per client id.
+// Google's keys are fetched once per server instance and kept as long as Google says, so the checker is kept per client id
+// (and per key address: Google's own, or a local run's stand in).
 // Everything else is made fresh for each request (it is cheap), so one request's waitUntil is never used for another's work.
 const googleCheckers = new Map<string, ReturnType<typeof createGoogleVerifier>>();
-function googleFor(clientId: string, now: () => number) {
-  let g = googleCheckers.get(clientId);
-  if (!g) { g = createGoogleVerifier({ clientId, now }); googleCheckers.set(clientId, g); }
+function googleFor(clientId: string, now: () => number, jwksUrl?: string) {
+  const at = `${clientId}\n${jwksUrl ?? ""}`;
+  let g = googleCheckers.get(at);
+  if (!g) { g = createGoogleVerifier({ clientId, now, ...(jwksUrl ? { jwksUrl } : {}) }); googleCheckers.set(at, g); }
   return g;
 }
 
@@ -108,7 +113,7 @@ const signinTries = createRateLimiter({ limit: SIGNIN_TRIES_PER_MINUTE, windowMs
 // M116: checkout and portal presses per account, the same way.
 const billingPresses = createRateLimiter({ limit: BILLING_PRESSES_PER_MINUTE, windowMs: 60_000 });
 
-function partsFor(env: Env, ctx: Ctx, now: () => number): Parts {
+function partsFor(env: Env, ctx: Ctx, now: () => number, url: URL): Parts {
   const store = new DurableStore(env.STORE, now);
   const proxy = createProxy({
     store,
@@ -121,7 +126,7 @@ function partsFor(env: Env, ctx: Ctx, now: () => number): Parts {
     now,
     log: logLine,
     ...(env.UPSTREAM_BASE ? { upstream: env.UPSTREAM_BASE } : {}),
-    ...(env.GOOGLE_CLIENT_ID ? { googleSignIn: googleFor(env.GOOGLE_CLIENT_ID, now) } : {}),
+    ...(env.GOOGLE_CLIENT_ID ? { googleSignIn: googleFor(env.GOOGLE_CLIENT_ID, now, localGoogleKeys(url, env)) } : {}),
     waitUntil: (p) => ctx.waitUntil(p),
   });
   const catalog = () => { const p = parseDodoCatalog(env.DODO_PRODUCTS ?? ""); return p.ok ? p.catalog : null; };
@@ -170,12 +175,13 @@ async function operatorRoute(req: Request, env: Env, store: DurableStore, now: (
 }
 
 const loopback = (host: string) => host === "127.0.0.1" || host === "localhost" || host === "[::1]";
-/** Local runs only: a test sign in token for a made up owner, so `wrangler dev` can serve one metered request to a stand in. */
-function devTokenServed(url: URL, env: Env): boolean {
-  if (env.DEV_TOKENS !== "on" || !env.UPSTREAM_BASE) return false;
-  let up: URL;
-  try { up = new URL(env.UPSTREAM_BASE); } catch { return false; }
-  return loopback(url.hostname) && loopback(up.hostname);
+/** M116 step 6, local runs only: the stand in Google's key address, when the request and that address are both this machine
+ *  and it is plain http(s). Anything else (a real address, a key address elsewhere, no setting) means Google's own keys. */
+function localGoogleKeys(url: URL, env: Env): string | undefined {
+  if (!env.GOOGLE_KEYS_URL || !loopback(url.hostname)) return undefined;
+  let keys: URL;
+  try { keys = new URL(env.GOOGLE_KEYS_URL); } catch { return undefined; }
+  return (keys.protocol === "http:" || keys.protocol === "https:") && loopback(keys.hostname) ? keys.href : undefined;
 }
 
 /** The Worker. `now` is for tests only. A store step that fails anywhere (a Durable Object call that throws) is answered here
@@ -185,7 +191,7 @@ export async function handle(req: Request, env: Env, ctx: Ctx, now: () => number
   catch {
     logLine({ kind: "refused", reason: "store_failed" });   // never the error itself: it could carry something it should not
     const path = new URL(req.url).pathname;
-    if (path === OPERATOR_PATH || path === DEV_TOKEN_PATH) return json(503, { error: "The store could not finish that step. Nothing was changed. Try again in a moment." });
+    if (path === OPERATOR_PATH) return json(503, { error: "The store could not finish that step. Nothing was changed. Try again in a moment." });
     if (path.startsWith("/webhooks/")) return json(503, { outcome: "apply_failed", message: "Something went wrong on our side. Nothing was changed, and the sender can deliver this again." });
     if (path.startsWith(UPDATE_PATH_PREFIX)) return json(503, { error: "Updates could not be checked just now. Try again later." });
     if (isAccountPath(path) || isBillingPath(path)) return accountStoreFailed();
@@ -195,13 +201,9 @@ export async function handle(req: Request, env: Env, ctx: Ctx, now: () => number
 
 async function route(req: Request, env: Env, ctx: Ctx, now: () => number): Promise<Response> {
   const url = new URL(req.url);
-  const parts = partsFor(env, ctx, now);
+  const parts = partsFor(env, ctx, now, url);
   if (req.method === "GET" && url.pathname === STATUS_PATH) return json(200, { service: `${PRODUCT} usage`, on: switchOn(env.PROXY_ON) });
   if (req.method === "POST" && url.pathname === OPERATOR_PATH) return operatorRoute(req, env, parts.store, now);
-  if (req.method === "POST" && url.pathname === DEV_TOKEN_PATH && devTokenServed(url, env)) {
-    const t = await issueToken(parts.store, "dev:stand-in", "pro");
-    return t.ok ? json(200, { token: t.token, owner: "dev:stand-in" }) : json(403, { error: t.message });
-  }
   // M116 step 5: the update feed, with no token, ahead of everything that reads one.
   const update = await parts.update(req, url);
   if (update) return update;

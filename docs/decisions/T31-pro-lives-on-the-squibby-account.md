@@ -44,6 +44,9 @@
 - The 14 day trial and "Delete everything keeps the trial date": there is no trial any more, so there is no trial date to keep.
 - What still holds from T17: checkout and billing open in the person's own browser, never a card field or login form inside Squibby; payments stay off until the founder switches them on (F25).
 
+## Checked on this Mac
+- 19 Nov 2026, M116 step 6: the whole server ran under real `wrangler dev` (workerd) with stand ins for the model, Google and Dodo's webhook: sign in, `/v1/me`, a metered request, a signed webhook turning Pro on, a forged unsigned one refused, sign out, nothing private in the log. It found three things Cloudflare's runtime refuses that Bun allows (the main module's exports, `redirect: "error"`, `fetch` called as a method), all fixed before any deploy. See technical research item 53.
+
 ## Open items [verify]
 Listed with their steps in M116 section 11: CPU per request on the free plan, rows written per request, checkout metadata on subscription events, the report's product id on its payment event, the scheduled cancel event, renewal metadata, permission grants across ad hoc signed updates, the free rate limiting binding, the Desktop client's audience, GitHub Releases for the updater, customer reuse by email, what a refund or lost dispute does to a subscription, no email in Cloudflare's logs, Dodo's checkout and portal host names, and webhooks passing the zone's security settings.
 

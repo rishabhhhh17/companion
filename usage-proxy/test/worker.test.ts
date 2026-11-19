@@ -1,7 +1,7 @@
 // M99: the Cloudflare Worker entry, run with Bun on a fake of the Durable Object API and a stand in model on 127.0.0.1.
 // No network beyond this machine, no real key, nothing deployed.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import worker, { handle, switchOn, DEV_TOKEN_PATH, ALL_SECRETS, OPERATOR_PATH, STATUS_PATH, type Env } from "../src/worker.ts";
+import worker, { handle, switchOn, ALL_SECRETS, OPERATOR_PATH, STATUS_PATH, type Env } from "../src/worker.ts";
 import { DurableStore, OWNER, PAYMENTS } from "../src/store-do.ts";
 import { issueToken } from "../src/accounts.ts";
 import { signDodoForTest } from "../src/dodo.ts";
@@ -222,25 +222,21 @@ describe("the operator's route", () => {
   });
 });
 
-describe("the test token for a local run", () => {
-  const at = (w: ReturnType<typeof world>, host: string) => handle(new Request(`http://${host}${DEV_TOKEN_PATH}`, { method: "POST" }), w.env, { waitUntil: () => {} }, () => NOW);
-  test("off unless DEV_TOKENS is on: the request goes to the proxy like any other, and no owner is made", async () => {
-    const w = world();
-    expect((await at(w, "127.0.0.1:8787")).status).toBe(401);
-    expect(await w.store.listOwnerIds()).toEqual([]);
-  });
-  test("on, but on a real address, or with a real upstream: still not served", async () => {
-    expect((await at(world({ DEV_TOKENS: "on" }), "usage.example.com")).status).toBe(401);
-    expect((await at(world({ DEV_TOKENS: "on", UPSTREAM_BASE: "https://api.anthropic.com" }), "127.0.0.1:8787")).status).toBe(401);
-    expect((await at(world({ DEV_TOKENS: "on", UPSTREAM_BASE: undefined }), "localhost:8787")).status).toBe(401);
-  });
-  test("on this machine, with a stand in upstream: a token that makes one metered request", async () => {
-    const w = world({ DEV_TOKENS: "on" });
-    const r = await at(w, "127.0.0.1:8787");
-    expect(r.status).toBe(200);
-    const { token } = await r.json() as { token: string };
-    expect((await w.ask(token)).status).toBe(200);
-    expect((await w.store.spent("dev:stand-in", NOW)).day).toBeGreaterThan(0);
+describe("M116 step 6: the retired test token route for a local run", () => {
+  // POST /v1/dev/token used to mint a token for a made up owner when DEV_TOKENS was on. A local run now signs in through the
+  // stand in Google, so the route is gone: even on this machine, with DEV_TOKENS on and a stand in upstream, it is just a
+  // request with no token, and no owner is made.
+  const at = (w: ReturnType<typeof world>, host: string) => handle(new Request(`http://${host}/v1/dev/token`, { method: "POST" }), w.env, { waitUntil: () => {} }, () => NOW);
+  test("never served, whatever the settings say", async () => {
+    for (const extra of [{}, { DEV_TOKENS: "on" }, { DEV_TOKENS: "on", UPSTREAM_BASE: "http://127.0.0.1:8788" }]) {
+      const w = world(extra as unknown as Partial<Env>);   // DEV_TOKENS is no longer an Env field
+      for (const host of ["127.0.0.1:8787", "localhost:8787", "usage.example.com"]) {
+        const r = await at(w, host);
+        expect(r.status).toBe(401);
+        expect(await r.text()).not.toMatch(/cmp_/);
+      }
+      expect(await w.store.listOwnerIds()).toEqual([]);
+    }
   });
 });
 

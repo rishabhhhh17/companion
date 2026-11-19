@@ -47,7 +47,10 @@ const httpsAddress = (x: unknown): string | null => {
 
 async function call(api: DodoApi, method: string, path: string, body?: unknown): Promise<unknown | null> {
   try {
-    const res = await api.fetch(`${api.base}${path}`, {
+    // Called as a plain function, never as api.fetch(...): Cloudflare's runtime throws "Illegal invocation" when the global
+    // fetch is called as a method of another object (found under real workerd in M116 step 6).
+    const send = api.fetch;
+    const res = await send(`${api.base}${path}`, {
       method,
       headers: { authorization: `Bearer ${api.key}`, ...(body !== undefined ? { "content-type": "application/json" } : {}) },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
