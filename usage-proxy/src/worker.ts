@@ -21,6 +21,9 @@
 //   OPERATOR_KEY              the operator's own key for POST /v1/operator (suspend and restore, M116: `usage` and `release`).
 //                             Without it that route is not served. scripts/usage-report.ts reads it from the founder's Keychain.
 //   RELEASES_REPO             M116: the public releases repo (owner/name), a plain var. `release set` takes only a file there.
+//   TEST_PAYERS               audit run 2, finding 5: owner ids (google:<sub>), separated by commas, that keep their paid
+//                             plan's limits while Dodo is in test mode. Everyone else's paid plan has Free's limits there,
+//                             because anyone can pay with a test card. Not needed once Dodo is live.
 //   UPSTREAM_BASE             only for `wrangler dev` against a stand in model on this machine (https only, loopback aside).
 //   GOOGLE_KEYS_URL           M116 step 6, only for `wrangler dev`: where Google's key set is read from, so a stand in Google on
 //                             this machine (scripts/stand-in-google.ts) can sign the ID tokens of a local run. Used only when the
@@ -31,7 +34,7 @@
 // scripts/deploy.sh --apply refuses while any of DEV_ONLY_SETTINGS (UPSTREAM_BASE, GOOGLE_KEYS_URL, DEV_TOKENS) is set on
 // Cloudflare, or is a var in wrangler.toml or the dry run's bindings.
 // Logs are the SafeEvent lines the proxy and the webhook already make: ids, reasons, counts and dollars, never a body or a secret.
-import { createProxy, storeFailed, type SafeEvent } from "./proxy.ts";
+import { createProxy, parseTestPayers, storeFailed, type SafeEvent } from "./proxy.ts";
 import { createGoogleVerifier } from "./google.ts";
 import { createDodoWebhook, parseDodoCatalog, constantTimeEqual, type SafeDodoEvent } from "./dodo.ts";
 import { createBillingRoutes, isBillingPath, storeHooks, BILLING_PRESSES_PER_MINUTE } from "./billing-routes.ts";
@@ -64,6 +67,7 @@ export type Env = {
   RELEASES_REPO?: string;
   UPSTREAM_BASE?: string;
   GOOGLE_KEYS_URL?: string;
+  TEST_PAYERS?: string;
 };
 export type Ctx = { waitUntil(p: Promise<unknown>): void };
 
@@ -128,6 +132,9 @@ function partsFor(env: Env, ctx: Ctx, now: () => number, url: URL): Parts {
     ...(env.UPSTREAM_BASE ? { upstream: env.UPSTREAM_BASE } : {}),
     ...(env.GOOGLE_CLIENT_ID ? { googleSignIn: googleFor(env.GOOGLE_CLIENT_ID, now, localGoogleKeys(url, env)) } : {}),
     waitUntil: (p) => ctx.waitUntil(p),
+    // Audit run 2, finding 5: anything but Dodo's live address counts as test mode, where a paid plan has Free's limits.
+    paymentsTestMode: () => dodoMode(env.DODO_API_BASE) !== "live",
+    testPayers: () => parseTestPayers(env.TEST_PAYERS),
   });
   const catalog = () => { const p = parseDodoCatalog(env.DODO_PRODUCTS ?? ""); return p.ok ? p.catalog : null; };
   const dodoApi = () => { const s = dodoSetup(env.DODO_API_BASE, env.DODO_PAYMENTS_API_KEY); return s.ok ? { base: s.base, key: s.key, fetch } : null; };
@@ -153,6 +160,7 @@ function partsFor(env: Env, ctx: Ctx, now: () => number, url: URL): Parts {
     paymentsOn: () => switchOn(env.PAYMENTS_ON),
     provider: () => paymentProviderFromSetting(env.PAYMENT_PROVIDER),
     catalog, dodoBase: () => env.DODO_API_BASE, dodoKey: () => env.DODO_PAYMENTS_API_KEY,
+    ownerSecret: () => env.METADATA_USER_ID_SECRET,
     pressLimit: billingPresses,
   });
   const update = createUpdateRoute({ store, log: logLine });

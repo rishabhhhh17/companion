@@ -7,6 +7,7 @@
 import { PLANS } from "./plans.ts";
 import type { DodoMode, RefundNeeded } from "./store.ts";
 import { isDeletedMarker } from "./deleted.ts";
+import { verifiedOwner } from "./owner-sig.ts";
 
 // ---- signature -------------------------------------------------------------------------------------------------------------------
 /** How far the webhook-timestamp may be from now, in seconds, either way. Dodo's page says to reject a timestamp "too far from the
@@ -126,7 +127,8 @@ export const DODO_SUBSCRIPTION_EVENTS = [
   "subscription.active", "subscription.updated", "subscription.past_due", "subscription.on_hold", "subscription.paused", "subscription.unpaused",
   "subscription.renewed", "subscription.plan_changed", "subscription.update_payment_method", "subscription.cancelled", "subscription.failed", "subscription.expired",
 ] as const;
-/** The key checkout metadata carries, the same name as the Stripe path uses. */
+/** The key checkout metadata carries, the same name as the Stripe path uses. It is trusted only with a good companion_sig
+ *  (owner-sig.ts): a static /buy/ link lets anyone set it (security audit run 2, finding 1). */
 export const USER_ID_KEY = "companion_user_id";
 
 /** A plan for a person. `until` (ms) is set only for a grace period or a cancel at the end of the period: after it, the person
@@ -134,8 +136,9 @@ export const USER_ID_KEY = "companion_user_id";
 export type DodoEntitlement = { userId: string; plan: string; status: "active" | "past_due" | "cancelling" | "on_hold"; until?: number };
 /** M116: which subscription an event is about, its renew date, and the Dodo customer (only when the checkout metadata named the
  *  person and the link book does not give that customer to someone else, so a customer id is never saved from a guess), with
- *  the Dodo mode it came from. The plan is kept per subscription; the owner's is the best of them. */
-export type SubDetail = { subscriptionId: string; customerId?: string; customerMode?: DodoMode; renewsOn?: number };
+ *  the Dodo mode it came from. The plan is kept per subscription; the owner's is the best of them. `mode`: the Dodo mode of the
+ *  event itself (an unreadable mode counts as test), kept on the subscription (audit run 2, finding 5 re-attack). */
+export type SubDetail = { subscriptionId: string; customerId?: string; customerMode?: DodoMode; renewsOn?: number; mode?: DodoMode };
 export const FREE = (userId: string): DodoEntitlement => ({ userId, plan: "free", status: "active" });
 /** The plan to use right now: a grace period that has run out counts as free. */
 export const entitledPlan = (e: DodoEntitlement, nowMs: number): string => (e.until !== undefined && nowMs >= e.until ? "free" : e.plan);
@@ -171,9 +174,13 @@ async function customerIsTheirs(customerId: string, userId: string, links: LinkB
   return known === null || known === userId || isDeletedMarker(known);   // M116 step 5: a deleted account's customer is free again
 }
 
-/** Who a payload belongs to: the checkout metadata first, then a link learned from a payment. */
-async function ownerOf(data: Record<string, unknown>, links: LinkBook): Promise<string | null> {
-  const fromMetadata = str(obj(data.metadata)?.[USER_ID_KEY]);
+/** The owner the checkout metadata names, only when its signature checks out with `ownerSecret` (METADATA_USER_ID_SECRET).
+ *  Null without a usable secret: unsigned metadata could come from a static /buy/ link, where anyone sets it. */
+const signedOwner = (data: Record<string, unknown>, ownerSecret: string | undefined) => verifiedOwner(data.metadata, ownerSecret);
+
+/** Who a payload belongs to: the signed checkout metadata first, then a link learned from a payment. */
+async function ownerOf(data: Record<string, unknown>, links: LinkBook, ownerSecret: string | undefined): Promise<string | null> {
+  const fromMetadata = await signedOwner(data, ownerSecret);
   if (fromMetadata) return fromMetadata;
   const customer = str(obj(data.customer)?.customer_id);
   return customer ? await links.get(customer) : null;
@@ -193,22 +200,22 @@ async function ownerOf(data: Record<string, unknown>, links: LinkBook): Promise<
  *    charge, so it never blocks a delete or a later Pro checkout (M116 step 5 review).
  *  - a product that is not in the table grants nothing; on plan_changed the person drops to free, as the old product is gone.
  */
-export async function decideDodoEvent(event: unknown, products: DodoProducts, links: LinkBook, mode: DodoMode | null = "test"): Promise<DodoDecision> {
+export async function decideDodoEvent(event: unknown, products: DodoProducts, links: LinkBook, mode: DodoMode | null = "test", ownerSecret?: string): Promise<DodoDecision> {
   const e = obj(event), type = e?.type, data = obj(e?.data);
   if (typeof type !== "string" || !data || !(DODO_SUBSCRIPTION_EVENTS as readonly string[]).includes(type) || type === "subscription.update_payment_method") return { kind: "ignore" };
-  const fromMetadata = str(obj(data.metadata)?.[USER_ID_KEY]);
-  const userId = await ownerOf(data, links);
+  const fromMetadata = await signedOwner(data, ownerSecret);
+  const userId = await ownerOf(data, links, ownerSecret);
   if (!userId) return { kind: "unlinked" };
 
   const at = Date.parse(String(e?.timestamp));
   const nextBilling = Date.parse(String(data.next_billing_date));
   const subscriptionId = safeOrUndefined(data.subscription_id);
-  // The customer id is saved only when the metadata names the person, the link book does not give it to someone else, and
+  // The customer id is saved only when the signed metadata names the person, the link book does not give it to someone else, and
   // the Dodo mode is readable (an id from test mode is unknown to live mode).
   const named = fromMetadata && mode ? safeOrUndefined(obj(data.customer)?.customer_id) : undefined;
   const customerId = named && (await customerIsTheirs(named, fromMetadata as string, links)) ? named : undefined;
   const detail: SubDetail | undefined = subscriptionId
-    ? { subscriptionId, ...(customerId && mode ? { customerId, customerMode: mode } : {}), ...(Number.isFinite(nextBilling) ? { renewsOn: nextBilling } : {}) }
+    ? { subscriptionId, mode: mode ?? "test", ...(customerId && mode ? { customerId, customerMode: mode } : {}), ...(Number.isFinite(nextBilling) ? { renewsOn: nextBilling } : {}) }
     : undefined;
   const withDetail = (d: { kind: "set"; entitlement: DodoEntitlement }): DodoDecision => (detail ? { ...d, detail } : d);
   // A cancel at the end of the period: kept until the next billing date, when that date is readable and still ahead.
@@ -272,7 +279,7 @@ export type PaymentDecision =
  *  - refund.succeeded with is_partial exactly false, and dispute.lost, remove that payment's credit if it is unused.
  *  - a partial refund and dispute.opened change nothing; they are noted for the operator.
  */
-export async function decidePaymentEvent(event: unknown, reportIds: readonly string[], links: LinkBook, knownProducts?: readonly string[], planIds: readonly string[] = []): Promise<PaymentDecision> {
+export async function decidePaymentEvent(event: unknown, reportIds: readonly string[], links: LinkBook, knownProducts?: readonly string[], planIds: readonly string[] = [], ownerSecret?: string): Promise<PaymentDecision> {
   const e = obj(event), type = e?.type, data = obj(e?.data);
   if (typeof type !== "string" || !data) return { kind: "ignore" };
   const paymentId = safeOrUndefined(data.payment_id);
@@ -285,7 +292,7 @@ export async function decidePaymentEvent(event: unknown, reportIds: readonly str
       if (str(data.subscription_id) || products.some((p) => planIds.includes(p))) return { kind: "ignore" };
       return { kind: "unknown_product", productId: products.length ? safeText(products[0]) : "", paymentId };
     }
-    const userId = await ownerOf(data, links);
+    const userId = await ownerOf(data, links, ownerSecret);
     return userId ? { kind: "report_add", userId, paymentId } : { kind: "unlinked" };
   }
   if (type === "refund.succeeded") {
@@ -299,7 +306,8 @@ export async function decidePaymentEvent(event: unknown, reportIds: readonly str
 
 /** Where report credits live (the owner's record), found by payment_id for a refund, whose metadata is its own. */
 export interface ReportBook {
-  add(userId: string, paymentId: string, at: number): Promise<"added" | "known">;
+  /** `mode`: the Dodo mode the payment was made in (audit run 2, finding 5 re-attack: a test mode credit is not spent once live). */
+  add(userId: string, paymentId: string, at: number, mode: DodoMode): Promise<"added" | "known">;
   /** `at`: the event's time (ms). For a payment not seen yet ("unknown"), a marker is kept, so its credit is never given. */
   remove(paymentId: string, why: "refund" | "dispute", at: number): Promise<{ result: "removed" | "used" | "already" | "unknown"; ownerId?: string }>;
 }
@@ -355,13 +363,18 @@ export type DodoWebhookDeps = {
   /** Writes the person's plan to the store. Throwing makes the answer 500, so Dodo retries. `at` is the event's own time (ms):
    *  a store shared by many server instances uses it to skip an older event in the same step as the write (M99). Answering
    *  false means it was not written for that reason, and the event is answered and logged as stale (M99 review). M116:
-   *  `detail` names the subscription (the plan is kept per subscription) and the customer to save. */
-  apply: (e: DodoEntitlement, at: number, detail?: SubDetail) => Promise<boolean | void>;
+   *  `detail` names the subscription (the plan is kept per subscription) and the customer to save. `mode`: the Dodo mode of the
+   *  event (an unreadable one counts as test), kept with the plan (audit run 2, finding 5 re-attack). */
+  apply: (e: DodoEntitlement, at: number, detail?: SubDetail, mode?: DodoMode) => Promise<boolean | void>;
   /** M116: the report product ids (see parseDodoCatalog). Missing: no report credits are given. */
   reportIds?: () => readonly string[];
   /** M116: where report credits are kept. Missing: payment, refund and dispute events are only acknowledged, as before. */
   reports?: ReportBook;
-  /** M116: keep the Dodo customer id on the owner, from a payment.succeeded whose checkout metadata names them, with the mode. */
+  /** Audit run 2, finding 1: METADATA_USER_ID_SECRET, which checks the signed owner id in checkout metadata (owner-sig.ts).
+   *  Missing or short: no metadata is trusted, and an event is matched only through the link book. */
+  ownerSecret?: () => string | undefined;
+  /** M116: keep the Dodo customer id on the owner, from a payment.succeeded whose signed checkout metadata names them, with the
+   *  mode. It never replaces a customer id already saved for that mode. */
   saveCustomer?: (userId: string, customerId: string, mode: DodoMode) => Promise<void>;
   /** M116: which Dodo this server talks to, from DODO_API_BASE (see dodoMode). Null: unreadable, so no customer id is saved.
    *  Missing: test, the default address. */
@@ -423,6 +436,7 @@ async function readCapped(req: Request): Promise<string | null> {
 export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise<Response> {
   const now = d.now ?? Date.now, log = d.log ?? (() => {});
   const modeNow = (): DodoMode | null => (d.mode ? d.mode() : "test");
+  const ownerSecret = (): string | undefined => d.ownerSecret?.();
   // One person's events are applied one after the other here, so an older event that is slower to save cannot land after a newer one.
   // (Across several server instances the store must do the same in one atomic step, as the README says.)
   const queue = new Map<string, Promise<unknown>>();
@@ -436,13 +450,13 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
   /** M116: a payment, refund or dispute event. Only the report credit changes here; everything else is noted or ignored. */
   async function paymentEvent(event: Record<string, unknown>, eventType: string | undefined, webhookId: string | undefined): Promise<Response> {
     const reports = d.reports as ReportBook, reportIds = d.reportIds?.() ?? [], planIds = Object.keys(d.products());
-    const data = obj(event.data), mode = modeNow();
+    const data = obj(event.data), mode = modeNow(), secret = ownerSecret();
     if (event.type === "payment.succeeded" && data && d.saveCustomer && mode) {
-      const userId = str(obj(data.metadata)?.[USER_ID_KEY]), customerId = safeOrUndefined(obj(data.customer)?.customer_id);
+      const userId = await signedOwner(data, secret), customerId = safeOrUndefined(obj(data.customer)?.customer_id);
       // Never onto a second person: a customer the link book gives to someone else is left where it is (learnLink logged it).
       if (userId && customerId && (await customerIsTheirs(customerId, userId, d.links))) await d.saveCustomer(userId, customerId, mode);
     }
-    let decision = await decidePaymentEvent(event, reportIds, d.links, undefined, planIds);
+    let decision = await decidePaymentEvent(event, reportIds, d.links, undefined, planIds, secret);
     if (decision.kind === "lookup") {
       const paymentId = decision.paymentId;
       const known = d.paymentProducts ? await d.paymentProducts(paymentId).catch(() => null) : null;
@@ -450,7 +464,7 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
         log({ kind: "lookup_failed", eventType, webhookId, paymentId });
         return answer(503, "unknown_product", "This payment's products could not be read yet. Dodo will deliver it again.");
       }
-      decision = await decidePaymentEvent(event, reportIds, d.links, known, planIds);
+      decision = await decidePaymentEvent(event, reportIds, d.links, known, planIds, secret);
       if (decision.kind === "lookup") decision = { kind: "ignore" };
     }
     switch (decision.kind) {
@@ -465,7 +479,7 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
         log({ kind: decision.note === "partial_refund" ? "refund_logged" : "dispute_logged", eventType, webhookId, reason: decision.note, paymentId: decision.paymentId });
         return answer(200, "ignored");
       case "report_add": {
-        const r = await reports.add(decision.userId, decision.paymentId, Date.parse(String(event.timestamp)));
+        const r = await reports.add(decision.userId, decision.paymentId, Date.parse(String(event.timestamp)), mode ?? "test");
         log({ kind: r === "added" ? "report_added" : "report_known", eventType, webhookId, userId: safeOrUndefined(decision.userId), paymentId: decision.paymentId });
         return answer(200, r === "added" ? "applied" : "duplicate");
       }
@@ -499,7 +513,7 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
     try {
       // M116 step 5: an event for a deleted account (by its metadata, or a customer link now marked deleted) changes nothing.
       // Answered 200, so Dodo stops retrying it.
-      const data = obj(event.data), owner = data ? await ownerOf(data, d.links) : null;
+      const data = obj(event.data), owner = data ? await ownerOf(data, d.links, ownerSecret()) : null;
       if (owner && (isDeletedMarker(owner) || (d.deleted && (await d.deleted(owner, now()))))) {
         // Money for a deleted account (a checkout opened before the delete and paid after it): nothing is granted, so the
         // operator is told to refund it. The line is kept before the 200, so a failure here makes Dodo deliver it again.
@@ -508,13 +522,13 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
         log({ kind: money ? "refund_needed" : "ignored", eventType, webhookId, reason: "deleted_account", ...(money?.kind === "payment" ? { paymentId: money.id } : {}) });
         return answer(200, "ignored");
       }
-      await learnLink(event, d.links, log, eventType, webhookId);
+      await learnLink(event, d.links, log, eventType, webhookId, ownerSecret());
       if (d.reports && !eventType?.startsWith("subscription.")) {
         const paid = await paymentEvent(event, eventType, webhookId);
         if (paid.status !== 200) await d.ledger.release(verified.id);   // not done: Dodo's retry gets another go
         return paid;
       }
-      const decision = await decideDodoEvent(event, d.products(), d.links, modeNow());
+      const decision = await decideDodoEvent(event, d.products(), d.links, modeNow(), ownerSecret());
       if (decision.kind === "ignore") { log({ kind: "ignored", eventType, webhookId }); return answer(200, "ignored"); }
       if (decision.kind === "unlinked") {
         await d.ledger.release(verified.id);
@@ -528,7 +542,7 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
         outcome = await oneAtATime(scope ? `${entitlement.userId}\u0000${scope}` : entitlement.userId, async () => {
           const last = await d.ledger.lastAppliedAt(entitlement.userId, scope);
           if (last !== null && at < last) return "stale" as const;
-          if ((await d.apply(entitlement, at, detail)) === false) return "stale" as const;
+          if ((await d.apply(entitlement, at, detail, modeNow() ?? "test")) === false) return "stale" as const;
           await d.ledger.setLastAppliedAt(entitlement.userId, at, scope);
           return "applied" as const;
         });
@@ -549,11 +563,12 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
   };
 }
 
-/** Payments and subscription events both carry the checkout metadata and the Dodo customer: remember which person that customer is. */
-async function learnLink(event: Record<string, unknown>, links: LinkBook, log: (e: SafeDodoEvent) => void, eventType: string | undefined, webhookId: string | undefined): Promise<void> {
+/** Payments and subscription events both carry the checkout metadata and the Dodo customer: remember which person that customer
+ *  is, only when the metadata's owner id is signed (a static /buy/ link can name anyone). */
+async function learnLink(event: Record<string, unknown>, links: LinkBook, log: (e: SafeDodoEvent) => void, eventType: string | undefined, webhookId: string | undefined, ownerSecret: string | undefined): Promise<void> {
   const type = event.type, data = obj(event.data);
   if (!data || typeof type !== "string" || !(type === "payment.succeeded" || type.startsWith("subscription."))) return;
-  const userId = str(obj(data.metadata)?.[USER_ID_KEY]), customerId = str(obj(data.customer)?.customer_id);
+  const userId = await signedOwner(data, ownerSecret), customerId = str(obj(data.customer)?.customer_id);
   if (!userId || !customerId) return;
   const known = await links.get(customerId);
   // A link marked deleted (its account was deleted) is given to the person this event names: Dodo can reuse a customer by email.

@@ -20,10 +20,11 @@ import { error, jsonNoStore, readCapped } from "./http.ts";
 import { PRODUCT } from "./names.ts";
 import type { SafeEvent } from "./proxy.ts";
 import { createRateLimiter } from "./ratelimit.ts";
-import { liveSub, type Billing, type DodoMode, type Store } from "./store.ts";
+import { countsNow, liveSub, type Billing, type DodoMode, type Store } from "./store.ts";
 import { hashToken, tokenFromHeaders } from "./tokens.ts";
 import { deletedKey } from "./deleted.ts";
 import { secretProblem } from "./userid.ts";
+import { OWNER_SIG_KEY, signOwner } from "./owner-sig.ts";
 
 export const CHECKOUT_PATH = "/v1/checkout";
 export const PORTAL_PATH = "/v1/portal";
@@ -61,6 +62,9 @@ export type BillingDeps = {
   dodoBase: () => string | undefined;
   dodoKey: () => string | undefined;
   fetch?: typeof fetch;
+  /** METADATA_USER_ID_SECRET: signs the owner id in the checkout metadata (owner-sig.ts), the only metadata the webhook trusts.
+   *  Missing or short: no checkout is made, since nothing it paid for could be matched to the person. */
+  ownerSecret?: () => string | undefined;
   /** True while this account may press again (one limiter per server instance). Missing: one made here. */
   pressLimit?: (key: string, now: number) => boolean;
 };
@@ -102,7 +106,8 @@ export function createBillingRoutes(d: BillingDeps): (req: Request, url: URL) =>
     if (!pressLimit(u.id, now)) return { ok: false, res: refuse("billing_rate_limit", error(429, "rate_limit_error", "That was pressed many times. Wait a minute, then try again.", { "retry-after": "60" }), u.id) };
     const setup = dodoSetup(d.dodoBase(), d.dodoKey());
     if (!setup.ok) return { ok: false, res: refuse(`dodo_${setup.reason}`, error(503, "api_error", PAYMENTS_NOT_SET_UP_WORDS), u.id) };
-    return { ok: true, userId: u.id, plan: planNow(u, now).plan, mode: dodoMode(setup.base) ?? "test", api: { base: setup.base, key: setup.key, fetch: d.fetch ?? fetch } };
+    const mode = dodoMode(setup.base) ?? "test";
+    return { ok: true, userId: u.id, plan: planNow(u, now, mode === "live").plan, mode, api: { base: setup.base, key: setup.key, fetch: d.fetch ?? fetch } };
   }
 
   async function checkout(req: Request, url: URL): Promise<Response> {
@@ -116,9 +121,12 @@ export function createBillingRoutes(d: BillingDeps): (req: Request, url: URL) =>
     if (!isCheckoutItem(item)) return bad();   // only the item is read from the body: never a product id, an owner or an email
     const productId = d.catalog()?.items[item];
     if (!productId) return refuse("checkout_no_product", error(503, "api_error", PAYMENTS_NOT_SET_UP_WORDS), w.userId);
+    const ownerSecret = d.ownerSecret?.();
+    if (!ownerSecret || secretProblem(ownerSecret)) return refuse("checkout_no_owner_secret", error(503, "api_error", PAYMENTS_NOT_SET_UP_WORDS), w.userId);
 
     const now = d.now(), billing = await d.store.billingOf(w.userId);
-    if (item !== "report" && billing.subs.some(([, s]) => liveSub(s, now))) return refuse("checkout_already_pro", error(409, "invalid_request_error", ALREADY_PRO_WORDS), w.userId);
+    // Audit run 2, finding 5 re-attack: once Dodo is live, a test mode subscription is not Pro and does not refuse a real one.
+    if (item !== "report" && billing.subs.some(([, s]) => countsNow(s, w.mode === "live") && liveSub(s, now))) return refuse("checkout_already_pro", error(409, "invalid_request_error", ALREADY_PRO_WORDS), w.userId);
     if (item === "report" && PRO_INCLUDES_REPORT && w.plan !== "free") return refuse("checkout_pro_has_report", error(409, "invalid_request_error", PRO_HAS_REPORT_WORDS), w.userId);
     const customerId = billing.customerMode === w.mode ? billing.customerId : null;   // an id from the other Dodo mode is unknown here
     const customer = customerId ? { customer_id: customerId } : billing.email ? { email: billing.email } : null;
@@ -127,7 +135,9 @@ export function createBillingRoutes(d: BillingDeps): (req: Request, url: URL) =>
     const address = await createCheckout(w.api, {
       product_cart: [{ product_id: productId, quantity: 1 }],
       customer,
-      metadata: { [USER_ID_KEY]: w.userId },
+      // The owner id is signed: Dodo copies this metadata onto the payment and subscription events, and the webhook trusts it
+      // only with a good signature, because a static /buy/ link lets anyone set companion_user_id (audit run 2, finding 1).
+      metadata: { [USER_ID_KEY]: w.userId, [OWNER_SIG_KEY]: await signOwner(w.userId, ownerSecret) },
       return_url: `${url.origin}${PAID_PATH}`,
       cancel_url: `${url.origin}${PAID_CANCELLED_PATH}`,
       feature_flags: { allow_customer_editing_email: false },
@@ -168,21 +178,25 @@ export function portalCustomer(b: Billing, mode: DodoMode, now: number): string 
 /** What the Dodo webhook writes, on any store: the plan per subscription (the owner's is the best of them), the customer id,
  *  and the report credits. M116 step 5: with the user id secret, it also knows a deleted account (deleted.ts), whose late
  *  events change nothing; money that still reached Dodo for one is kept as a refund line for the operator. */
-export function storeHooks(store: Store, userIdSecret?: () => string | undefined): Pick<DodoWebhookDeps, "apply" | "reports" | "saveCustomer" | "deleted" | "refundNeeded"> {
+export function storeHooks(store: Store, userIdSecret?: () => string | undefined): Pick<DodoWebhookDeps, "apply" | "reports" | "saveCustomer" | "deleted" | "refundNeeded" | "ownerSecret"> {
   return {
+    // The same secret checks the signed owner id in checkout metadata (owner-sig.ts). Without it no metadata is trusted.
+    ownerSecret: () => userIdSecret?.(),
     deleted: async (userId, now) => {
       const secret = userIdSecret?.();
       return !!secret && !secretProblem(secret) && store.isDeletedOwner(userId, await deletedKey(userId, secret), now);
     },
     refundNeeded: (r) => store.flagRefund(r),
-    apply: (e: DodoEntitlement, at: number, detail?: SubDetail) => detail
+    apply: (e: DodoEntitlement, at: number, detail?: SubDetail, mode?: DodoMode) => detail
       ? store.applySubscription(e.userId, detail.subscriptionId, {
         plan: e.plan, status: e.status, ...(e.until !== undefined ? { until: e.until } : {}),
+        // Audit run 2, finding 5 re-attack: the subscription keeps its Dodo mode, so a test card's Pro never counts once live.
+        mode: detail.mode ?? mode ?? "test",
         ...(e.status === "active" && detail.renewsOn !== undefined ? { renewsOn: detail.renewsOn } : {}),
         ...(detail.customerId ? { customerId: detail.customerId, customerMode: detail.customerMode ?? "test" } : {}),
       }, at)
-      : (store.setOwnerPlan?.(e.userId, { plan: e.plan, status: e.status, ...(e.until !== undefined ? { until: e.until } : {}) }, at) ?? Promise.resolve(false)),
-    reports: { add: (userId, paymentId, at) => store.addReport(userId, paymentId, at), remove: (paymentId, _why, at) => store.removeReport(paymentId, at) },
+      : (store.setOwnerPlan?.(e.userId, { plan: e.plan, status: e.status, ...(e.until !== undefined ? { until: e.until } : {}), mode: mode ?? "test" }, at) ?? Promise.resolve(false)),
+    reports: { add: (userId, paymentId, at, mode) => store.addReport(userId, paymentId, at, mode), remove: (paymentId, _why, at) => store.removeReport(paymentId, at) },
     saveCustomer: (userId, customerId, mode) => store.saveCustomer(userId, customerId, mode),
   };
 }

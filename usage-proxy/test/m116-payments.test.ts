@@ -18,6 +18,8 @@ import { handle as workerHandle, type Env } from "../src/worker.ts";
 import { DurableStore, OWNER, PAYMENTS } from "../src/store-do.ts";
 import { FakeNamespace } from "./fake-do.ts";
 import { FakeDurableStore, TEST_STORES, type TestStore } from "./stores.ts";
+import { OWNER_SECRET, withOwnerSig } from "./owner-sig-fixture.ts";
+import { OWNER_SIG_KEY, signOwner } from "../src/owner-sig.ts";
 
 const ROOT = join(import.meta.dir, "..");
 const NOW = Date.UTC(2026, 10, 19, 9, 0, 0);
@@ -90,7 +92,7 @@ const dispute = (type: string, paymentId: string, at = NOW - 5000) => payEvent(t
 }, at);
 
 describe("what each subscription event means (M116)", () => {
-  const decide = (e: unknown) => decideDodoEvent(e, CATALOG.plans, new MemoryLinkBook());
+  const decide = async (e: unknown) => decideDodoEvent(await withOwnerSig(e), CATALOG.plans, new MemoryLinkBook(), "test", OWNER_SECRET);
   test("cancelled with cancel_at_next_billing_date and a future next_billing_date keeps Pro until then, as cancelling", async () => {
     expect(await decide(subEvent("subscription.cancelled", "cancelled", { cancel_at_next_billing_date: true }))).toMatchObject({
       kind: "set", entitlement: { userId: OWNER_ID, plan: "pro", status: "cancelling", until: NOW + 30 * DAY },
@@ -117,7 +119,7 @@ describe("what each subscription event means (M116)", () => {
   test("the detail carries the subscription id, the renew date, and the customer id only when the metadata names the owner", async () => {
     expect(await decide(subEvent("subscription.renewed", "active"))).toMatchObject({ detail: { subscriptionId: "sub_1", customerId: "cus_1", renewsOn: NOW + 30 * DAY } });
     const links = new MemoryLinkBook(); await links.set("cus_1", OWNER_ID);
-    const viaLink = await decideDodoEvent(subEvent("subscription.renewed", "active", { metadata: {} }), CATALOG.plans, links);
+    const viaLink = await decideDodoEvent(subEvent("subscription.renewed", "active", { metadata: {} }), CATALOG.plans, links, "test", OWNER_SECRET);
     expect(viaLink).toMatchObject({ kind: "set", detail: { subscriptionId: "sub_1" } });
     expect((viaLink as { detail: { customerId?: string } }).detail.customerId).toBeUndefined();
   });
@@ -220,12 +222,12 @@ for (const kind of TEST_STORES) describe(`${kind.name}: the Dodo webhook sets pl
   afterEach(() => { console.log = realLog; });
   const hook = (paymentProducts?: (id: string) => Promise<string[] | null>, over: Partial<DodoWebhookDeps> = {}) => createDodoWebhook({
     secret: () => SECRET, products: () => CATALOG.plans, reportIds: () => CATALOG.reports, ledger, links,
-    ...storeHooks(store), now: () => nowMs, log: (e) => logs.push(e),
+    ...storeHooks(store), ownerSecret: () => OWNER_SECRET, now: () => nowMs, log: (e) => logs.push(e),
     ...(paymentProducts ? { paymentProducts: async (id: string) => { lookups.push(id); return paymentProducts(id); } } : {}),
     ...over,
   });
   const send = async (h: ReturnType<typeof hook>, ev: unknown, id: string) => {
-    const body = JSON.stringify(ev);
+    const body = JSON.stringify(await withOwnerSig(ev));
     return h(new Request("https://api.example/webhooks/dodo", { method: "POST", headers: await signDodoForTest(id, body, SECRET, Math.floor(nowMs / 1000)), body }));
   };
   const plan = async () => (await store.planOfOwner!(OWNER_ID)) ?? "none";
@@ -446,7 +448,7 @@ for (const kind of TEST_STORES) describe(`${kind.name}: POST /v1/checkout and PO
     const routes = createBillingRoutes({
       store, now: () => NOW, log: (e) => events.push(e),
       paymentsOn: () => o.payments ?? true, provider: () => o.provider ?? "dodo",
-      catalog: () => o.catalog ?? CATALOG, dodoBase: () => ("base" in o ? o.base : DODO_TEST_BASE), dodoKey: () => ("key" in o ? o.key : TEST_KEY), fetch: fetchStub,
+      catalog: () => o.catalog ?? CATALOG, dodoBase: () => ("base" in o ? o.base : DODO_TEST_BASE), dodoKey: () => ("key" in o ? o.key : TEST_KEY), fetch: fetchStub, ownerSecret: () => OWNER_SECRET,
     });
     const send = async (path: string, init: RequestInit = {}) => (await routes(new Request(`https://api.example${path}`, init), new URL(`https://api.example${path}`))) ?? new Response("not served", { status: 404 });
     const signedIn = async (owner = OWNER_ID, email = EMAIL) => {
@@ -475,7 +477,7 @@ for (const kind of TEST_STORES) describe(`${kind.name}: POST /v1/checkout and PO
       expect(c.body).toEqual({
         product_cart: [{ product_id: product, quantity: 1 }],
         customer: { email: EMAIL },
-        metadata: { companion_user_id: OWNER_ID },
+        metadata: { companion_user_id: OWNER_ID, [OWNER_SIG_KEY]: await signOwner(OWNER_ID, OWNER_SECRET) },
         return_url: "https://api.example/paid",
         cancel_url: "https://api.example/paid/cancelled",
         feature_flags: { allow_customer_editing_email: false },
@@ -489,7 +491,7 @@ for (const kind of TEST_STORES) describe(`${kind.name}: POST /v1/checkout and PO
     expect(res.status).toBe(200);
     const c = r.calls.at(-1)!;
     expect(c.body.product_cart).toEqual([{ product_id: "pdt_month", quantity: 1 }]);
-    expect(c.body.metadata).toEqual({ companion_user_id: OWNER_ID });
+    expect(c.body.metadata).toEqual({ companion_user_id: OWNER_ID, [OWNER_SIG_KEY]: await signOwner(OWNER_ID, OWNER_SECRET) });
     expect(c.body.customer).toEqual({ email: EMAIL });
   });
   test("the stored Dodo customer id is used when there is one", async () => {
@@ -712,7 +714,7 @@ describe("GET /paid, through the Worker", () => {
   });
   test("a signed Dodo webhook through the Worker saves the customer and grants Pro on the owner's object", async () => {
     const ns = new FakeNamespace(), e = env({ STORE: ns });
-    const body = JSON.stringify(subEvent("subscription.active", "active"));
+    const body = JSON.stringify(await withOwnerSig(subEvent("subscription.active", "active"), e.METADATA_USER_ID_SECRET));
     const r = await workerHandle(new Request("https://api.example/webhooks/dodo", { method: "POST", headers: await signDodoForTest("msg_w", body, SECRET, NOWS), body }), e, { waitUntil: () => {} }, () => NOW);
     expect(r.status).toBe(200);
     const s = new DurableStore(ns, () => NOW);

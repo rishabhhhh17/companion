@@ -27,7 +27,7 @@ import { nextReset, planOf, PRO_INCLUDES_REPORT } from "./plans.ts";
 import { deletedKey } from "./deleted.ts";
 import type { SafeEvent } from "./proxy.ts";
 import { clientAddress } from "./ratelimit.ts";
-import type { Store, User } from "./store.ts";
+import { paidPlanCounts, type Store, type User } from "./store.ts";
 import { hashToken, tokenFromHeaders } from "./tokens.ts";
 import { secretProblem } from "./userid.ts";
 
@@ -64,6 +64,9 @@ export type AccountDeps = {
   loopOn?: () => boolean;
   /** True while this address may try to sign in again (ratelimit.ts). Missing: no limit (tests of other things). */
   signinLimit?: (address: string) => boolean;
+  /** Audit run 2, finding 5 re-attack: true once Dodo is live (DODO_API_BASE is the live address). Then a plan, a subscription or
+   *  a report credit from test mode counts for nothing: it was paid with a free test card. Missing: not live. */
+  paymentsLive?: () => boolean;
 };
 
 /** The statuses /v1/me answers. `free` covers a plan whose kept days are over. */
@@ -72,8 +75,10 @@ export type MeStatus = "free" | "active" | "past_due" | "on_hold" | "cancelling"
 const iso = (ms: number | undefined) => (ms === undefined ? null : new Date(ms).toISOString());
 const share = (spent: number, limit: number) => (limit > 0 ? Math.min(1, Math.round((spent / limit) * 100) / 100) : 1);
 
-/** The plan and status a person is on now, from their user record. A kept plan whose end has passed is Free. */
-export function planNow(u: User, now: number): { plan: string; status: MeStatus; until: string | null; renewsOn: string | null } {
+/** The plan and status a person is on now, from their user record. A kept plan whose end has passed is Free. Audit run 2,
+ *  finding 5 re-attack: with `liveNow` (Dodo is live), a plan paid in test mode is Free too (paidPlanCounts). */
+export function planNow(u: User, now: number, liveNow = false): { plan: string; status: MeStatus; until: string | null; renewsOn: string | null } {
+  if (!paidPlanCounts(u, liveNow)) return { plan: "free", status: "free", until: null, renewsOn: null };
   const ended = u.planUntil !== undefined && now >= u.planUntil;
   const plan = ended ? "free" : planOf(u.plan).name;
   if (plan === "free") return { plan, status: !ended && u.status === "on_hold" ? "on_hold" : "free", until: null, renewsOn: null };
@@ -88,6 +93,7 @@ export function createAccountRoutes(d: AccountDeps): (req: Request, url: URL) =>
   const notReady = (reason: string) => refuse(reason, error(503, "api_error", `Sign in is not ready on this ${PRODUCT} server yet. Try again later.`));
   const googleFailed = (reason: string) => refuse(reason, error(401, "authentication_error", "Google sign in did not work. Try signing in again."));
   const secret = () => (secretProblem(d.userIdSecret) ? null : (d.userIdSecret as string));
+  const live = () => d.paymentsLive?.() === true;
 
   async function nonce(): Promise<Response> {
     const s = secret();
@@ -123,7 +129,7 @@ export function createAccountRoutes(d: AccountDeps): (req: Request, url: URL) =>
     d.log({ kind: "signin", userId: who.ownerId });
     // The plan in the reply is the one /v1/me would show (planNow): a kept plan whose end has passed reads as Free here too.
     const fresh = await d.store.userByTokenHash(await hashToken(issued.token));
-    const shown = fresh ? planNow(fresh, now).plan : "free";
+    const shown = fresh ? planNow(fresh, now, live()).plan : "free";
     return jsonNoStore({ token: issued.token, plan: shown, email: who.email, name: who.name ?? null, picture: who.picture ?? null });
   }
 
@@ -135,7 +141,7 @@ export function createAccountRoutes(d: AccountDeps): (req: Request, url: URL) =>
     const u = acct.user;
     if (u.status === "suspended") return refuse("suspended", error(403, "permission_error", `Your ${PRODUCT} account is paused. If you think this is a mistake, you can appeal: see the acceptable use page.`), u.id);
     if (u.status === "revoked" || u.status === "canceled") return signInAgain("inactive");
-    const p = planNow(u, now), limits = planOf(p.plan);
+    const p = planNow(u, now, live()), limits = planOf(p.plan);
     return jsonNoStore({
       ...p, email: acct.email,
       use: { today: share(acct.spent.day, limits.dailyUsd), month: share(acct.spent.month, limits.monthlyUsd), todayResetsAt: iso(nextReset("day", now)), monthResetsAt: iso(nextReset("month", now)) },
@@ -162,14 +168,14 @@ export function createAccountRoutes(d: AccountDeps): (req: Request, url: URL) =>
   }
 
   /** The token's working account, or the refusal to send. Shared by report use and delete. */
-  async function working(req: Request): Promise<{ ok: true; user: User; now: number } | { ok: false; res: Response }> {
+  async function working(req: Request): Promise<{ ok: true; user: User; now: number; hash: string } | { ok: false; res: Response }> {
     const token = tokenFromHeaders(req.headers);
     if (!token) return { ok: false, res: signInAgain("no_token") };
-    const now = d.now(), user = await d.store.userByTokenHash(await hashToken(token));
+    const now = d.now(), hash = await hashToken(token), user = await d.store.userByTokenHash(hash);
     if (!user) return { ok: false, res: signInAgain("unknown_token") };
     if (user.status === "suspended") return { ok: false, res: refuse("suspended", error(403, "permission_error", `Your ${PRODUCT} account is paused. If you think this is a mistake, you can appeal: see the acceptable use page.`), user.id) };
     if (user.status === "revoked" || user.status === "canceled") return { ok: false, res: signInAgain("inactive") };
-    return { ok: true, user, now };
+    return { ok: true, user, now, hash };
   }
   /** A small JSON body, or undefined when there is none; null when it is too big or not JSON. */
   async function smallBody(req: Request): Promise<Record<string, unknown> | undefined | null> {
@@ -186,11 +192,11 @@ export function createAccountRoutes(d: AccountDeps): (req: Request, url: URL) =>
     const body = await smallBody(req), useId = body?.useId;
     if (body === null || (useId !== undefined && (typeof useId !== "string" || !USE_ID.test(useId))))
       return refuse("report_bad_body", error(400, "invalid_request_error", "The report request is not in the expected form."), w.user.id);
-    if (PRO_INCLUDES_REPORT && planNow(w.user, w.now).plan !== "free") {
+    if (PRO_INCLUDES_REPORT && planNow(w.user, w.now, live()).plan !== "free") {
       d.log({ kind: "report_use", userId: w.user.id, reason: "pro" });
       return jsonNoStore({ ok: true, paidBy: "pro" });
     }
-    const r = await d.store.useReport(w.user.id, { now: w.now, ...(typeof useId === "string" ? { useId } : {}) });
+    const r = await d.store.useReport(w.user.id, { now: w.now, ...(typeof useId === "string" ? { useId } : {}), ...(live() ? { liveNow: true } : {}) });
     if (!r.ok) return refuse("no_report", error(402, "billing_error", NO_REPORT_WORDS), w.user.id);
     d.log({ kind: "report_use", userId: w.user.id, reason: "credit" });
     return jsonNoStore({ ok: true, paidBy: "credit", left: r.left });
@@ -203,8 +209,10 @@ export function createAccountRoutes(d: AccountDeps): (req: Request, url: URL) =>
     if (!s) return notReady("delete_no_secret");
     const body = await smallBody(req);
     if (!body || body.confirm !== true) return refuse("delete_bad_body", error(400, "invalid_request_error", "Send {\"confirm\": true} to delete the account."), w.user.id);
-    const r = await d.store.deleteAccount(w.user.id, { key: await deletedKey(w.user.id, s), now: w.now });
+    // The asking token goes along: a second delete sent at the same time finds it gone and writes nothing (audit run 2, finding 2).
+    const r = await d.store.deleteAccount(w.user.id, { key: await deletedKey(w.user.id, s), now: w.now, hash: w.hash, ...(live() ? { liveNow: true } : {}) });
     if (!r.ok) {
+      if (r.why === "gone") return signInAgain("delete_gone");
       if (r.why === "live_sub") return refuse("delete_live_sub", error(409, "invalid_request_error", DELETE_LIVE_SUB_WORDS), w.user.id);
       if (r.why === "busy") return refuse("delete_busy", error(409, "invalid_request_error", DELETE_BUSY_WORDS), w.user.id);
       return refuse("suspended", error(403, "permission_error", `Your ${PRODUCT} account is paused. If you think this is a mistake, you can appeal: see the acceptable use page.`), w.user.id);

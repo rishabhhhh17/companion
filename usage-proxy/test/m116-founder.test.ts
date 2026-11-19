@@ -23,6 +23,7 @@ import { dayKey, monthKey } from "../src/plans.ts";
 import { FakeNamespace } from "./fake-do.ts";
 import { claimsAt, googleKeys, keyPair, signIdToken, type Key } from "./google-stand-in.ts";
 import { FakeDurableStore, TEST_STORES, type TestStore } from "./stores.ts";
+import { withOwnerSig } from "./owner-sig-fixture.ts";
 import { KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE, usageReport } from "../scripts/usage-report.ts";
 
 const ROOT = join(import.meta.dir, "..");
@@ -285,7 +286,7 @@ describe("POST /v1/account/delete", () => {
     const hook = createDodoWebhook({ secret: () => WH_SECRET, products: () => ({ pdt_month: "pro" }), reportIds: () => ["pdt_report"],
       ledger: new MemoryDodoLedger(() => NOW), links, ...storeHooks(r.store, () => SECRET), now: () => NOW, log: (e) => logs.push(e) });
     const send = async (id: string, event: unknown) => {
-      const body = JSON.stringify(event);
+      const body = JSON.stringify(await withOwnerSig(event, SECRET));
       return hook(new Request("https://api.example/webhooks/dodo", { method: "POST", headers: await signDodoForTest(id, body, WH_SECRET, Math.floor(NOW / 1000)), body }));
     };
     const sub = (meta: Record<string, unknown>) => ({ business_id: "bus_1", type: "subscription.active", timestamp: new Date(NOW - 500).toISOString(),
@@ -331,7 +332,7 @@ describe("step 5 review", () => {
     const hook = createDodoWebhook({ secret: () => WH_SECRET, products: () => ({ pdt_month: "pro" }), reportIds: () => ["pdt_report"],
       ledger: new MemoryDodoLedger(() => r.clock.t), links, ...storeHooks(r.store, () => SECRET), now: () => r.clock.t, log: (e) => logs.push(e), ...over });
     const send = async (id: string, event: unknown) => {
-      const body = JSON.stringify(event);
+      const body = JSON.stringify(await withOwnerSig(event, SECRET));
       return hook(new Request("https://api.example/webhooks/dodo", { method: "POST", headers: await signDodoForTest(id, body, WH_SECRET, Math.floor(r.clock.t / 1000)), body }));
     };
     return { send, logs, links };
@@ -715,8 +716,8 @@ describe("the Worker", () => {
     await links.set("cus_1", `${DELETED_PREFIX}${"a".repeat(64)}`);
     const store = new DurableStore(ns, () => NOW);
     const hook = createDodoWebhook({ secret: () => WH_SECRET, products: () => ({ pdt_month: "pro" }), ledger: new MemoryDodoLedger(() => NOW), links, ...storeHooks(store, () => SECRET), now: () => NOW });
-    const body = JSON.stringify({ business_id: "bus_1", type: "subscription.active", timestamp: new Date(NOW - 500).toISOString(),
-      data: { payload_type: "Subscription", subscription_id: "sub_9", product_id: "pdt_month", status: "active", customer: { customer_id: "cus_1" }, metadata: { companion_user_id: OTHER_ID }, next_billing_date: new Date(NOW + 30 * DAY).toISOString() } });
+    const body = JSON.stringify(await withOwnerSig({ business_id: "bus_1", type: "subscription.active", timestamp: new Date(NOW - 500).toISOString(),
+      data: { payload_type: "Subscription", subscription_id: "sub_9", product_id: "pdt_month", status: "active", customer: { customer_id: "cus_1" }, metadata: { companion_user_id: OTHER_ID }, next_billing_date: new Date(NOW + 30 * DAY).toISOString() } }, SECRET));
     const r = await hook(new Request("https://api.example/webhooks/dodo", { method: "POST", headers: await signDodoForTest("msg_x", body, WH_SECRET, Math.floor(NOW / 1000)), body }));
     expect(r.status).toBe(200);
     expect(await store.planOfOwner(OTHER_ID)).toBe("pro");

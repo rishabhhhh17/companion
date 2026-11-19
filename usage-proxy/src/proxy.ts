@@ -6,7 +6,7 @@
 // nothing else: a test holds it to that.
 import { checkRequest, MAX_BODY_BYTES } from "./filter.ts";
 import { budgetCheck, nextReset, planOf, type Plan } from "./plans.ts";
-import type { Store, UsageRecord } from "./store.ts";
+import { paidPlanCounts, type Store, type UsageRecord } from "./store.ts";
 import { hashToken, tokenFromHeaders } from "./tokens.ts";
 import { UsageSniffer, costOf, usageFromJson } from "./usage.ts";
 import { PRODUCT, PRODUCT_S } from "./names.ts";
@@ -48,7 +48,18 @@ export type Deps = {
   paymentsOn?: () => boolean;
   /** M116: true while this address may try to sign in again (ratelimit.ts). Missing: no limit. */
   signinLimit?: (address: string) => boolean;
+  /** Audit run 2, finding 5: true while payments are in test mode (Dodo's test address, or none set). Then every paid plan is
+   *  held to Free's limits, because anyone can pay with a free test card. False: Dodo is live, and a plan paid in test mode
+   *  (planMode test) is held to Free's limits (the re-attack). Missing: neither. */
+  paymentsTestMode?: () => boolean;
+  /** The owner ids that keep their paid plan's limits in test mode (setting TEST_PAYERS), such as the founder's own account. */
+  testPayers?: () => readonly string[];
 };
+
+/** Audit run 2, finding 5: the owner ids in TEST_PAYERS, separated by commas or spaces. Anything else is ignored. */
+export function parseTestPayers(value: unknown): string[] {
+  return typeof value === "string" ? value.split(/[\s,]+/).filter((x) => x.length > 0 && x.length <= 200) : [];
+}
 
 /** M116 (F29): the words for a model request that cannot go. None asks anyone to bring a key: nobody does. */
 export const SWITCHED_OFF_WORDS = `${PRODUCT_S} included use is not switched on yet. Nothing was sent to Claude. Try again later.`;
@@ -106,7 +117,9 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
 
   // M116: the account routes come before the switch and the Anthropic key, so people can make an account while forwarding is off.
   const accountRoute = createAccountRoutes({ store: d.store, userIdSecret: d.userIdSecret, googleSignIn: d.googleSignIn, now, log,
-    paymentsOn: d.paymentsOn, loopOn: d.loopOn, signinLimit: d.signinLimit });
+    paymentsOn: d.paymentsOn, loopOn: d.loopOn, signinLimit: d.signinLimit,
+    // Live once the Dodo address is the live one (paymentsTestMode answers false); missing: not live.
+    paymentsLive: () => d.paymentsTestMode?.() === false });
 
   const overBudget = (b: ReturnType<typeof budgetCheck>, plan: Plan, userId: string) => {
     // Only reached when the hold did not fit, so a check that now passes (a hold let go meanwhile) still counts as the day.
@@ -145,17 +158,26 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
     if (!checked.ok) return refuse("bad_request", error(checked.status, "invalid_request_error", checked.message), user.id);
 
     // A plan kept through a late payment lasts only until its end date (Dodo's past_due_ends_at); then it is free.
-    const plan = planOf(user.planUntil !== undefined && now() >= user.planUntil ? "free" : user.plan);
+    // Audit run 2, finding 5: while payments are in test mode a paid plan cost nobody anything, so it has Free's limits on
+    // Squibby's key, apart from the owners named in TEST_PAYERS.
+    // Finding 5 re-attack: once Dodo is live, a plan paid in test mode (planMode test) has Free's limits too, whoever holds it:
+    // TEST_PAYERS counts only while Dodo is in test mode.
+    const mode = d.paymentsTestMode?.();
+    const heldToFree = mode === true ? !(d.testPayers?.() ?? []).includes(user.id) : mode === false && !paidPlanCounts(user, true);
+    const plan = planOf(heldToFree || (user.planUntil !== undefined && now() >= user.planUntil) ? "free" : user.plan);
     // This request's own id, so letting go of its slot and hold never takes another request's of the same amount.
     const id = crypto.randomUUID();
     // Must fix 10 (a): the request holds its worst case (its whole max_tokens as output) while it runs, checked and held in
     // one step, so many requests opened at once cannot all pass on the same last cent. M116 step 3: the slot and the hold are
     // taken in that same step (one row written), and let go with the booking in one more (two rows), so a model request
-    // writes at most 3 rows on Cloudflare's free plan. The hold goes when it ends.
-    const worst = checked.free ? 0 : costOf(checked.model, { input_tokens: 0, output_tokens: checked.maxTokens, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 });
-    const started = await d.store.start(user.id, { max: maxInFlight, usd: worst, now: now(), limits: checked.free ? null : plan, id });
+    // writes at most 3 rows on Cloudflare's free plan. The hold goes when it ends. Audit run 2, finding 6: the hold covers
+    // the prompt too (estimated from the body), and the prompt must fit under the limits with what is spent and held, so
+    // large prompts sent at once with a tiny max_tokens cannot all pass at zero spend.
+    const priced = (input: number, output: number) => costOf(checked.model, { input_tokens: input, output_tokens: output, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 });
+    const need = priced(checked.inputTokens, 0), worst = priced(checked.inputTokens, checked.maxTokens);
+    const started = await d.store.start(user.id, { max: maxInFlight, usd: worst, now: now(), limits: plan, id, need });
     if (!started.ok) {
-      if (started.why === "over") return overBudget(budgetCheck(plan, started.spent, now()), plan, user.id);
+      if (started.why === "over") return overBudget(budgetCheck(plan, started.spent, now(), need), plan, user.id);
       return refuse("busy", error(429, "rate_limit_error", BUSY_WORDS), user.id);
     }
 
@@ -181,10 +203,13 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
       catch { await letGo(); retryLater(); return false; }
     };
     const release = async () => { await finish(); };
-    try {
-      const beta = (req.headers.get("anthropic-beta") ?? "").replace(/\s+/g, "");
+    // Audit run 2, finding 7: the whole forward, the reading of a reply that is not streamed, its booking and the let go run as
+    // one piece of work the server is told to keep running (waitUntil), so a client that goes away cannot stop the booking.
+    // A streamed reply is booked when its stream ends, kept alive the same way below (bookedNow).
+    const work = (async (): Promise<Response> => { try {
+      // Audit run 2, finding 8: no anthropic-beta header is forwarded. The runner sends none, and a beta can change what a
+      // request costs (a 1 hour cache, a longer context) in ways the price table does not count.
       const headers = new Headers({ "content-type": "application/json", "x-api-key": d.anthropicKey, "anthropic-version": req.headers.get("anthropic-version") ?? "2023-06-01" });
-      if (beta && /^[A-Za-z0-9._,-]+$/.test(beta)) headers.set("anthropic-beta", beta);
       const target = `${upstream}${url.pathname}${url.searchParams.get("beta") === "true" ? "?beta=true" : ""}`;
       const res = await doFetch(target, { method: "POST", headers, body: checked.body, redirect: "manual" });
       const back = new Headers();
@@ -209,7 +234,6 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
         await release();
         return new Response(text, { status: res.status, headers: back });
       }
-      if (checked.free) { const text = await res.text(); await release(); return new Response(text, { status: res.status, headers: back }); }
       if (res.body && (res.headers.get("content-type") ?? "").includes("text/event-stream")) {
         const sniffer = new UsageSniffer();
         let booked: () => void = () => {};
@@ -224,6 +248,8 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
     } catch {
       await release();
       return error(502, "api_error", `${PRODUCT} could not reach Claude. Try again in a moment.`);
-    }
+    } })();
+    d.waitUntil?.(work.catch(() => {}));
+    return work;
   }
 }

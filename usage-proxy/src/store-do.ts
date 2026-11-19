@@ -11,9 +11,9 @@
 // It needs nothing from Cloudflare at build time: the object talks through `fetch`, and the types below are the small part of the
 // Durable Object API it uses, so the tests run it on a fake of that API (test/fake-do.ts) with Bun alone.
 import { budgetCheck, dayKey, monthKey, type Plan, type Spent } from "./plans.ts";
-import { bestPlan, carriedFor, chargeableSub, keptSub, liveSubCount, shownPlan, usageSummary, type Account, type Billing, type Carry, type Deleted, type DodoMode, type FinishAsk, type OwnerPage, type OwnerUsage, type RefundNeeded, type Release, type ReportCredit, type ReportRemoved, type ReportUse, type SignIn, type StartAsk, type Started, type Store, type Sub, type SubChange, type SuspensionRecord, type UsageRecord, type User, type OwnerPlan } from "./store.ts";
+import { bestPlan, carriedFor, chargeableSub, countsNow, keptSub, liveSubCount, shownPlan, usageSummary, type Account, type Billing, type Carry, type Deleted, type DodoMode, type FinishAsk, type OwnerPage, type OwnerUsage, type RefundNeeded, type Release, type ReportCredit, type ReportRemoved, type ReportUse, type SignIn, type StartAsk, type Started, type Store, type Sub, type SubChange, type SuspensionRecord, type UsageRecord, type User, type OwnerPlan } from "./store.ts";
 import type { DodoLedger, LinkBook } from "./dodo.ts";
-import { DELETED_PREFIX, deletedLineLive, deletedUntil, isDeletedMarker, type DeletedLine } from "./deleted.ts";
+import { DELETED_PREFIX, deletedLineLive, deletedUntil, isDeletedMarker, mergeDeletedLines, sameDeletedLine, type DeletedLine } from "./deleted.ts";
 
 /** The part of Durable Object storage used here (the key value calls, on SQLite backed objects too). */
 export interface StorageLike {
@@ -121,10 +121,12 @@ async function bookedNow(s: StorageLike, now: number): Promise<Spent> {
   const booked = bookedFor((await newestRecord(s))?.totals, now), carried = carriedFor(await s.get<Carry>("carry"), now);
   return { day: booked.day + carried.day, month: booked.month + carried.month };
 }
-/** M116 step 5: why this owner's account cannot be deleted now, or null. */
-async function deleteRefusal(s: StorageLike, now: number): Promise<Exclude<Deleted, { ok: true }>["why"] | null> {
+/** M116 step 5: why this owner's account cannot be deleted now, or null. `hash`: the asking token, which must still be on the
+ *  owner (audit run 2, finding 2: a second delete sent at once finds it gone, and is refused before it writes a line). */
+async function deleteRefusal(s: StorageLike, now: number, hash?: string, liveNow = false): Promise<Exclude<Deleted, { ok: true }>["why"] | null> {
+  if (hash !== undefined && !(await ownerTokens(s)).some(([h]) => h === hash)) return "gone";
   if ((await s.get<boolean>("suspended")) === true) return "suspended";
-  if ((await billingRec(s)).subs.some(([, x]) => chargeableSub(x))) return "live_sub";
+  if ((await billingRec(s)).subs.some(([, x]) => chargeableSub(x, liveNow))) return "live_sub";
   if (alive((await liveOf(s)).running, now).length > 0) return "busy";
   return null;
 }
@@ -177,7 +179,7 @@ export function nextTotals(t: Totals | undefined, r: UsageRecord): Totals {
 function userOf(ownerId: string, t: Tok, plan: OwnerPlan | undefined, suspended: boolean): User {
   if (suspended) return { id: ownerId, plan: plan?.plan ?? t.plan, status: "suspended" };
   if (t.status === "revoked" || !plan) return { id: ownerId, plan: t.plan, status: t.status };
-  return { id: ownerId, plan: plan.plan, status: plan.status, ...(plan.until !== undefined ? { planUntil: plan.until } : {}), ...(plan.renewsOn !== undefined ? { renewsOn: plan.renewsOn } : {}) };
+  return { id: ownerId, plan: plan.plan, status: plan.status, ...(plan.until !== undefined ? { planUntil: plan.until } : {}), ...(plan.renewsOn !== undefined ? { renewsOn: plan.renewsOn } : {}), planMode: plan.mode ?? "test" };
 }
 /** The owner's token list with one token added (or rewritten), and the hashes dropped past MAX_TOKENS_KEPT. */
 function withToken(list: [string, Tok][], hash: string, tok: Tok): { list: [string, Tok][]; dropped: string[] } {
@@ -243,14 +245,35 @@ const OPS: Record<string, Op> = {
     await s.put({ tokens: list, email: a.email, nonces: [...nonces, [a.nonce.id, a.nonce.until]], ...carry });
     return { used: false, dropped };
   },
+  // Audit run 2, finding 4: a deleted line that appeared while owner.signIn ran (a delete in between). If it holds this sign
+  // in's nonce, the sign in is refused: its token comes off, and when no token is left the object is emptied again, as the
+  // delete left it (the line keeps the nonces). Otherwise its nonces are kept as used and its spend carried, once.
+  "owner.lateLine": async (s, a: { hash: string; nonceId: string; now: number; line: DeletedLine }) => {
+    const theirs = a.line.nonces.filter(([, until]) => until >= a.now);
+    if (theirs.some(([id]) => id === a.nonceId)) {
+      const left = (await ownerTokens(s)).filter(([h]) => h !== a.hash);
+      if (left.length === 0) await deleteAll(s, await allKeys(s));
+      else await s.put({ tokens: left });
+      return { used: true };
+    }
+    const kept = ((await s.get<[string, number][]>("nonces")) ?? []).filter(([, until]) => until >= a.now);
+    const nonces = [...kept, ...theirs.filter(([id]) => !kept.some(([k]) => k === id))];
+    const carry: Record<string, unknown> = {};
+    if ((await s.get("carry")) === undefined && !(await newestRecord(s))) carry.carry = { day: a.line.day, dayUsd: a.line.dayUsd, month: a.line.month, monthUsd: a.line.monthUsd };
+    await s.put({ nonces, ...carry });
+    return { used: false };
+  },
   // M116 step 5: is anyone here (an email or a token)? A deleted account's object holds nothing.
+  // Audit run 2, finding 4 (re-attack): does this owner still hold this token? A delete's wipe takes every token off.
+  "owner.holdsToken": async (s, a: { hash: string }) => (await ownerTokens(s)).some(([h]) => h === a.hash),
   "owner.present": async (s) => (await s.get("email")) !== undefined || (await ownerTokens(s)).length > 0,
   // M116 step 5, POST /v1/report/use: the oldest unused credit, in one step.
-  "owner.useReport": async (s, a: { now: number; useId?: string }): Promise<ReportUse> => {
-    const b = await billingRec(s), unused = () => b.reports.filter(([, c]) => c.state === "unused").length;
+  "owner.useReport": async (s, a: { now: number; useId?: string; liveNow?: boolean }): Promise<ReportUse> => {
+    const b = await billingRec(s), spendable = (c: ReportCredit) => c.state === "unused" && countsNow(c, a.liveNow === true);
+    const unused = () => b.reports.filter(([, c]) => spendable(c)).length;
     if (a.useId && b.reports.some(([, c]) => c.useId === a.useId)) return { ok: true, left: unused() };
     let pick: ReportCredit | undefined;
-    for (const [, c] of b.reports) if (c.state === "unused" && (!pick || c.at < pick.at)) pick = c;
+    for (const [, c] of b.reports) if (spendable(c) && (!pick || c.at < pick.at)) pick = c;
     if (!pick) return { ok: false };
     pick.state = "used"; pick.usedAt = a.now;
     if (a.useId) pick.useId = a.useId;
@@ -258,13 +281,13 @@ const OPS: Record<string, Op> = {
     return { ok: true, left: unused() };
   },
   // M116 step 5, account delete, first step: reads only. The refusal, or the deleted line as of now.
-  "owner.deleteInfo": async (s, a: { now: number }) => {
-    const why = await deleteRefusal(s, a.now);
+  "owner.deleteInfo": async (s, a: { now: number; hash?: string; liveNow?: boolean }) => {
+    const why = await deleteRefusal(s, a.now, a.hash, a.liveNow === true);
     return why ? { ok: false, why } : { ok: true, line: await deletedLineOf(s, a.now) };
   },
   // The second step: checked again, then everything the object holds is deleted. What other objects must forget comes back.
-  "owner.wipe": async (s, a: { now: number }) => {
-    const why = await deleteRefusal(s, a.now);
+  "owner.wipe": async (s, a: { now: number; hash?: string; liveNow?: boolean }) => {
+    const why = await deleteRefusal(s, a.now, a.hash, a.liveNow === true);
     if (why) return { ok: false, why };
     const line = await deletedLineOf(s, a.now), b = await billingRec(s);
     const hashes = (await ownerTokens(s)).map(([h]) => h);
@@ -356,14 +379,16 @@ const OPS: Record<string, Op> = {
   },
   "owner.saveCustomer": async (s, a: { customerId: string; mode?: DodoMode }) => {
     const b = await billingRec(s), mode = a.mode ?? "test";
-    if (b.customerId === a.customerId && b.customerMode === mode) return;
+    // A customer id saved for this Dodo mode is never replaced (audit run 2, finding 1): the first one stays, so a payment
+    // event can never move the person's checkout and billing portal to someone else's Dodo customer.
+    if (b.customerId && (b.customerMode ?? "test") === mode) return;
     await s.put({ billing: { ...b, customerId: a.customerId, customerMode: mode } });
   },
   // `removed`: the payment was refunded or lost in a dispute before it arrived. Its credit is kept as removed, never given.
-  "owner.addReport": async (s, a: { paymentId: string; at: number; removed?: boolean }) => {
+  "owner.addReport": async (s, a: { paymentId: string; at: number; removed?: boolean; mode?: DodoMode }) => {
     const b = await billingRec(s);
     if (b.reports.some(([id]) => id === a.paymentId)) return "known";
-    b.reports.push([a.paymentId, { at: a.at, state: a.removed ? "removed" : "unused" }]);
+    b.reports.push([a.paymentId, { at: a.at, state: a.removed ? "removed" : "unused", ...(a.mode ? { mode: a.mode } : {}) }]);
     await s.put({ billing: b });
     return a.removed ? "known" : "added";
   },
@@ -384,11 +409,11 @@ const OPS: Record<string, Op> = {
   "owner.spent": async (s, a: { now: number }) => spentNow(s, a.now),
   // M116 step 3: what the proxy uses. The budget check, the cap and the taking of the slot and hold, in one step and one row.
   // A refusal writes nothing.
-  "owner.start": async (s, a: { max: number; usd: number; now: number; limits: Plan | null; id: string }) => {
+  "owner.start": async (s, a: { max: number; usd: number; now: number; limits: Plan | null; id: string; need?: number }) => {
     const l = await liveOf(s);
     if (a.limits) {
       const spent = await spentNow(s, a.now, l);
-      if (!budgetCheck(a.limits, spent, a.now).ok) return { ok: false, why: "over", spent };
+      if (!budgetCheck(a.limits, spent, a.now, a.need ?? 0).ok) return { ok: false, why: "over", spent };
     }
     const running = alive(l.running, a.now);
     if (running.length >= a.max) return { ok: false, why: "busy" };
@@ -478,15 +503,21 @@ const OPS: Record<string, Op> = {
     const l = await s.get<DeletedLine>(`del:${a.key}`);
     return l && deletedLineLive(l, a.now) ? l : null;
   },
+  // Audit run 2, finding 2: a line already kept is merged with the new one (mergeDeletedLines), never overwritten, so a
+  // second delete's empty line cannot wipe out the spend and the nonces of the first.
   "dir.deletedPut": async (s, a: { key: string; line: DeletedLine }) => {
-    const l = a.line, was = await s.get<DeletedLine>(`del:${a.key}`);
-    await pruneDeleted(s, l.at);
+    await pruneDeleted(s, a.line.at);
+    const was = await s.get<DeletedLine>(`del:${a.key}`), l = mergeDeletedLines(was, a.line);
     if (was && was.until !== l.until) await s.delete([deletedIndex(was.until, a.key)]);
     await s.put({ [`del:${a.key}`]: { at: l.at, day: l.day, dayUsd: l.dayUsd, month: l.month, monthUsd: l.monthUsd, nonces: l.nonces, until: l.until }, [deletedIndex(l.until, a.key)]: a.key });
   },
-  "dir.deletedDrop": async (s, a: { key: string }) => {
+  // Audit run 2, finding 4 (re-attack): the drop a sign in makes. It reads and deletes in this one step, and only when the kept
+  // line is still the very one the sign in read and settled. A delete that ran since wrote a different line, which stays.
+  "dir.deletedDropIf": async (s, a: { key: string; line: DeletedLine }) => {
     const was = await s.get<DeletedLine>(`del:${a.key}`);
-    await s.delete([`del:${a.key}`, ...(was ? [deletedIndex(was.until, a.key)] : [])]);
+    if (!was || !sameDeletedLine(was, a.line)) return false;
+    await s.delete([`del:${a.key}`, deletedIndex(was.until, a.key)]);
+    return true;
   },
   // M116 step 5 review: a deleted owner's suspension log lines keep their kind, date and case, under the deleted marker
   // (DELETED_PREFIX and the HMAC) instead of the owner id. The log is small: suspensions are rare.
@@ -625,10 +656,26 @@ export class DurableStore implements Store {
     const line = o.deletedKey ? await this.call<DeletedLine | null>(DIRECTORY, "dir.deletedGet", { key: o.deletedKey, now: o.now }) : null;
     const r = await this.call<{ used: boolean; dropped: string[] }>(OWNER(u.id), "owner.signIn", { hash, tok: { plan: u.plan, status: u.status }, email: o.email, nonce: { id: o.nonceId, until: o.nonceUntil }, now: o.now, ...(line ? { line } : {}) });
     if (r.used) return false;
+    // Audit run 2, finding 4: a delete can run whole between the read above and owner.signIn. Its line is read again here,
+    // before the token is set, and a new one is settled on the owner in one step: a nonce it holds refuses this sign in (and
+    // takes back what owner.signIn wrote), otherwise its nonces stay used and its spend is carried over.
+    const late = o.deletedKey ? await this.call<DeletedLine | null>(DIRECTORY, "dir.deletedGet", { key: o.deletedKey, now: o.now }) : null;
+    if (late && JSON.stringify(late) !== JSON.stringify(line)) {
+      const settled = await this.call<{ used: boolean }>(OWNER(u.id), "owner.lateLine", { hash, nonceId: o.nonceId, now: o.now, line: late });
+      if (settled.used) return false;
+    }
     if (!(await this.call<boolean>(TOKEN(hash), "token.set", { ownerId: u.id }))) throw new Error("That token belongs to someone else.");
+    // Audit run 2, finding 4 (re-attack): a delete that ran whole since the second read wiped this sign in's token. The sign
+    // in is refused (the person signs in again), its token object is cleared, and the delete's line is left as it is.
+    if (!(await this.call<boolean>(OWNER(u.id), "owner.holdsToken", { hash }))) {
+      await this.call(TOKEN(hash), "token.drop", { ownerId: u.id }).catch(() => {});
+      return false;
+    }
     await this.call(DIRECTORY, "dir.addOwner", { ownerId: u.id });
     for (const h of r.dropped) await this.call(TOKEN(h), "token.drop", { ownerId: u.id }).catch(() => {});
-    if (line && o.deletedKey) await this.call(DIRECTORY, "dir.deletedDrop", { key: o.deletedKey }).catch(() => {});
+    // Only the line this sign in read and settled is dropped, checked and dropped in one step: never a line a later delete wrote.
+    const settledLine = late ?? line;
+    if (settledLine && o.deletedKey) await this.call(DIRECTORY, "dir.deletedDropIf", { key: o.deletedKey, line: settledLine }).catch(() => {});
     return true;
   }
   async account(hash: string, now: number) {
@@ -653,10 +700,10 @@ export class DurableStore implements Store {
   }
   billingOf(ownerId: string) { return this.call<Billing>(OWNER(ownerId), "owner.billing"); }
   async saveCustomer(ownerId: string, customerId: string, mode: DodoMode = "test") { await this.call(OWNER(ownerId), "owner.saveCustomer", { customerId, mode }); }
-  async addReport(ownerId: string, paymentId: string, at: number) {
+  async addReport(ownerId: string, paymentId: string, at: number, mode?: DodoMode) {
     // The payment's owner first (the first one seen stays), then the credit on that owner's own object.
     const { ownerId: owner, removed } = await this.call<{ ownerId: string; removed: boolean }>(PAYMENTS, "pay.setReportOwner", { paymentId, ownerId });
-    return this.call<"added" | "known">(OWNER(owner), "owner.addReport", { paymentId, at, removed });
+    return this.call<"added" | "known">(OWNER(owner), "owner.addReport", { paymentId, at, removed, ...(mode ? { mode } : {}) });
   }
   async removeReport(paymentId: string, at = this.clock()): Promise<ReportRemoved> {
     const ownerId = await this.call<string | null>(PAYMENTS, "pay.reportOwnerOrMark", { paymentId, at });
@@ -664,17 +711,18 @@ export class DurableStore implements Store {
     const result = await this.call<ReportRemoved["result"]>(OWNER(ownerId), "owner.removeReport", { paymentId, at });
     return result === "unknown" ? { result } : { result, ownerId };
   }
-  useReport(ownerId: string, a: { now: number; useId?: string }) { return this.call<ReportUse>(OWNER(ownerId), "owner.useReport", a); }
+  useReport(ownerId: string, a: { now: number; useId?: string; liveNow?: boolean }) { return this.call<ReportUse>(OWNER(ownerId), "owner.useReport", a); }
   /** M116 step 5. The refusal is read first, writing nothing. Then the kept line is written, then the owner's object is wiped
    *  (checked again in that same step), then the other objects forget the owner. A line written for an account whose wipe
    *  then fails or is refused is harmless: the owner still holds data, so it does not count as deleted (isDeletedOwner), and it
    *  is dropped when the person next signs in. What the other objects fail to forget is counted in `leftovers`: the account is
    *  gone either way (its tokens find nobody), and a late payment event still finds the owner deleted. */
-  async deleteAccount(ownerId: string, a: { key: string; now: number }): Promise<Deleted> {
-    const info = await this.call<{ ok: false; why: Exclude<Deleted, { ok: true }>["why"] } | { ok: true; line: DeletedLine }>(OWNER(ownerId), "owner.deleteInfo", { now: a.now });
+  async deleteAccount(ownerId: string, a: { key: string; now: number; hash?: string; liveNow?: boolean }): Promise<Deleted> {
+    const asker = { ...(a.hash !== undefined ? { hash: a.hash } : {}), ...(a.liveNow ? { liveNow: true } : {}) };
+    const info = await this.call<{ ok: false; why: Exclude<Deleted, { ok: true }>["why"] } | { ok: true; line: DeletedLine }>(OWNER(ownerId), "owner.deleteInfo", { now: a.now, ...asker });
     if (!info.ok) return info;
     await this.call(DIRECTORY, "dir.deletedPut", { key: a.key, line: info.line });
-    const w = await this.call<{ ok: false; why: Exclude<Deleted, { ok: true }>["why"] } | { ok: true; line: DeletedLine; hashes: string[]; customerIds: string[]; paymentIds: string[] }>(OWNER(ownerId), "owner.wipe", { now: a.now });
+    const w = await this.call<{ ok: false; why: Exclude<Deleted, { ok: true }>["why"] } | { ok: true; line: DeletedLine; hashes: string[]; customerIds: string[]; paymentIds: string[] }>(OWNER(ownerId), "owner.wipe", { now: a.now, ...asker });
     if (!w.ok) return w;
     let leftovers = 0;
     const tidy = async (step: () => Promise<unknown>) => { try { await step(); } catch { leftovers++; } };

@@ -32,7 +32,7 @@ Run the whole server on this Mac, end to end: `sh scripts/verify-dev.sh` (below)
 |---|---|
 | `src/tokens.ts` | Sign in tokens (random, only the hash kept). A real Anthropic key is never accepted as one |
 | `src/plans.ts` | The plan table (Free and Pro) and the daily and monthly limits, in dollars of Anthropic cost. No prices: they live only in `app/src/prices.json` (M97). `allowanceReport` and `scripts/allowance.ts` say how many measured fixes an allowance covers |
-| `src/filter.ts` | What may be forwarded: two paths, the models Squibby uses, a size limit, `max_tokens` clamped; sets `metadata.user_id` and removes any `metadata` the client sent |
+| `src/filter.ts` | What may be forwarded: only `/v1/messages`, the models Squibby uses, a size limit, `max_tokens` clamped, prompt cache markers with the 5 minute life only; estimates the prompt's tokens for the hold; sets `metadata.user_id` and removes any `metadata` the client sent |
 | `src/userid.ts` | The opaque user id Anthropic sees (keyed hash of the owner id) and the lookup from an id back to an owner |
 | `src/accounts.ts` | Issuing a sign in token; refused for a suspended owner |
 | `src/google.ts` | Sign in with Google (M21): checks a Google ID token (RS256 against Google's keys, issuer, audience = `GOOGLE_CLIENT_ID`, expiry, verified email) with Web Crypto; the owner is `google:<sub>`. The key set comes from Google's own address, or on a local run only from the stand in Google (`GOOGLE_KEYS_URL`) |
@@ -84,6 +84,13 @@ Run the whole server on this Mac, end to end: `sh scripts/verify-dev.sh` (below)
    wrangler said goes to `dist/`.
 5. The switches: `wrangler secret put PROXY_ON` and type on. Off: `wrangler secret delete PROXY_ON`. Without it nothing is
    forwarded, but sign in, `/v1/me` and sign out still work. `PAYMENTS_ON` and `LOOP_ON` work the same way.
+   Audit run 2, finding 5: `PROXY_ON` and payments never go together on Dodo's test address, where anyone can pay with a test
+   card. The deploy refuses that pair; move Dodo to live first (deploy with `--live-payments`). While Dodo is in test mode the
+   server also gives every paid plan Free's limits, apart from the owner ids listed in `TEST_PAYERS` (comma separated, such as
+   the founder's own `google:<sub>`). Each subscription, plan and report credit keeps the Dodo mode it was paid in (one kept
+   before modes counts as test). Once Dodo is live, only live ones count: a test card's Pro or report gives nothing there,
+   `TEST_PAYERS` no longer applies, and a test subscription blocks neither a real Pro checkout nor an account delete. The deploy
+   check reads `PAYMENT_PROVIDER` ignoring case and spaces, and counts it as on when it is a secret.
 
 ### Running the whole server on this Mac (M116 step 6)
 `sh scripts/verify-dev.sh` starts `wrangler dev --local` on 127.0.0.1 with made up settings in a `.dev.vars` file (removed after
@@ -121,7 +128,9 @@ The operator's suspend and restore work on the real store through the Worker: `P
 ## Promises the tests hold it to
 - No prompt, reply, token or Anthropic key is ever in a log event, a stored record or an error message.
 - Squibby's key never reaches the user, and the user's token never reaches Anthropic.
-- A user cannot run past a limit by more than the requests that were already running together (at most 4 at once, `maxInFlight`): the budget is checked before a request starts and booked when it ends, so those few can each pass it. Each request holds its worst case while it runs, checked and held in one step, on the Durable Object store too, even from two server instances at once. One request is limited in size and in `max_tokens`, so the overshoot is bounded, not zero.
+- A user cannot run past a limit by more than the requests that were already running together (at most 4 at once, `maxInFlight`): the budget is checked before a request starts and booked when it ends, so those few can each pass it. Each request holds its worst case while it runs (its prompt, estimated from the body at about 3 bytes a token with a fixed amount per image, plus its whole `max_tokens` as output), checked and held in one step, on the Durable Object store too, even from two server instances at once. The prompt part must fit under the limits with what is spent and held, so large prompts sent at once cannot all pass at zero spend (audit run 2, finding 6); only the answers can run past. One request is limited in size and in `max_tokens`, so the overshoot is bounded, not zero.
+- Only `/v1/messages` is forwarded: `count_tokens` is refused before the store is touched (audit run 2, finding 3; the app never calls it). A `cache_control` at any depth must be `{ type: "ephemeral" }`, with `ttl` absent or `"5m"`: a 1 hour cache costs more than the price table counts (finding 8). No `anthropic-beta` header is forwarded (the runner sends none).
+- The prompt estimate can only price what the body carries, so content that is billed for more than its bytes is refused (audit run 2, finding 6 re-attack). Content blocks are a closed list: `text`, `image`, `tool_result`, `tool_use`, `thinking`, `redacted_thinking`, `server_tool_use`, `web_search_tool_result`, with a tool result holding only text and images. An image must be base64 with an image media type. A document (a PDF is billed per page as an image plus its text, whatever its size in bytes), any `source` of type `url` or `file` (billed in full, a few bytes here), and any other block kind are refused; the runner sends none of them. Only images in real image blocks are priced at the flat image amount. Request fields are a closed list too (`model`, `max_tokens`, `messages`, `system`, `stream`, `metadata`, `tools`, `thinking`, `output_config`, `temperature`, `top_p`, `top_k`, `stop_sequences`), so price changing fields such as `speed`, `service_tier` and `inference_geo` are refused.
 - The address requests are forwarded to must be https (this machine aside), a redirect from it is never followed (our key would travel with it), and a body is read only up to its size limit.
 - A stream that is cut short is still charged for what was used.
 - A store failure is answered with a plain 503 in the API's own error shape ("Nothing was sent to Claude"), never with Cloudflare's
@@ -154,7 +163,10 @@ The operator's suspend and restore work on the real store through the Worker: `P
   One "deleted" line, under the same HMAC, holds that month's spend and the sign in nonces still good; it goes at the end of
   that month, and never sooner than 3 days after the delete (a checkout lasts 24 hours and Dodo retries for about 37). A
   payment that still reaches Dodo for a deleted account in that time grants nothing and is kept as a refund line (Dodo ids
-  only) until the operator refunds it and runs `refunds done <id>`; `usage` shows these first.
+  only) until the operator refunds it and runs `refunds done <id>`; `usage` shows these first. Two deletes sent at once merge
+  their lines (the larger spend stays), and a sign in drops the line only when it is still the exact one that sign in read,
+  in one step; a sign in whose token a delete wiped while it ran is refused and the person signs in again (security audit run
+  2, findings 2 and 4).
 
 ## Telling Anthropic who a request is for, and cutting one person off (24 Oct 2026)
 
@@ -163,7 +175,7 @@ Anthropic's support said (23 Oct 2026) that we are responsible for Usage Policy 
 **The opaque id.** Every forwarded message request carries `metadata: { user_id }`, which Anthropic documents as an opaque identifier for the end user. Ours is HMAC SHA256 of the owner id, keyed with the operator's secret, as 64 hex characters: stable per person, different between people, no email or name, not reversible without the key.
 - The secret is the setting `METADATA_USER_ID_SECRET`, at least 32 characters, in the operator's environment (the proxy gets it as `userIdSecret`). **There is no default.** Missing or short, the proxy forwards nothing and answers 503 with a plain sentence ("not ready yet. Nothing was sent to Claude"). With the switch off, the switch's message still comes first.
 - Whatever `metadata` the client sent is removed and replaced, so no client can choose its own id or use someone else's.
-- `count_tokens`: Anthropic's page for that endpoint (checked 24 Oct 2026) lists no `metadata` body field, so none is sent, and a client's is dropped. Not checked against the live API (no network calls were made): whether it would accept the field anyway is unknown.
+- `count_tokens` is no longer forwarded at all (audit run 2, finding 3), so the question of its `metadata` field is gone.
 - The id and the secret are never logged or stored, and not in any reply to the user.
 - **Back up the secret apart from the server. Changing it changes every id**, so ids in older Anthropic notices can no longer be matched.
 
@@ -201,7 +213,9 @@ remote switch, and it stays off until Anthropic confirms in writing (`docs/decis
 4. Set `PAYMENT_PROVIDER=dodo`, `PAYMENTS_ON` and `DODO_PAYMENTS_API_KEY` (a `dodo_test_` key while `DODO_API_BASE` in
    `wrangler.toml` is `https://test.dodopayments.com`). The server then serves the webhook, `POST /v1/checkout` and `POST /v1/portal`.
 5. Checkouts are made only here (M116, `src/billing-routes.ts`): the app sends an item name, the server picks the product id, puts
-   the owner from the sign in token in `metadata.companion_user_id`, locks the account's email, and answers the checkout address.
+   the owner from the sign in token in `metadata.companion_user_id` with its signature in `metadata.companion_sig` (an HMAC keyed
+   from `METADATA_USER_ID_SECRET` under its own label, `src/owner-sig.ts`), locks the account's email, and answers the checkout
+   address. Without a usable `METADATA_USER_ID_SECRET` no checkout is made.
    A second Pro is refused while one subscription is live, and the report while Pro includes it. The browser comes back to
    `/paid`, which drops its query (Dodo puts the email there) with a 303 to `/paid/done`, logs nothing and grants nothing.
    Cloudflare's invocation logs are off in `wrangler.toml` for the same reason.
@@ -232,8 +246,11 @@ remote switch, and it stays off until Anthropic confirms in writing (`docs/decis
   `is_partial` false, or `dispute.lost`, takes back that credit if unused; a used one stays used and is logged. One that arrives
   before its payment leaves a marker by `payment_id`, so the payment, when Dodo delivers it, gives no credit. A refund or dispute of
   a subscription payment changes no plan: Pro follows the subscription events Dodo sends after it.
-- **Who it is:** the `companion_user_id` in the payload's `metadata`, or else the person learned from an earlier `payment.succeeded`
-  that carried it for the same Dodo customer id (the first link wins). Email and name are never used and never logged. An event that
+- **Who it is:** the `companion_user_id` in the payload's `metadata`, only when its `companion_sig` checks out with
+  `METADATA_USER_ID_SECRET`, or else the person learned from an earlier `payment.succeeded` that carried a signed one for the same
+  Dodo customer id (the first link wins). Unsigned metadata is never trusted: a Dodo static `/buy/` link lets anyone set
+  `metadata_companion_user_id` to someone else's id (security audit run 2, finding 1). A customer id once saved for a Dodo mode is
+  never replaced by another of the same mode. Email and name are never used and never logged. An event that
   cannot be matched answers 503 so Dodo delivers it again.
 - **Logs:** only a short kind, the event type, the webhook id, our own user id, the plan and an unknown product id. Never the body,
   the secret, an email, a name or an error message. A test greps the output for this.

@@ -4,31 +4,52 @@
 // same tests run against both (test/stores.ts).
 import { budgetCheck, dayKey, monthKey, type Plan, type Spent } from "./plans.ts";
 import type { Usage } from "./usage.ts";
-import { DELETED_PREFIX, deletedLineLive, deletedUntil, type DeletedLine } from "./deleted.ts";
+import { DELETED_PREFIX, deletedLineLive, deletedUntil, mergeDeletedLines, type DeletedLine } from "./deleted.ts";
 
 /** `planUntil`: a plan a late payment, or a cancel at the end of the period, keeps only until then (Dodo's past_due_ends_at or
  *  next_billing_date); from then on the person is on free. `renewsOn`: the next renewal date, when a payment event gave one. */
-export type User = { id: string; plan: string; status: "active" | "past_due" | "on_hold" | "cancelling" | "canceled" | "revoked" | "suspended"; planUntil?: number; renewsOn?: number };
+/** `planMode` (audit run 2, finding 5 re-attack): set when the plan came from a payment event, and says which Dodo that payment
+ *  was made in. Once Dodo is live, a plan from test mode (a free test card) counts as Free (see paidPlanCounts). */
+export type User = { id: string; plan: string; status: "active" | "past_due" | "on_hold" | "cancelling" | "canceled" | "revoked" | "suspended"; planUntil?: number; renewsOn?: number; planMode?: DodoMode };
 /** The plan a payment event gave an owner. It wins over the plan written with each token, until a newer event changes it.
  *  M116: `on_hold` (a failed renewal Dodo stopped retrying: plan free) and `cancelling` (Pro until `until`). */
-export type OwnerPlan = { plan: string; status: "active" | "past_due" | "on_hold" | "cancelling"; until?: number; renewsOn?: number };
+/** `mode`: the Dodo mode of the payment the plan came from. Missing counts as test: nothing was live before modes were kept. */
+export type OwnerPlan = { plan: string; status: "active" | "past_due" | "on_hold" | "cancelling"; until?: number; renewsOn?: number; mode?: DodoMode };
 /** M116 step 4: one Dodo subscription as its newest event left it. The owner's plan is the best of their subscriptions
  *  (bestPlan), so a cancel or an expiry of one never drops a person who has another that is live. `at`: that event's time. */
-export type SubChange = { plan: string; status: OwnerPlan["status"]; until?: number; renewsOn?: number; customerId?: string; customerMode?: DodoMode };
+/** `mode`: the Dodo mode the subscription's events came from (missing: test, as for a customer id). */
+export type SubChange = { plan: string; status: OwnerPlan["status"]; until?: number; renewsOn?: number; customerId?: string; customerMode?: DodoMode; mode?: DodoMode };
 export type Sub = SubChange & { at: number };
 /** Which Dodo a customer id came from. Test mode and live mode keep separate customers, so an id from one is unknown to the
  *  other. A customer id kept without a mode counts as test: nothing was live before modes were kept. */
 export type DodoMode = "test" | "live";
 /** One $29 report credit, keyed by Dodo's payment_id. `removed`: a full refund or a lost dispute took it back before use, or
  *  arrived before the payment did (Dodo does not promise the order), so the credit was never given. */
-export type ReportCredit = { at: number; state: "unused" | "used" | "removed"; useId?: string; usedAt?: number };
+export type ReportCredit = { at: number; state: "unused" | "used" | "removed"; useId?: string; usedAt?: number; mode?: DodoMode };
+/** Audit run 2, finding 5 re-attack: the Dodo mode of a subscription, plan or report credit. Missing is test. */
+export const modeOf = (x: { mode?: DodoMode }): DodoMode => x.mode ?? "test";
+/** True when a record from this Dodo mode counts now. Once Dodo is live (`liveNow`), only live ones do: in test mode anyone pays
+ *  with a free test card, and no live event ever ends a test subscription. In test mode both count, so the flows can be tried
+ *  (the proxy still holds test mode plans to Free's limits, apart from TEST_PAYERS). */
+export const countsNow = (x: { mode?: DodoMode }, liveNow: boolean): boolean => !liveNow || modeOf(x) === "live";
+/** True when the person's paid plan counts now. A plan that came from a payment counts in live mode only when that payment was
+ *  live. A plan written with a token and never by a payment (no `planMode`) is left as it is. */
+export const paidPlanCounts = (u: User, liveNow: boolean): boolean => !liveNow || u.planMode === undefined || u.planMode === "live";
 /** What the payment routes read about an owner, in one step and writing nothing. */
 export type Billing = { email: string | null; customerId: string | null; customerMode: DodoMode | null; subs: [string, Sub][]; reports: [string, ReportCredit][] };
 export type ReportRemoved = { result: "removed" | "used" | "already" | "unknown"; ownerId?: string };
 
 /** The owner's plan from their subscriptions: any active one wins (the newest renew date shown); then the one kept the longest
- *  (cancelling or past due, until its date); then on hold (a failed renewal); then Free. */
+ *  (cancelling or past due, until its date); then on hold (a failed renewal); then Free. Audit run 2, finding 5 re-attack: a
+ *  paid plan from live subscriptions wins over any from test ones, and the plan keeps the mode it came from, so once Dodo is
+ *  live a test card's Pro counts as Free. */
 export function bestPlan(subs: readonly [string, Sub][]): OwnerPlan {
+  const live = subs.filter(([, x]) => modeOf(x) === "live"), fromLive = bestOf(live);
+  if (fromLive.plan !== "free") return { ...fromLive, mode: "live" };
+  const any = bestOf(subs);
+  return any.plan !== "free" ? { ...any, mode: "test" } : any;
+}
+function bestOf(subs: readonly [string, Sub][]): OwnerPlan {
   const all = subs.map(([, x]) => x), paid = all.filter((x) => x.plan !== "free");
   const open = paid.filter((x) => x.until === undefined);
   if (open.length) {
@@ -43,15 +64,14 @@ export function bestPlan(subs: readonly [string, Sub][]): OwnerPlan {
 }
 /** M116 step 5: a subscription that could still charge the person (active, past due, on hold or paused). Deleting the account is
  *  refused while one exists. A cancelling one (Pro until its date, never charged again) and an ended one are not. */
-export const chargeableSub = (x: Sub): boolean =>
-  x.status === "on_hold" || x.status === "past_due" || (x.status === "active" && x.plan !== "free");
+export const chargeableSub = (x: Sub, liveNow = false): boolean => countsNow(x, liveNow) && (x.status === "on_hold" || x.status === "past_due" || (x.status === "active" && x.plan !== "free"));
 /** A subscription that could still charge the person, or still gives Pro: a second Pro checkout is refused while one exists. */
 export const liveSub = (x: Sub, now: number): boolean =>
   x.status === "on_hold" || (x.plan !== "free" && (x.until === undefined || x.until > now));
 /** The sub as kept: only these fields. */
 export const keptSub = (c: SubChange, at: number): Sub => ({ plan: c.plan, status: c.status, at,
   ...(c.until !== undefined ? { until: c.until } : {}), ...(c.renewsOn !== undefined ? { renewsOn: c.renewsOn } : {}),
-  ...(c.customerId ? { customerId: c.customerId, customerMode: c.customerMode ?? "test" } : {}) });
+  ...(c.customerId ? { customerId: c.customerId, customerMode: c.customerMode ?? "test" } : {}), ...(c.mode ? { mode: c.mode } : {}) });
 
 /** M116 step 5: the plan an owner is on now, for the operator's view: a payment's plan until its end date, else the plan
  *  written with their newest working token, else Free. */
@@ -97,7 +117,9 @@ export function usageSummary(records: readonly UsageRecord[], month: string, now
 /** M116 step 5: the newest release for one platform (darwin-aarch64 and so on), as the operator set it. `stopped`: pulled. */
 export type Release = { version: string; notes: string; url: string; signature: string; pubDate: string; stopped?: boolean };
 /** M116 step 5, account delete. `live_sub`: a subscription could still charge. `busy`: a model request is running. */
-export type Deleted = { ok: true; leftovers: number } | { ok: false; why: "live_sub" | "busy" | "suspended" };
+/** `gone`: the asking token is no longer on the account (a second delete sent at the same time, or a sign out): nothing is
+ *  written (audit run 2, finding 2). */
+export type Deleted = { ok: true; leftovers: number } | { ok: false; why: "live_sub" | "busy" | "suspended" | "gone" };
 /** M116 step 5 review: money that reached Dodo for a deleted account (a checkout opened before the delete and paid after it).
  *  Nothing was granted, so the operator refunds it in Dodo, and cancels the subscription for a `subscription` one. Dodo ids
  *  only: no owner id, no email. `id`: the payment id or the subscription id. Kept until the operator clears it (`refunds done`):
@@ -121,8 +143,9 @@ export type SignIn = { email: string; nonceId: string; nonceUntil: number; now: 
 export type SuspensionRecord = { ownerId: string; kind: "suspended" | "restored"; at: number; caseId?: string };
 export type UsageRecord = { userId: string; model: string; usage: Usage; usd: number; at: number; complete: boolean };
 /** M116 step 3, one step to start a model request: `max` running at once, `usd` its worst case held while it runs, checked
- *  against `limits` (null for a request that costs nothing, which takes only a slot), `id` the request's own id. */
-export type StartAsk = { max: number; usd: number; now: number; limits: Plan | null; id: string };
+ *  against `limits` (null for a request that costs nothing, which takes only a slot), `id` the request's own id. `need`
+ *  (audit run 2, finding 6): the part of `usd` that must fit under the limits with what is spent and held (the prompt). */
+export type StartAsk = { max: number; usd: number; now: number; limits: Plan | null; id: string; need?: number };
 /** Over the limit comes before busy, and either way nothing was taken. `spent` is what the limit was checked against. */
 export type Started = { ok: true } | { ok: false; why: "busy" } | { ok: false; why: "over"; spent: Spent };
 /** One step to finish it: let go of its slot and hold and, with `record`, book what it really cost. */
@@ -180,22 +203,23 @@ export interface Store {
   applySubscription(ownerId: string, subscriptionId: string, change: SubChange, at: number): Promise<boolean>;
   /** M116: the owner's email, Dodo customer id, subscriptions and report credits. Reads only. */
   billingOf(ownerId: string): Promise<Billing>;
-  /** M116: keep the Dodo customer id on the owner (from a payment whose metadata names them), with the mode it came from. */
+  /** M116: keep the Dodo customer id on the owner (from a payment whose signed metadata names them), with the mode it came from.
+   *  A customer id already saved for that mode is never replaced (audit run 2, finding 1). */
   saveCustomer(ownerId: string, customerId: string, mode?: DodoMode): Promise<void>;
-  /** M116: one report credit for this payment_id. "known" when that payment was seen before (a retry, or one refunded since),
+  /** M116: one report credit for this payment_id, kept with the Dodo mode it was paid in (missing: test). "known" when that payment was seen before (a retry, or one refunded since),
    *  or was refunded or lost in a dispute before it arrived: then the credit is kept as removed, never given. */
-  addReport(ownerId: string, paymentId: string, at: number): Promise<"added" | "known">;
+  addReport(ownerId: string, paymentId: string, at: number, mode?: DodoMode): Promise<"added" | "known">;
   /** M116: take back an unused credit (a full refund or a lost dispute). The owner is found by the payment_id. For a payment
    *  not seen yet ("unknown"), a marker is kept by payment_id, so the payment's credit, if it comes later, is never given. */
   removeReport(paymentId: string, at?: number): Promise<ReportRemoved>;
   /** M116 step 5, POST /v1/report/use: spend the oldest unused credit, in one step. With `useId`, a use id seen before spends
-   *  nothing more (a retry after a lost answer). */
-  useReport(ownerId: string, a: { now: number; useId?: string }): Promise<ReportUse>;
+   *  nothing more (a retry after a lost answer). With `liveNow` (Dodo is live), only a credit paid in live mode is spent. */
+  useReport(ownerId: string, a: { now: number; useId?: string; liveNow?: boolean }): Promise<ReportUse>;
   /** M116 step 5: delete the account. Refused while a subscription could still charge, or a model request runs. Removes the
    *  owner, every token hash, the usage records, the email and the payment links (a link to a Dodo customer, and a report
-   *  payment's owner, become DELETED_PREFIX + key). Keeps the suspension log lines, with DELETED_PREFIX + key in place of the
+   *  payment's owner, become DELETED_PREFIX + key). With `liveNow` (Dodo is live), a test mode subscription does not refuse it. Keeps the suspension log lines, with DELETED_PREFIX + key in place of the
    *  owner id, and one line under `key` (deleted.ts) until its `until`. */
-  deleteAccount(ownerId: string, a: { key: string; now: number }): Promise<Deleted>;
+  deleteAccount(ownerId: string, a: { key: string; now: number; hash?: string; liveNow?: boolean }): Promise<Deleted>;
   /** True while the owner's account is deleted: the line under `key` is kept (it goes at its `until`) and the owner has not
    *  signed in again. */
   isDeletedOwner(ownerId: string, key: string, now: number): Promise<boolean>;
@@ -245,7 +269,7 @@ export class MemoryStore implements Store {
     const paid = this.#plans.get(u.id)?.plan;
     if (this.#suspended.has(u.id)) return { id: u.id, plan: paid?.plan ?? u.plan, status: "suspended" };   // the flag wins over whatever status was written
     if (u.status === "revoked" || !paid) return u;
-    return { id: u.id, plan: paid.plan, status: paid.status, ...(paid.until !== undefined ? { planUntil: paid.until } : {}), ...(paid.renewsOn !== undefined ? { renewsOn: paid.renewsOn } : {}) };
+    return { id: u.id, plan: paid.plan, status: paid.status, ...(paid.until !== undefined ? { planUntil: paid.until } : {}), ...(paid.renewsOn !== undefined ? { renewsOn: paid.renewsOn } : {}), planMode: paid.mode ?? "test" };
   }
   async signIn(hash: string, u: User, o: SignIn) {
     const used = this.#nonces.get(u.id) ?? new Map<string, number>();
@@ -298,14 +322,17 @@ export class MemoryStore implements Store {
       subs: [...(this.#subs.get(ownerId) ?? [])].map(([k, v]): [string, Sub] => [k, { ...v }]),
       reports: [...(this.#reports.get(ownerId) ?? [])].map(([k, v]): [string, ReportCredit] => [k, { ...v }]) };
   }
-  async saveCustomer(ownerId: string, customerId: string, mode: DodoMode = "test") { this.#customers.set(ownerId, { id: customerId, mode }); }
-  async addReport(ownerId: string, paymentId: string, at: number) {
+  async saveCustomer(ownerId: string, customerId: string, mode: DodoMode = "test") {
+    if (this.#customers.get(ownerId)?.mode === mode) return;   // never replaces a saved id of the same mode (audit run 2, finding 1)
+    this.#customers.set(ownerId, { id: customerId, mode });
+  }
+  async addReport(ownerId: string, paymentId: string, at: number, mode?: DodoMode) {
     const owner = this.#reportOwners.get(paymentId) ?? ownerId;   // a payment belongs to whoever it was first seen for
     this.#reportOwners.set(paymentId, owner);
     const list = this.#reports.get(owner) ?? new Map<string, ReportCredit>();
     if (list.has(paymentId)) return "known" as const;
     const early = this.#removedEarly.has(paymentId);   // refunded or lost before it arrived: kept, never given
-    list.set(paymentId, { at, state: early ? "removed" : "unused" });
+    list.set(paymentId, { at, state: early ? "removed" : "unused", ...(mode ? { mode } : {}) });
     this.#reports.set(owner, list);
     return early ? "known" as const : "added" as const;
   }
@@ -317,26 +344,28 @@ export class MemoryStore implements Store {
     c.state = "removed";
     return { result: "removed", ownerId };
   }
-  async useReport(ownerId: string, a: { now: number; useId?: string }): Promise<ReportUse> {
+  async useReport(ownerId: string, a: { now: number; useId?: string; liveNow?: boolean }): Promise<ReportUse> {
     const list = this.#reports.get(ownerId) ?? new Map<string, ReportCredit>();
-    const unused = () => [...list.values()].filter((c) => c.state === "unused").length;
+    const spendable = (c: ReportCredit) => c.state === "unused" && countsNow(c, a.liveNow === true);
+    const unused = () => [...list.values()].filter(spendable).length;
     if (a.useId && [...list.values()].some((c) => c.useId === a.useId)) return { ok: true, left: unused() };
     let pick: ReportCredit | undefined;
-    for (const c of list.values()) if (c.state === "unused" && (!pick || c.at < pick.at)) pick = c;
+    for (const c of list.values()) if (spendable(c) && (!pick || c.at < pick.at)) pick = c;
     if (!pick) return { ok: false };
     pick.state = "used"; pick.usedAt = a.now;
     if (a.useId) pick.useId = a.useId;
     return { ok: true, left: unused() };
   }
-  async deleteAccount(ownerId: string, a: { key: string; now: number }): Promise<Deleted> {
+  async deleteAccount(ownerId: string, a: { key: string; now: number; hash?: string; liveNow?: boolean }): Promise<Deleted> {
+    if (a.hash !== undefined && this.#users.get(a.hash)?.id !== ownerId) return { ok: false, why: "gone" };
     if (this.#suspended.has(ownerId)) return { ok: false, why: "suspended" };
-    if ([...(this.#subs.get(ownerId)?.values() ?? [])].some(chargeableSub)) return { ok: false, why: "live_sub" };
+    if ([...(this.#subs.get(ownerId)?.values() ?? [])].some((x) => chargeableSub(x, a.liveNow === true))) return { ok: false, why: "live_sub" };
     if ((this.#running.get(ownerId) ?? 0) > 0) return { ok: false, why: "busy" };
     const booked = { day: this.#spent.get(`${ownerId}|d|${dayKey(a.now)}`) ?? 0, month: this.#spent.get(`${ownerId}|m|${monthKey(a.now)}`) ?? 0 };
     const carried = carriedFor(this.#carry.get(ownerId), a.now);
     const nonces: [string, number][] = [...(this.#nonces.get(ownerId) ?? [])].filter(([, until]) => until >= a.now);
     this.#pruneDeleted(a.now);
-    this.#deleted.set(a.key, { at: a.now, day: dayKey(a.now), dayUsd: booked.day + carried.day, month: monthKey(a.now), monthUsd: booked.month + carried.month, nonces, until: deletedUntil(a.now, nonces) });
+    this.#deleted.set(a.key, mergeDeletedLines(this.#deleted.get(a.key), { at: a.now, day: dayKey(a.now), dayUsd: booked.day + carried.day, month: monthKey(a.now), monthUsd: booked.month + carried.month, nonces, until: deletedUntil(a.now, nonces) }));
     // The suspension log keeps its lines, under the same HMAC instead of the owner id (no Google id is kept).
     for (const l of this.#log) if (l.ownerId === ownerId) l.ownerId = `${DELETED_PREFIX}${a.key}`;
     for (const [hash, u] of this.#users) if (u.id === ownerId) this.#users.delete(hash);
@@ -419,7 +448,7 @@ export class MemoryStore implements Store {
   async start(userId: string, a: StartAsk): Promise<Started> {
     if (a.limits) {
       const spent = this.#spentNow(userId, a.now);
-      if (!budgetCheck(a.limits, spent, a.now).ok) return { ok: false, why: "over", spent };
+      if (!budgetCheck(a.limits, spent, a.now, a.need ?? 0).ok) return { ok: false, why: "over", spent };
     }
     const n = this.#running.get(userId) ?? 0;
     if (n >= a.max) return { ok: false, why: "busy" };

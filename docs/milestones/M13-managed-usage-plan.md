@@ -16,7 +16,7 @@ Claude Code can be pointed at another address with an environment setting, and i
 
 ## What the proxy does with each request
 1. Takes the token from the key header. Looks up its hash. Unknown, revoked or expired: refused with a plain message, nothing forwarded.
-2. Allows only the paths and models Companion uses (`/v1/messages`, `/v1/messages/count_tokens`; the models in `runner/src/models.ts`). Everything else is refused. Limits the request size and clamps `max_tokens`.
+2. Allows only the paths and models Companion uses (`/v1/messages`; `count_tokens` was dropped in audit run 2, 19 Nov 2026, because the app never calls it; the models in `runner/src/models.ts`). Everything else is refused. Limits the request size and clamps `max_tokens`.
 3. Checks the user's plan and what is left today and this month. Out of budget: refused with a message the app shows as is, and nothing is sent to Anthropic.
 4. Replaces the key with Companion's, forwards the request, and streams the reply back unchanged.
 5. Reads the token counts from the reply (the streaming events or the JSON), prices them with the same table the app uses, and takes that off the user's budget. A request that ends early still counts what was used.

@@ -81,7 +81,7 @@ describe("what is forwarded", () => {
     expect(s.headers.get("cookie")).toBeNull();
     expect(s.headers.get("x-forwarded-for")).toBeNull();
     expect(s.headers.get("anthropic-version")).toBe("2023-06-01");
-    expect(s.headers.get("anthropic-beta")).toBe("prompt-caching-2024-07-31,foo bar".replace(" ", ""));   // spaces are not valid in a beta list, so they are removed
+    expect(s.headers.get("anthropic-beta")).toBeNull();   // audit run 2, finding 8: no beta header is forwarded (the runner sends none)
     expect([...s.headers.values()].join(" ")).not.toContain(token);
   });
   test("the query beta=true that Claude Code adds is passed on, any other query is dropped", async () => {
@@ -163,10 +163,10 @@ describe("metadata.user_id: who the request is for, without saying who", () => {
     const t = rig({ enabled: false, secret: null }); const r = await t.send();
     expect((await errBody(r)).error.message).toMatch(/not switched on yet/i);   // M116 (F29): never "your own Claude key" any more
   });
-  test("counting tokens: that endpoint documents no metadata field, so none is sent, even if the client sent one", async () => {
+  test("counting tokens is not forwarded at all (audit run 2, finding 3: the app never calls it)", async () => {
     const t = rig({ upstream: () => json({ input_tokens: 5 }) });
-    await t.send({ path: "/v1/messages/count_tokens", body: { model: "claude-sonnet-5-5", messages: [{ role: "user", content: "x" }], metadata: { user_id: "evil" } } });
-    expect(t.seen.length).toBe(1); expect("metadata" in sentBody(t)).toBe(false);
+    const r = await t.send({ path: "/v1/messages/count_tokens", body: { model: "claude-sonnet-5-5", messages: [{ role: "user", content: "x" }], metadata: { user_id: "evil" } } });
+    expect(r.status).toBe(404); expect(t.seen.length).toBe(0);
   });
   test("the derived id and the secret are never in a log event, a stored record, or anything the user gets back", async () => {
     const t = rig(); const r = await t.send(); const text = await r.text();
@@ -312,10 +312,10 @@ describe("money", () => {
       expect(t.store.records.length).toBe(0); expect(t.store.inFlight("u1")).toBe(0);
     }
   });
-  test("counting tokens is allowed and never charged", async () => {
+  test("counting tokens is refused (audit run 2, finding 3): nothing sent, nothing booked", async () => {
     const t = rig({ upstream: () => json({ input_tokens: 123 }) });
     const r = await t.send({ path: "/v1/messages/count_tokens", body: { model: "claude-sonnet-5-5", messages: [{ role: "user", content: "x" }] } });
-    expect(r.status).toBe(200); expect(t.store.records.length).toBe(0);
+    expect(r.status).toBe(404); expect(t.seen.length).toBe(0); expect(t.store.records.length).toBe(0);
   });
   test("only a few requests run at once for one user", async () => {
     let release!: () => void; const gate = new Promise<void>((r) => (release = r));

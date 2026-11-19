@@ -28,11 +28,13 @@ export function nextReset(kind: "day" | "month", ms: number): number {
 
 export type Spent = { day: number; month: number };
 export type Budget = { ok: true } | { ok: false; reason: "day" | "month"; resetsAt: number };
-/** May this user send another request? Refused at or over a limit. One request can run past by what it costs (its size and
- *  max_tokens are limited), and a few at the same time past by that many times (the proxy limits how many run at once). */
-export function budgetCheck(plan: Plan, spent: Spent, now: number): Budget {
-  if (spent.month >= plan.monthlyUsd) return { ok: false, reason: "month", resetsAt: nextReset("month", now) };
-  if (spent.day >= plan.dailyUsd) return { ok: false, reason: "day", resetsAt: nextReset("day", now) };
+/** May this user send another request? Refused at or over a limit. `need`: what the request is sure to cost on top of `spent`
+ *  (its prompt, audit run 2 finding 6), refused when the two together pass a limit. Only its answer can run past: by its
+ *  max_tokens (limited), and a few at the same time by that many times (the proxy limits how many run at once), each held
+ *  while it runs so the next one sees it. */
+export function budgetCheck(plan: Plan, spent: Spent, now: number, need = 0): Budget {
+  if (spent.month >= plan.monthlyUsd || spent.month + need > plan.monthlyUsd) return { ok: false, reason: "month", resetsAt: nextReset("month", now) };
+  if (spent.day >= plan.dailyUsd || spent.day + need > plan.dailyUsd) return { ok: false, reason: "day", resetsAt: nextReset("day", now) };
   return { ok: true };
 }
 

@@ -107,8 +107,21 @@ fi
 has_name() { grep -q "\"name\": *\"$1\"" "$OUT/secret-names.json"; }
 NEEDED="$ALWAYS"
 # A switch counts as set when its name is set on Cloudflare (its value is never read), or it is a binding in the dry run.
-if has_name PROXY_ON || grep -Eq "env\.PROXY_ON([^A-Za-z0-9_]|\$)" "$OUT/dry-run.log"; then NEEDED="$NEEDED $FORWARDING"; fi
-if has_name PAYMENTS_ON || grep -Eq "env\.PAYMENTS_ON([^A-Za-z0-9_]|\$)" "$OUT/dry-run.log" || grep -q 'env\.PAYMENT_PROVIDER ("dodo")' "$OUT/dry-run.log"; then NEEDED="$NEEDED $PAYMENTS"; fi
+proxy_set=0; pay_set=0
+if has_name PROXY_ON || grep -Eq "env\.PROXY_ON([^A-Za-z0-9_]|\$)" "$OUT/dry-run.log"; then NEEDED="$NEEDED $FORWARDING"; proxy_set=1; fi
+if has_name PAYMENTS_ON || grep -Eq "env\.PAYMENTS_ON([^A-Za-z0-9_]|\$)" "$OUT/dry-run.log" || has_name PAYMENT_PROVIDER || grep -Eiq 'env\.PAYMENT_PROVIDER \("[[:space:]]*dodo[[:space:]]*"\)' "$OUT/dry-run.log"; then NEEDED="$NEEDED $PAYMENTS"; pay_set=1; fi
+# PAYMENT_PROVIDER counts as dodo however it is written (the server ignores case and spaces), and when it is a secret, whose
+# value this script never reads (audit run 2, finding 5 re-attack).
+# Audit run 2, finding 5: forwarding and payments together only on Dodo's live address. In test mode anyone can pay with a
+# free test card, and with forwarding on that would spend Squibby's Anthropic key. (The server also holds every paid plan to
+# Free's limits while Dodo is in test mode, apart from the owners in TEST_PAYERS, for a switch set later without this script.)
+if [ "$proxy_set" -eq 1 ] && [ "$pay_set" -eq 1 ] && [ "$base" = "$DODO_TEST" ]; then
+  rm -f "$OUT/secret-names.json"
+  echo "PROXY_ON and payments are both on, and Dodo is in test mode ($DODO_TEST). Anyone could get Pro with a test card, on Squibby's Anthropic key."
+  echo "Turn one off first (wrangler secret delete PROXY_ON, or wrangler secret delete PAYMENTS_ON with PAYMENT_PROVIDER none), or move Dodo to live and deploy with --live-payments."
+  echo "Nothing was deployed."
+  exit 1
+fi
 missing=""
 for name in $NEEDED; do
   if ! grep -q "\"name\": *\"$name\"" "$OUT/secret-names.json"; then missing="$missing $name"; fi

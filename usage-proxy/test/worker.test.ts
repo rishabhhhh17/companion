@@ -5,6 +5,7 @@ import worker, { handle, switchOn, ALL_SECRETS, OPERATOR_PATH, STATUS_PATH, type
 import { DurableStore, OWNER, PAYMENTS } from "../src/store-do.ts";
 import { issueToken } from "../src/accounts.ts";
 import { signDodoForTest } from "../src/dodo.ts";
+import { withOwnerSig } from "./owner-sig-fixture.ts";
 import { hashToken } from "../src/tokens.ts";
 import { deriveUserId } from "../src/userid.ts";
 import { FakeNamespace } from "./fake-do.ts";
@@ -115,7 +116,8 @@ describe("a metered request, end to end", () => {
     const w = world();
     const token = await signedIn(w);
     const r = await w.ask(token, { stream: true });
-    expect(w.waits.length).toBe(1);
+    // Two: the forward itself (audit run 2, finding 7) and the stream's booking, which ends after the answer is sent.
+    expect(w.waits.length).toBe(2);
     expect(await r.text()).toContain(REPLY);
     await Promise.all(w.waits);
     expect((await w.store.spent("google:42", NOW)).day).toBeGreaterThan(0);
@@ -144,7 +146,7 @@ describe("payments", () => {
     data: { payload_type: "Subscription", subscription_id: "sub_1", product_id: plan, status, customer: { customer_id: "cus_1" }, metadata: { companion_user_id: "google:42" } },
   });
   const deliver = async (w: ReturnType<typeof world>, ev: unknown, id: string) => {
-    const body = JSON.stringify(ev);
+    const body = JSON.stringify(await withOwnerSig(ev, SECRET));
     return w.send("/webhooks/dodo", { method: "POST", headers: await signDodoForTest(id, body, DODO, Math.floor(NOW / 1000)), body });
   };
   test("no provider set: the webhook is not served, and nothing about payments is kept", async () => {
@@ -282,9 +284,9 @@ describe("M99 review: a payment event out of date across two server instances", 
         return res;
       } };
     } };
-    const env = (STORE: Env["STORE"]): Env => ({ STORE, PAYMENT_PROVIDER: "dodo", DODO_WEBHOOK_SECRET: DODO, DODO_PRODUCTS: '{"pdt_pro":"pro"}' });
+    const env = (STORE: Env["STORE"]): Env => ({ STORE, PAYMENT_PROVIDER: "dodo", DODO_WEBHOOK_SECRET: DODO, DODO_PRODUCTS: '{"pdt_pro":"pro"}', METADATA_USER_ID_SECRET: SECRET });
     const deliver = async (e: Env, ev: unknown, id: string) => {
-      const body = JSON.stringify(ev);
+      const body = JSON.stringify(await withOwnerSig(ev, SECRET));
       return handle(new Request("https://usage.example/webhooks/dodo", { method: "POST", headers: await signDodoForTest(id, body, DODO, Math.floor(NOW / 1000)), body }), e, { waitUntil: () => {} }, () => NOW);
     };
     const store = new DurableStore(fake, () => NOW);

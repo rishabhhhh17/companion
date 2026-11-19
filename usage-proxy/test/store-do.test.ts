@@ -48,12 +48,12 @@ for (const kind of TEST_STORES) describe(`the store's promises: ${kind.name}`, (
     const s = kind.make(), t = await newToken();
     await s.addUser(t.hash, { id: "o1", plan: "free", status: "active" });
     expect(await s.setOwnerPlan!("o1", { plan: "pro", status: "active" }, 2000)).toBe(true);
-    expect(await s.userByTokenHash(t.hash)).toEqual({ id: "o1", plan: "pro", status: "active" });
+    expect(await s.userByTokenHash(t.hash)).toEqual({ id: "o1", plan: "pro", status: "active", planMode: "test" });
     expect(await s.setOwnerPlan!("o1", { plan: "free", status: "active" }, 1000)).toBe(false);   // older than the one applied
     expect((await s.userByTokenHash(t.hash))?.plan).toBe("pro");
     expect(await s.planOfOwner!("o1")).toBe("pro");
     await s.setOwnerPlan!("o1", { plan: "pro", status: "past_due", until: NOW + 5000 }, 3000);
-    expect(await s.userByTokenHash(t.hash)).toEqual({ id: "o1", plan: "pro", status: "past_due", planUntil: NOW + 5000 });
+    expect(await s.userByTokenHash(t.hash)).toEqual({ id: "o1", plan: "pro", status: "past_due", planUntil: NOW + 5000, planMode: "test" });
   });
   test("a payment cannot lift a suspension, and a revoked token stays revoked", async () => {
     const s = kind.make(), t = await newToken();

@@ -55,3 +55,30 @@ export async function deletedKey(ownerId: string, secret: string): Promise<strin
   const mac = new Uint8Array(await crypto.subtle.sign("HMAC", await lineKey(secret), enc.encode(ownerId)));
   return [...mac].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
+
+/** Audit run 2, finding 4 (re-attack): is `b` the very line `a` is? Every field, with the nonces in any order. A sign in drops
+ *  the kept line only when it still is the one it read and settled: a delete that ran since always writes a different one
+ *  (merged with what was kept, and holding that sign in's own nonce). */
+export function sameDeletedLine(a: DeletedLine | undefined | null, b: DeletedLine | undefined | null): boolean {
+  if (!a || !b) return false;
+  if (a.at !== b.at || a.day !== b.day || a.dayUsd !== b.dayUsd || a.month !== b.month || a.monthUsd !== b.monthUsd || a.until !== b.until) return false;
+  const key = (l: DeletedLine) => JSON.stringify([...(l.nonces ?? [])].map(([id, until]) => [id, until]).sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)));
+  return key(a) === key(b);
+}
+
+/** Two lines for the same key, as one (audit run 2, finding 2). A second delete sent at the same time as the first finds an
+ *  empty owner and makes a line with no spend and no nonces: writing it over the real one would hand the allowance back. So
+ *  for the same day (and the same month) the larger amount stays, a newer day or month wins as it is, every nonce is kept
+ *  (the later `until` of each), and the line goes at the later of the two `until`s. A line no longer kept counts as none. */
+export function mergeDeletedLines(was: DeletedLine | undefined | null, l: DeletedLine): DeletedLine {
+  if (!was || !deletedLineLive(was, l.at)) return l;
+  const pick = (a: string, au: number, b: string, bu: number): [string, number] => (a === b ? [a, Math.max(au, bu)] : a > b ? [a, au] : [b, bu]);
+  const [day, dayUsd] = pick(was.day, was.dayUsd, l.day, l.dayUsd);
+  const [month, monthUsd] = pick(was.month, was.monthUsd, l.month, l.monthUsd);
+  const byId = new Map<string, number>();
+  for (const [id, until] of [...(was.nonces ?? []), ...l.nonces]) byId.set(id, Math.max(until, byId.get(id) ?? until));
+  const nonces = [...byId];
+  const at = Math.max(was.at, l.at);
+  const wasUntil = typeof was.until === "number" ? was.until : deletedUntil(was.at, was.nonces ?? []);
+  return { at, day, dayUsd, month, monthUsd, nonces, until: Math.max(wasUntil, l.until, deletedUntil(at, nonces)) };
+}

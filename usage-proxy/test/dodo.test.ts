@@ -4,6 +4,7 @@ import {
   DODO_SUBSCRIPTION_EVENTS, DODO_TIMESTAMP_TOLERANCE_SEC, MemoryDodoLedger, MemoryLinkBook, constantTimeEqual, createDodoWebhook, decideDodoEvent,
   entitledPlan, parseDodoProducts, signDodoForTest, verifyDodoWebhook, type DodoEntitlement, type SafeDodoEvent,
 } from "../src/dodo.ts";
+import { OWNER_SECRET, withOwnerSig } from "./owner-sig-fixture.ts";
 
 // Dodo's secret looks like "whsec_" + base64 (Standard Webhooks). These are made up for the tests.
 const b64 = (s: string) => btoa(s);
@@ -135,7 +136,7 @@ describe("the product table is configuration", () => {
 
 describe("what each Dodo subscription event means for a plan", () => {
   const links = () => new MemoryLinkBook();
-  const decide = (e: unknown, books = links()) => decideDodoEvent(e, PRODUCTS, books);
+  const decide = async (e: unknown, books = links()) => decideDodoEvent(await withOwnerSig(e), PRODUCTS, books, "test", OWNER_SECRET);
   const free: DodoEntitlement = { userId: "u9", plan: "free", status: "active" };
   const pro: DodoEntitlement = { userId: "u9", plan: "pro", status: "active" };
 
@@ -152,7 +153,7 @@ describe("what each Dodo subscription event means for a plan", () => {
     }
     expect(await decide(event("subscription.plan_changed", "active", { product_id: "pdt_pro_yearly" }))).toMatchObject({ kind: "set", entitlement: { plan: "pro" } });
     // M97: a product the operator still maps to the old Max plan grants nothing
-    expect(await decideDodoEvent(event("subscription.active", "active", { product_id: "pdt_max" }), { ...PRODUCTS, pdt_max: "max" }, links())).toMatchObject({ kind: "unknown_product" });
+    expect(await decideDodoEvent(await withOwnerSig(event("subscription.active", "active", { product_id: "pdt_max" })), { ...PRODUCTS, pdt_max: "max" }, links(), "test", OWNER_SECRET)).toMatchObject({ kind: "unknown_product" });
   });
   test("an event that says active without a status, or with a status we do not know, grants nothing", async () => {
     expect((await decide(event("subscription.active", undefined)).then((d) => d.kind))).toBe("ignore");
@@ -218,9 +219,9 @@ describe("what each Dodo subscription event means for a plan", () => {
     expect((d as any).entitlement).toEqual(free);
   });
   test("a product mapped to a plan name that is not in the plan table is never granted", async () => {
-    const d = await decideDodoEvent(event("subscription.active", "active"), { pdt_pro: "enterprise" }, links());
+    const d = await decideDodoEvent(await withOwnerSig(event("subscription.active", "active")), { pdt_pro: "enterprise" }, links(), "test", OWNER_SECRET);
     expect(d.kind).toBe("unknown_product");
-    const proto = await decideDodoEvent(event("subscription.active", "active", { product_id: "toString" }), {}, links());
+    const proto = await decideDodoEvent(await withOwnerSig(event("subscription.active", "active", { product_id: "toString" })), {}, links(), "test", OWNER_SECRET);
     expect(proto.kind).toBe("unknown_product");
   });
   test("the person comes from the checkout metadata, then from a link learned from a payment", async () => {
@@ -252,9 +253,9 @@ describe("the webhook handler", () => {
   });
   afterEach(() => { Object.assign(console, { log: real.log, warn: real.warn, error: real.error, info: real.info, debug: real.debug }); globalThis.fetch = real.fetch; });
   const hook = (over: Partial<Parameters<typeof createDodoWebhook>[0]> = {}) =>
-    createDodoWebhook({ secret: () => SECRET, products: () => PRODUCTS, ledger, links, apply: async (e) => { applied.push(e); }, now: () => now * 1000, log: (e) => logs.push(e), ...over });
+    createDodoWebhook({ secret: () => SECRET, products: () => PRODUCTS, ledger, links, ownerSecret: () => OWNER_SECRET, apply: async (e) => { applied.push(e); }, now: () => now * 1000, log: (e) => logs.push(e), ...over });
   const send = async (h: ReturnType<typeof hook>, ev: unknown, id = "msg_1", over: { body?: string; headers?: Record<string, string>; method?: string; secret?: string; t?: number } = {}) => {
-    const body = over.body ?? JSON.stringify(ev);
+    const body = over.body ?? JSON.stringify(await withOwnerSig(ev));
     const headers = over.headers ?? (await headersFor(id, body, over.secret ?? SECRET, over.t ?? NOW));
     return h(new Request("https://squibby.test/webhooks/dodo", { method: over.method ?? "POST", headers, body: over.method === "GET" ? undefined : body }));
   };

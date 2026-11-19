@@ -65,8 +65,8 @@ describe("the request filter and metadata", () => {
   test("with no id given, any metadata from the client is still removed (a client never chooses its own)", () => {
     expect("metadata" in JSON.parse((checkRequest("POST", "/v1/messages", ok({ metadata: { user_id: "me@x.com" } })) as any).body)).toBe(false);
   });
-  test("count_tokens never gets metadata (the documented body has no such field)", () => {
-    expect("metadata" in JSON.parse((checkRequest("POST", "/v1/messages/count_tokens", ok({ metadata: { user_id: "x" } }), ID) as any).body)).toBe(false);
+  test("count_tokens is not a path the filter takes (audit run 2, finding 3)", () => {
+    expect(checkRequest("POST", "/v1/messages/count_tokens", ok({ metadata: { user_id: "x" } }), ID).ok).toBe(false);
   });
 });
 
@@ -74,8 +74,7 @@ describe("the request filter", () => {
   const ok = (over: Record<string, unknown> = {}) => JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 1024, messages: [{ role: "user", content: "hi" }], ...over });
   test("only POST to the messages paths", () => {
     expect(checkRequest("POST", "/v1/messages", ok()).ok).toBe(true);
-    expect(checkRequest("POST", "/v1/messages/count_tokens", ok()).ok).toBe(true);
-    for (const [m, p] of [["GET", "/v1/messages"], ["POST", "/v1/models"], ["POST", "/v1/files"], ["POST", "/v1/messages/batches"], ["POST", "/v1/complete"], ["POST", "/v1/messages/../files"], ["DELETE", "/v1/messages"]] as const) {
+    for (const [m, p] of [["POST", "/v1/messages/count_tokens"], ["GET", "/v1/messages"], ["POST", "/v1/models"], ["POST", "/v1/files"], ["POST", "/v1/messages/batches"], ["POST", "/v1/complete"], ["POST", "/v1/messages/../files"], ["DELETE", "/v1/messages"]] as const) {
       const r = checkRequest(m, p, ok()); expect([r.ok, p], `${m} ${p}`).toEqual([false, p]);
     }
   });
@@ -83,9 +82,9 @@ describe("the request filter", () => {
     for (const m of ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-haiku-4-5-20251001", "claude-sonnet-5-5[1m]"]) expect(checkRequest("POST", "/v1/messages", ok({ model: m })).ok, m).toBe(true);
     for (const m of ["claude-fable-5-1", "gpt-4", "", "claude-opus-4", "../x", 7]) expect(checkRequest("POST", "/v1/messages", ok({ model: m })).ok, String(m)).toBe(false);
   });
-  test("counting tokens needs no max_tokens and is never charged", () => {
-    const r = checkRequest("POST", "/v1/messages/count_tokens", JSON.stringify({ model: "claude-sonnet-5-5", messages: [{ role: "user", content: "hi" }] })) as any;
-    expect([r.ok, r.free]).toEqual([true, true]);
+  test("counting tokens is refused, with or without max_tokens (audit run 2, finding 3)", () => {
+    const r = checkRequest("POST", "/v1/messages/count_tokens", JSON.stringify({ model: "claude-sonnet-5-5", messages: [{ role: "user", content: "hi" }] }));
+    expect(r).toMatchObject({ ok: false, status: 404 });
   });
   test("max_tokens is clamped, never raised, and a missing one is refused", () => {
     const r = checkRequest("POST", "/v1/messages", ok({ max_tokens: 900000 })) as any;

@@ -112,11 +112,11 @@ done
 echo "PASS: /v1/me shows today's use above 0 ($used of the day's allowance): the cost was booked."
 
 # 4. A signed test webhook (Dodo's subscription.active for this owner) turns Pro on; an unsigned forged expiry changes nothing.
-HOOK=$(DODO_WEBHOOK_SECRET="$DODO_WEBHOOK_SECRET" bun scripts/send-test-webhook.ts "$BASE" "$OWNER" "$PRODUCT")
+HOOK=$(DODO_WEBHOOK_SECRET="$DODO_WEBHOOK_SECRET" METADATA_USER_ID_SECRET="$USER_ID_SECRET" bun scripts/send-test-webhook.ts "$BASE" "$OWNER" "$PRODUCT")
 [ "$(echo "$HOOK" | head -n 1)" = "200" ] && echo "$HOOK" | grep -q '"applied"' || fail "the signed test webhook was not applied: $(echo "$HOOK" | head -n 1). See $OUT/dev.log."
 [ "$(me | sed '$d' | field plan)" = "pro" ] || fail "after the signed test webhook /v1/me does not answer Pro."
 echo "PASS: a signed test webhook turned Pro on, and /v1/me says so."
-UNSIGNED=$(DODO_WEBHOOK_SECRET="" bun scripts/send-test-webhook.ts "$BASE" "$OWNER" "$PRODUCT" --unsigned | head -n 1)
+UNSIGNED=$(DODO_WEBHOOK_SECRET="" METADATA_USER_ID_SECRET="$USER_ID_SECRET" bun scripts/send-test-webhook.ts "$BASE" "$OWNER" "$PRODUCT" --unsigned | head -n 1)
 case "$UNSIGNED" in 2*) fail "an unsigned webhook answered $UNSIGNED." ;; esac
 [ "$(me | sed '$d' | field plan)" = "pro" ] || fail "an unsigned webhook (a forged subscription.expired) turned Pro off."
 echo "PASS: an unsigned webhook was refused and changed nothing ($UNSIGNED)."

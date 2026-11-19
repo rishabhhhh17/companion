@@ -16,6 +16,7 @@ import { DODO_TIMESTAMP_TOLERANCE_SEC, MemoryDodoLedger, createDodoWebhook, Memo
 import { DELETE_MAX, DurableDodoLedger, OWNER, PRUNE_BATCH, RECORD_KEEP_MS, WEBHOOK_KEEP_MS, nextTotals } from "../src/store-do.ts";
 import { FakeNamespace } from "./fake-do.ts";
 import { FakeDurableStore, TEST_STORES, type TestStore } from "./stores.ts";
+import { OWNER_SECRET, withOwnerSig } from "./owner-sig-fixture.ts";
 
 const NOW = Date.UTC(2026, 10, 19, 12, 0, 0);
 const HOUR = 3600 * 1000, DAY = 24 * HOUR;
@@ -137,7 +138,10 @@ describe("the words never tell anyone to add their own Claude key (F29)", () => 
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------
-for (const kind of TEST_STORES) describe(`one step to start and one to finish: ${kind.name}`, () => {
+// The Durable Object helper counts live slots against its clock, so it gets the test's fixed NOW (with the real clock, the
+// 30 minute lease ran out on 19 Nov after 12:30 UTC and these failed).
+const AT_NOW = TEST_STORES.map((k) => (k.name === "Durable Object store" ? { ...k, make: () => new FakeDurableStore(new FakeNamespace(), () => NOW) } : k));
+for (const kind of AT_NOW) describe(`one step to start and one to finish: ${kind.name}`, () => {
   const pro = PLANS.pro;
   test("start takes the slot and the hold together; over the limit it takes nothing and says what is spent", async () => {
     const s = kind.make();
@@ -151,7 +155,7 @@ for (const kind of TEST_STORES) describe(`one step to start and one to finish: $
     expect((over as { spent: { day: number } }).spent.day).toBeCloseTo(pro.dailyUsd + 0.2, 8);
     expect(s.inFlight("u1")).toBe(1);
   });
-  test("past the running cap start says busy and takes nothing; without limits (count_tokens) it takes only a slot", async () => {
+  test("past the running cap start says busy and takes nothing; without limits it takes only a slot", async () => {
     const s = kind.make();
     expect(await s.start("u1", { max: 1, usd: 0, now: NOW, limits: null, id: "a" })).toEqual({ ok: true });
     expect(await s.start("u1", { max: 1, usd: 0.2, now: NOW, limits: pro, id: "b" })).toEqual({ ok: false, why: "busy" });
@@ -201,7 +205,7 @@ describe("rows written per model request: at most 3 (Durable Objects free plan, 
       ["first of the day", () => t.send({ body: msg("one") })],
       ["plain", () => t.send({ body: msg("two") })],
       ["streamed", () => t.send({ body: msg("STREAM", { stream: true }) })],
-      ["count_tokens", () => t.send({ path: "/v1/messages/count_tokens", body: { model: "claude-sonnet-5-5", messages: [{ role: "user", content: "x" }] } })],
+      ["count_tokens (refused, audit run 2 finding 3)", () => t.send({ path: "/v1/messages/count_tokens", body: { model: "claude-sonnet-5-5", messages: [{ role: "user", content: "x" }] } })],
       ["upstream error", () => t.send({ body: msg("FAIL") })],
     ];
     const seen: Record<string, { status: number; rows: number; calls: number }> = {};
@@ -212,6 +216,7 @@ describe("rows written per model request: at most 3 (Durable Objects free plan, 
     }
     expect(seen.plain).toEqual({ status: 200, rows: 3, calls: 4 });
     expect(seen.streamed.rows).toBe(3);
+    expect(seen["count_tokens (refused, audit run 2 finding 3)"]).toMatchObject({ status: 404, rows: 0 });
     // Metering unchanged: two plain replies and the stream booked, the count and the error not.
     const plainUsd = costOf("claude-sonnet-5-5", { input_tokens: 1000, output_tokens: 500, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 });
     const streamUsd = costOf("claude-sonnet-5-5", { input_tokens: 2000, output_tokens: 700, cache_read_input_tokens: 8000, cache_creation_input_tokens: 0, web_search_requests: 0 });
@@ -395,8 +400,8 @@ describe("payment event ids are kept 48 hours (Dodo retries for about 37)", () =
     const secret = `whsec_${btoa("dodo-test-secret-key-0123456789")}`;
     let nowSec = Math.floor(NOW / 1000);
     const applied: DodoEntitlement[] = [];
-    const hook = createDodoWebhook({ secret: () => secret, products: () => ({ pdt_pro: "pro" }), ledger: new MemoryDodoLedger(() => nowSec * 1000), links: new MemoryLinkBook(), apply: async (e) => { applied.push(e); }, now: () => nowSec * 1000, log: () => {} });
-    const body = JSON.stringify({ business_id: "bus_1", type: "subscription.active", timestamp: new Date(NOW - 10_000).toISOString(), data: { payload_type: "Subscription", subscription_id: "sub_1", product_id: "pdt_pro", status: "active", customer: { customer_id: "cus_1" }, metadata: { companion_user_id: "u9" } } });
+    const hook = createDodoWebhook({ secret: () => secret, products: () => ({ pdt_pro: "pro" }), ledger: new MemoryDodoLedger(() => nowSec * 1000), links: new MemoryLinkBook(), ownerSecret: () => OWNER_SECRET, apply: async (e) => { applied.push(e); }, now: () => nowSec * 1000, log: () => {} });
+    const body = JSON.stringify(await withOwnerSig({ business_id: "bus_1", type: "subscription.active", timestamp: new Date(NOW - 10_000).toISOString(), data: { payload_type: "Subscription", subscription_id: "sub_1", product_id: "pdt_pro", status: "active", customer: { customer_id: "cus_1" }, metadata: { companion_user_id: "u9" } } }));
     const deliver = async () => (await (await hook(new Request("https://api.example/webhooks/dodo", { method: "POST", headers: await signDodoForTest("msg_late", body, secret, nowSec), body }))).json()).outcome;
     expect(await deliver()).toBe("applied");
     nowSec += 37 * 3600;
