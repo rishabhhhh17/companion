@@ -677,7 +677,8 @@ fn island_rect(primary_h: f64) -> Option<Rect> {
 /// Forgets whether the pointer was on the island (it was hidden, moved, or Home opened or closed over it).
 fn reset_hover() {
     let times = home_set().hover;
-    *ISLAND_HOVER.lock().unwrap_or_else(|e| e.into_inner()) = { let mut h = island::Hover::new(); h.set_times(times); h };
+    // Feel round 1: Home closed while the pointer still rests on the notch does not open again until it has left once.
+    { let mut h = ISLAND_HOVER.lock().unwrap_or_else(|e| e.into_inner()); let on = h.pointer_on(); *h = island::Hover::after_close(times, on, now() as u64); }
     ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()).hover = false;
     // Home's page drops its hover nudge too: a hidden or moved island sends no mouseExited (bug bash 5 Nov).
     if let Some(a) = APP.get() { let _ = a.emit_to("card", "home-hover", json!({ "on": false })); }

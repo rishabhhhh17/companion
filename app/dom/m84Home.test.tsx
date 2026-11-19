@@ -22,7 +22,9 @@ describe("M84: Now's timeline of today", () => {
     await runner({ type: "tasks.list", project: PROJECT, tasks: [{ id: 1, label: "Before: make the signup button work", status: "done", usd: 0.04, startedAt: iso(3), endedAt: iso(2), checkpoint: "cp_1", changed: 2, proof: "passed" }],
       saved: [{ id: 1, at: iso(1), checkpoint: "cp_2", command: "rm -rf dist", undone: false }] }, tools(true));
     const rows = [...document.querySelectorAll(".today-row")].map((r) => r.querySelector(".today-words")?.textContent);
-    if (new Date(Date.now() - 3 * 60_000).toDateString() === new Date().toDateString()) expect(rows).toEqual([S.m84.line.caught("rm -rf dist"), S.m84.line.fixed("make the signup button work")]);
+    // Changed on purpose (feel round 1, 18 Nov 2026): the fix is Now's own card right above, so Today does not say it again.
+    if (new Date(Date.now() - 3 * 60_000).toDateString() === new Date().toDateString()) expect(rows).toEqual([S.m84.line.caught("rm -rf dist")]);
+    expect(document.querySelector(".work .ui-mlist")?.textContent).toMatch(/make the signup button work/i);
     expect(app.sentTypes()).not.toContain("checkpoint.restore");
   });
 });

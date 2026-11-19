@@ -24,6 +24,11 @@ export const MAX_FOLDS = 4;
 /** The most of a place that goes that fades out under the new one (only what was on screen is drawn again at all). */
 export const MAX_FADES = 12;
 
+/** Feel round 2 (19 Nov 2026): on a switch of place the old place and the new one showed at once, text over text at half
+ *  opacity. The old place now fades out quickly (this long, on the exit curve) and the new one starts only once it has
+ *  gone, so the two never show together and Home is never empty for longer than a frame. */
+export const PLACE_OUT_MS = 80;
+
 /** A duration written in ms or s (".2s") as milliseconds; anything else is null. */
 export function msOf(v: string): number | null {
   const m = /^\s*(\d*\.?\d+)(ms|s)\s*$/.exec(v);
@@ -154,8 +159,8 @@ function enterPlace(boxes: HTMLElement[], t: MotionTokens): void {
   for (const b of boxes) {
     if (b.matches(".bar")) continue;   // the top bar stays where it is: it is how a person knows where they are
     for (const a of b.getAnimations({ subtree: true })) if ((a as CSSAnimation).animationName === "card-in") a.finish();
-    // M66 fix 22: it starts halfway through the old place's leave, never after a blank 120 ms.
-    b.animate([{ opacity: 0, transform: `translateY(${t.slide}px)` }, { opacity: 1, transform: "none" }], { duration: t.enter, delay: t.exit / 2, easing: t.easeEnter, fill: "backwards" });
+    // Feel round 2: it starts the moment the old place has gone (PLACE_OUT_MS), never over it and never after a blank wait.
+    b.animate([{ opacity: 0, transform: `translateY(${t.slide}px)` }, { opacity: 1, transform: "none" }], { duration: t.enter, delay: Math.min(t.exit, PLACE_OUT_MS), easing: t.easeEnter, fill: "backwards" });
   }
 }
 
@@ -205,7 +210,7 @@ function foldAway(list: { el: HTMLElement; was: Seen }[], shift: number, t: Moti
  *  after the other, so the two never show at once. */
 function fadeAway(list: { el: HTMLElement; was: Seen }[], shift: number, t: MotionTokens): void {
   if (reducedMotion()) return;
-  drawGhosts(list, shift, [{ opacity: 1 }, { opacity: 0 }], t.exit, t.easeExit);
+  drawGhosts(list, shift, [{ opacity: 1 }, { opacity: 0 }], Math.min(t.exit, PLACE_OUT_MS), t.easeExit);
 }
 
 const sliding = new WeakMap<HTMLElement, Animation>();

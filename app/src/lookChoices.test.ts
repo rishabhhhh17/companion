@@ -442,7 +442,10 @@ describe("the details are drawn in the lists", () => {
   });
   test("Learn: each practice a row with its own tile colour and number; a done one is green with a tick and says Done", () => {
     expect(practice).toContain('colour={state === "done" ? "green" : practiceColour(i)} icon={state === "done" ? "tick" : undefined} mark={state === "done" ? undefined : String(i + 1)}');
-    expect(practice).toContain('fact={state === "done" ? S.practiceState.done : S.practiceMin(r.entry.minutes)}');
+    // Changed on purpose (feel round 2, 19 Nov 2026): a row with its own action says its minutes in its line, so the minutes
+    // column stays straight.
+    expect(practice).toContain('const fact = state === "done" ? S.practiceState.done : S.practiceMin(r.entry.minutes);');
+    expect(practice).toContain('fact={hasAct && state !== "done" ? undefined : fact}');
   });
   test("a stamp read by VoiceOver only where it is the only words (Learn); elsewhere the row already says it", () => {
     const marks = read("./itemMarks.tsx");

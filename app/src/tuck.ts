@@ -16,10 +16,16 @@ export const DRAG_OUT_PX = 5;
  *  coming back out ("out"), or nothing. */
 export type TuckLook = "take" | "in" | "out" | null;
 
-/** The shell's "dock-tuck", read safely: on (tucking) or off (coming out), and whether motion is calm (a fade). */
-export function tuckFrom(v: unknown): { on: boolean; calm: boolean } {
+/** Where the notch is from the character's window, in points (docking.rs tuck_aim). */
+export type TuckAim = { dx: number; dy: number };
+/** Farther than this is no real aim (a display is never this wide): left out, so the tuck goes straight up as before. */
+const AIM_MAX = 10_000;
+/** The shell's "dock-tuck", read safely: on (tucking) or off (coming out), whether motion is calm (a fade), and where the
+ *  notch is from the character when the shell knows it (feel round 1: the shrink aims into the notch). */
+export function tuckFrom(v: unknown): { on: boolean; calm: boolean; aim?: TuckAim } {
   const o = (typeof v === "object" && v !== null ? v : {}) as Record<string, unknown>;
-  return { on: o.on === true, calm: o.calm === true };
+  const ok = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x) && Math.abs(x) <= AIM_MAX;
+  return { on: o.on === true, calm: o.calm === true, ...(ok(o.dx) && ok(o.dy) ? { aim: { dx: o.dx, dy: o.dy } } : {}) };
 }
 /** The shell's "tuck-hint": the pointer is over the notch while dragging. */
 export function hintFrom(v: unknown): boolean { return (typeof v === "object" && v !== null ? (v as Record<string, unknown>).on : false) === true; }
@@ -37,9 +43,10 @@ export function tuckStep(was: TuckLook, ev: TuckEvent): TuckLook {
 }
 
 /** The character's page: the look the shell asks for now. "out" plays once and clears. */
-export function useTuck(): { look: TuckLook; calm: boolean } {
+export function useTuck(): { look: TuckLook; calm: boolean; aim: TuckAim | null } {
   const [look, setLook] = useState<TuckLook>(null);
   const [calm, setCalm] = useState(false);
+  const [aim, setAim] = useState<TuckAim | null>(null);
   useEffect(() => {
     let clear: ReturnType<typeof setTimeout> | undefined;
     const offHint = listen("tuck-hint", (e) => { clearTimeout(clear); const on = hintFrom(e.payload); setLook((was) => tuckStep(was, { kind: "hint", on })); });
@@ -47,12 +54,13 @@ export function useTuck(): { look: TuckLook; calm: boolean } {
       const t = tuckFrom(e.payload);
       clearTimeout(clear);
       setCalm(t.calm);
+      if (t.on) setAim(t.aim ?? null);
       setLook((was) => tuckStep(was, { kind: "tuck", on: t.on }));
       if (!t.on) clear = setTimeout(() => setLook((was) => tuckStep(was, { kind: "clear" })), tuckMs(t.calm) + 40);
     });
     return () => { clearTimeout(clear); offHint.then((f) => f()); offTuck.then((f) => f()); };
   }, []);
-  return { look, calm };
+  return { look, calm, aim };
 }
 
 /** The drag out of the notch, as plain steps so it can be tested: a press on the face, moves, and the let go. A move past

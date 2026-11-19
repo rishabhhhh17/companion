@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
-  HEADROOM, NUDGE_H, NUDGE_W, OPEN_R, OVERLAP, REST_R, SEAM, SHOULDER_OPEN, SHOULDER_REST, bodyHeight, contentAtMs, foldMs, geomFrom, homeNext,
+  BAR_SHARE, CONTENT_SHARE, FOLD_AT_MS, HEADROOM, LEAD_SHARE, NUDGE_H, NUDGE_W, OPEN_R, OVERLAP, REST_R, SEAM, SHOULDER_OPEN, SHOULDER_REST, barAtMs, bodyHeight, contentAtMs, contentClip, leadAtMs, foldMs, geomFrom, homeNext,
   islandHideAtMs, islandPanelAtMs, isOut, outline, pieceSizes, shapeRects, shapeTransforms, springMs, type HomeEvent, type HomeGeom, type HomePhase,
 } from "./homeShape.ts";
 import { NOTCH, OPEN_H_DELAY_MS } from "./islandSpring.ts";
@@ -115,40 +115,62 @@ describe("Home's state", () => {
 });
 
 describe("the timings", () => {
-  test("the content arrives once the height is nearly all there, never before the shape", () => {
-    const at = contentAtMs(), path = springPath(NOTCH.OPEN_H);
-    expect(at).toBeGreaterThan(OPEN_H_DELAY_MS);
-    expect(path[at - OPEN_H_DELAY_MS] ?? 1).toBeGreaterThan(0.98);
-    expect(at).toBeLessThan(400);
+  // Changed on purpose (feel round 2, 19 Nov 2026): the content is clipped to the shape, so it no longer waits for the
+  // height to be nearly all there; it arrives while the shape grows and the open runs as one motion.
+  test("the content arrives early, while the shape grows, and all of it is in by about 350 ms", () => {
+    expect(contentAtMs()).toBeGreaterThan(OPEN_H_DELAY_MS);
+    expect(contentAtMs()).toBeLessThanOrEqual(180);
+    expect(contentAtMs() + DUR[2]).toBeLessThanOrEqual(400);
   });
-  // M66 step 5: the content's frame is laid out at its full height, a little higher and smaller (translateY(-6px) scale(.97)
-  // from the top). At 80 percent of the height's travel its bottom row hung about 60 px below the black body.
-  test("the content's bottom is inside the body the whole time it arrives", () => {
+  // Feel round 2: a layer at its full final size showed outside the growing shape. The clip on the content is never
+  // larger than the shape, on every millisecond of the open, from the island at rest and from the small panel.
+  test("the content's clip sits inside the shape on every millisecond of the open", () => {
     const pH = springPath(NOTCH.OPEN_H), pW = springPath(NOTCH.OPEN_W);
     const at = (path: number[], ms: number) => (ms <= 0 ? 0 : path[Math.min(path.length - 1, Math.round(ms))]);
-    for (const g of [mbp14, air]) for (const bodyH of [g.body.minH, g.body.maxH]) {
-      const c = outline(g, { phase: "closed", hover: false, bodyH }), o = outline(g, { phase: "open", hover: false, bodyH });
-      // The body's bottom: the foot's place (the height, OPEN_H after its delay) plus the corner's size (the width, OPEN_W).
-      const bottom = (ms: number) => {
+    for (const g of [mbp14, air]) for (const bodyH of [g.body.minH, g.body.maxH]) for (const from of [null, { w: 330, h: 74 }]) {
+      const s0 = { phase: "closed" as HomePhase, hover: false, bodyH, from }, s1 = { phase: "open" as HomePhase, hover: false, bodyH, from };
+      const c = outline(g, s0), o = outline(g, s1), k0 = contentClip(g, s0), k1 = contentClip(g, s1);
+      expect(k1).toEqual({ x: 0, b: 0 });
+      const hh = bodyHeight(g, bodyH);
+      for (let ms = 0; ms <= OPEN_H_DELAY_MS + springMs(NOTCH.OPEN_H); ms++) {
         const h = at(pH, ms - OPEN_H_DELAY_MS), w = at(pW, ms);
-        return (c.top + c.hm) + h * ((o.top + o.hm) - (c.top + c.hm)) + c.r + w * (o.r - c.r);
-      };
-      const hy = g.body.top, hh = bodyHeight(g, bodyH);
-      // The finding's own check, at the moment the content starts.
-      const p = at(pH, contentAtMs() - OPEN_H_DELAY_MS);
-      expect(p * (hh) + g.band.h, `${g.kind} ${bodyH}`).toBeGreaterThanOrEqual(hy - 6 + 0.97 * hh);
-      // And on every millisecond of its arrival (--dur-2 on --ease-out, from a little higher and smaller).
-      for (let t = 0; t <= DUR[2]; t++) {
-        const q = bezierAt(EASE_OUT, t / DUR[2]);
-        const frameBottom = hy - 6 * (1 - q) + hh * (0.97 + 0.03 * q);
-        expect(frameBottom, `${g.kind} ${bodyH} at ${t} ms`).toBeLessThanOrEqual(bottom(contentAtMs() + t) + 0.5);
+        // The shape: its width on OPEN_W from the start, its height on OPEN_H after the delay (its corner on OPEN_W).
+        const shapeW = c.w + w * (o.w - c.w), shapeBottom = (c.top + c.hm) + h * ((o.top + o.hm) - (c.top + c.hm)) + c.r + w * (o.r - c.r);
+        // The clip: its sides on OPEN_W from the start (as the shape's width), its bottom on OPEN_H after the delay.
+        const clipW = g.body.w - 2 * (k0.x + w * (k1.x - k0.x)), clipBottom = g.body.top + hh - (k0.b + h * (k1.b - k0.b));
+        expect(clipW, `${g.kind} ${bodyH} ${from ? "from" : "rest"} at ${ms} ms`).toBeLessThanOrEqual(shapeW + 0.5);
+        // A clip with no height draws nothing, wherever its edge is.
+        if (clipBottom > g.body.top) expect(clipBottom, `${g.kind} ${bodyH} ${from ? "from" : "rest"} at ${ms} ms`).toBeLessThanOrEqual(shapeBottom + 0.5);
       }
     }
   });
+  test("nothing is cut once Home is open, or with no island to grow from", () => {
+    for (const p of ["opening", "open"] as HomePhase[]) expect(contentClip(mbp14, { phase: p, hover: false, bodyH: 400 })).toEqual({ x: 0, b: 0 });
+    expect(contentClip({ ...mbp14, kind: "free" }, { phase: "closed", hover: false, bodyH: 400 })).toEqual({ x: 0, b: 0 });
+    // Closed, the content is cut to the island at rest: no height under the band, the island's own width.
+    const k = contentClip(mbp14, { phase: "closed", hover: false, bodyH: 400 });
+    expect(k.b).toBe(bodyHeight(mbp14, 400));
+    expect(mbp14.body.w - 2 * k.x).toBe(mbp14.rest.w);
+  });
+  // Feel round 1 (18 Nov 2026): the shape grew for a third of a second with nothing in it. Changed on purpose (feel round 2):
+  // clipped to the shape, the top bar arrives as the height starts, the lead at 30 percent and the rest at 45 percent.
+  test("the top bar and the lead arrive early, each only once the height has passed its share of the body", () => {
+    const pH = springPath(NOTCH.OPEN_H);
+    const at = (ms: number) => (ms <= OPEN_H_DELAY_MS ? 0 : pH[Math.min(pH.length - 1, ms - OPEN_H_DELAY_MS)]);
+    expect(barAtMs()).toBeLessThanOrEqual(150);
+    expect(leadAtMs()).toBeLessThan(contentAtMs());
+    expect(barAtMs()).toBeLessThan(leadAtMs());
+    // At the moment each starts, the body is already taller than its share (with the frame's 6 px rise to spare).
+    expect(at(barAtMs())).toBeGreaterThanOrEqual(BAR_SHARE);
+    expect(at(leadAtMs())).toBeGreaterThanOrEqual(LEAD_SHARE);
+    expect(at(contentAtMs())).toBeGreaterThanOrEqual(CONTENT_SHARE);
+  });
   test("a close is said folded once the content has left and CLOSE has rested, or after the reduced motion fade", () => {
-    expect(foldMs(false)).toBe(EXIT_MS.menu + springMs(NOTCH.CLOSE) + 80);
+    // Changed on purpose (feel round 1): the fold overlaps the content's fade from FOLD_AT_MS instead of waiting for it.
+    expect(foldMs(false)).toBe(FOLD_AT_MS + springMs(NOTCH.CLOSE) + 80);
+    expect(FOLD_AT_MS).toBeLessThan(EXIT_MS.menu);
     expect(foldMs(true)).toBe(DUR[1] + 80);
-    expect(springMs(NOTCH.CLOSE)).toBeLessThan(800);
+    expect(springMs(NOTCH.CLOSE)).toBeLessThan(500);
   });
   test("tokens.css carries each curve and its length, generated from the springs here", () => {
     const tokens = TOKENS_CSS().replace(/\/\*[\s\S]*?\*\//g, "");
@@ -159,6 +181,9 @@ describe("the timings", () => {
     }
     expect(raw("--seq-notch-height-at")).toBe(`${OPEN_H_DELAY_MS}ms`);
     expect(raw("--seq-notch-content-at")).toBe(`${contentAtMs()}ms`);
+    expect(raw("--seq-notch-bar-at")).toBe(`${barAtMs()}ms`);
+    expect(raw("--seq-notch-lead-at")).toBe(`${leadAtMs()}ms`);
+    expect(raw("--seq-notch-fold-at")).toBe(`${FOLD_AT_MS}ms`);
     expect(raw("--seq-island-panel-at")).toBe(`${islandPanelAtMs()}ms`);
     expect(raw("--seq-island-hide-at")).toBe(`${islandHideAtMs()}ms`);
   });
@@ -195,11 +220,18 @@ describe("the page draws it from a data attribute and the shell's sizes", () => 
     expect(css).toContain('.home-stage:not([data-told]):is([data-phase="closed"], [data-phase="closing"]) .home-frame { visibility: hidden; }');
   });
   test("M66 step 5: the content arrives on --dur-2 once the shape is there, and leaves first and fast; the shape waits for it", () => {
-    expect(css).toContain('.home-stage[data-told]:is([data-phase="opening"], [data-phase="open"]) .home-frame { transition: opacity var(--dur-2) var(--ease-out) var(--seq-notch-content-at), transform var(--dur-2) var(--ease-out) var(--seq-notch-content-at); }');
-    expect(css).toMatch(/\.home-stage\[data-told\] \.home-frame \{[^}]*transition: opacity var\(--dur-exit-menu\) linear, transform var\(--dur-exit-menu\) var\(--ease-exit\); \}/);
-    expect(css).toContain('.home-stage[data-phase="closing"] :is(.hs > i, .hs > span, .hs > span > i) { transition-delay: var(--dur-exit-menu); }');
+    // Changed on purpose (feel round 1, 18 Nov 2026): the content arrives in three steps as the height passes each (the top
+    // bar, the lead, the rest), each on --dur-2; it all leaves together on the quick exit; the fold starts FOLD_AT_MS after
+    // the content starts to leave (overlapped, not after it), and at once for a close while still opening.
+    expect(css).toContain('.home-stage[data-told]:is([data-phase="opening"], [data-phase="open"]) .home-frame { transition: opacity var(--dur-2) var(--ease-out) var(--seq-notch-bar-at); }');
+    for (const at of ["bar", "lead", "content"]) expect(css).toContain(`transition: opacity var(--dur-2) var(--ease-out) var(--seq-notch-${at}-at), transform var(--dur-2) var(--ease-out) var(--seq-notch-${at}-at); }`);
+    // Feel round 3 (19 Nov 2026), changed on purpose: the content leaves over the sheet's 180 ms while the clip folds it
+    // with the shape (a 100 ms fade left an empty black slab folding on its own).
+    expect(css).toContain('.home-stage[data-told] :is(.home-frame > .home > .inner > .work > *, .home-frame > .home > .inner > :not(.work)) { transform: var(--t-content); opacity: var(--o-content); transition: opacity var(--dur-exit-sheet) linear, transform var(--dur-exit-sheet) var(--ease-exit); }');
+    expect(css).toContain('.home-stage[data-phase="closing"] :is(.hs > i, .hs > span, .hs > span > i) { transition-delay: var(--seq-notch-fold-at); }');
+    expect(css).toContain('.home-stage[data-phase="closing"][data-quick] :is(.hs > i, .hs > span, .hs > span > i) { transition-delay: 0s; }');
     // The pieces stay drawn until the delayed fold has ended.
-    expect(css).toContain(".home-stage .hs { position: absolute; inset: 0; pointer-events: none; visibility: hidden; transition: visibility 0s linear calc(var(--dur-exit-menu) + var(--dur-notch-close)); }");
+    expect(css).toContain(".home-stage .hs { position: absolute; inset: 0; pointer-events: none; visibility: hidden; transition: visibility 0s linear calc(var(--seq-notch-fold-at) + var(--dur-notch-close)); }");
   });
   test("M66 step 5: the foot overlaps the middle by a point, so no hairline shows between them while the height moves", () => {
     expect(SEAM).toBe(1);
@@ -216,7 +248,11 @@ describe("the page draws it from a data attribute and the shell's sizes", () => 
   test("M66 step 6 (F18): once open, a new content height or width takes the shape at once, in step with the content's frame", () => {
     // The frame (--hh, --hw) changes in one frame; the shape must too, or content is drawn over the desktop while the body
     // glides, and Home would resize with motion, which F18 rules out. Only the opening grows.
-    expect(css).toContain('.home-stage[data-phase="open"] :is(.hs > i, .hs > span, .hs > span > i) { transition: none; }');
+    // Feel round 3 (19 Nov 2026), changed on purpose: a place of another height used to resize Home in one frame. Open, the
+    // shape now springs to it on OPEN_H, and the content's clip follows on the same curve (homeStage.tsx data-grow-start
+    // holds it at the old height for the first frame of a grow), so content is still never drawn past the body.
+    expect(css).toContain('.home-stage[data-phase="open"] :is(.hs > i, .hs > span, .hs > span > i) { transition: transform var(--dur-notch-open-h) var(--ease-notch-open-h); }');
+    expect(css).toContain('.home-stage[data-told][data-phase="open"] .home-frame > * { transition: clip-path var(--dur-notch-open-h) var(--ease-notch-open-h); }');
     expect(css).not.toMatch(/\[data-phase="open"\] \.hs > span \{ transition: transform/);
     expect(css).not.toMatch(/:is\(\[data-phase="opening"\], \[data-phase="open"\]\) \.hs > i/);
     expect(css).toContain('.home-stage[data-phase="opening"] .hs > i, .home-stage[data-phase="opening"] .hs > span > i { transition: transform var(--dur-notch-open-w) var(--ease-notch-open-w); }');
@@ -249,9 +285,13 @@ describe("growing on from the small panel (M70 step 4)", () => {
     const css = readFileSync(new URL("./ui/homeShape.css", import.meta.url), "utf8");
     expect(css).toContain('.home-stage[data-phase="open"][data-from] :is(.hs-band, .hs-top, .hs-join) { transition: transform var(--dur-notch-close) var(--ease-notch-close); }');
   });
-  test("the island's words fade out as Home's shape covers them, and Home's arrive as before: no clip, no repaint", () => {
+  // Changed on purpose (feel round 2, 19 Nov 2026): Home's content is clipped to the shape while it grows, so a layer is
+  // never drawn past it. The clip is on the content's frame only; the shape's pieces still move by transform alone.
+  test("the island's words fade out as Home's shape covers them; only Home's content frame is clipped", () => {
     const css = readFileSync(new URL("./ui/homeShape.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-    expect(css).not.toContain("clip-path");
+    const clipped = css.split("\n").filter((l) => l.includes("clip-path") && !l.includes("clip-path: none"));
+    for (const l of clipped) expect(l).toMatch(/\.home-frame( > \*)? \{|\.home-frame, \.home-frame > \*\) \{/);
+    expect(clipped.length).toBeGreaterThan(0);
     const notch = readFileSync(new URL("./ui/notch.css", import.meta.url), "utf8");
     expect(notch).toContain(".island[data-home] .island-panel[data-shown] { opacity: 0; scale: 1; transition: opacity var(--dur-exit-menu) linear calc(var(--seq-island-hide-at) - var(--dur-exit-menu)); }");
     expect(islandHideAtMs()).toBeGreaterThan(EXIT_MS.menu);

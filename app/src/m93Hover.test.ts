@@ -142,7 +142,9 @@ describe("one primary action that fits the moment, in every state", () => {
     expect(act(m({ runnerUp: false }), { buttons: false }).id).toBe("seeWhy");
   });
   test("M96 (changed on purpose): no quiet Open Home beside the pill; the small chat's expand button opens all of Home", () => {
-    expect(read("./islandPanel.tsx")).not.toContain("S.m93.openHome");
+    // Feel round 3 (19 Nov 2026), changed on purpose: the founder's HeyClicky reference of 18 Nov 2026 asks for a headline, one hint line and a row with the pill and a small round Open Home. Open Home is back as a small round icon button, never as words, and only when the pill is not
+    // already Open Home.
+    expect(read("./islandPanel.tsx")).toContain('{action.id !== "home" && <button className="nb-open"');
     expect(read("./notchChat.tsx")).toContain("onClick={onExpand}");
   });
   test("each action has a look from the meaning colours, never a new colour", () => {
@@ -155,7 +157,8 @@ describe("one primary action that fits the moment, in every state", () => {
 // M96 changed the size on purpose (the founder approved the HeyClicky style mock, 15 Nov 2026): one 42 point row.
 describe("the panel shrinks to one row, and keeps the safety behaviour", () => {
   test("one row, inside the shell's limits; CSS and the layout say the same", () => {
-    expect(HOVER_H).toBe(42);
+    // Feel round 3 (19 Nov 2026), changed on purpose: the founder's HeyClicky reference of 18 Nov 2026 asks for a headline, one hint line and a row with the pill and a small round Open Home: 96 points.
+    expect(HOVER_H).toBe(96);
     expect({ ...LAYOUT_H } as Record<string, number>).toEqual({ quick: HOVER_H, job: HOVER_H });
     const rs = read("../src-tauri/src/island.rs");
     const min = Number(/pub const PANEL_MIN: f64 = ([\d.]+);/.exec(rs)![1]), max = Number(/pub const PANEL_MAX: f64 = ([\d.]+);/.exec(rs)![1]);

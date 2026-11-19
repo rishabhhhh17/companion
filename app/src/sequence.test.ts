@@ -296,7 +296,9 @@ describe("closing the card or holding to talk ends an answer still playing (fake
   test("the card ends the answer when it closes, when the hold to talk keys go down, and before Point at the problem", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
     expect(card).toMatch(/listen\("hush", \(\) => player\.current\.hush\(\)\)/);
-    expect(card).toMatch(/e\.key === "Escape"[^\n]*player\.current\.hush\(\);[^\n]*close_card/);
+    // Feel round 1: Esc closes through closeHome, which starts the fold on the page and then calls close_card.
+    expect(card).toMatch(/e\.key === "Escape"[^\n]*player\.current\.hush\(\);[^\n]*closeHome\(\)/);
+    expect(card).toContain('const closeHome = () => { homeStage.close(); void invoke("close_card"); };');
     // Only through pointProblem, which ends the answer first.
     expect(card.match(/invoke\("point_problem"/g)?.length).toBe(1);
     expect(card).toMatch(/const pointProblem = [^\n]*player\.current\.hush\(\);[^\n]*invoke\("point_problem"/);

@@ -782,6 +782,8 @@ export class Swap extends Component<{ k: string; children: ReactElement<{ classN
     Object.assign(copy.style, { top: `${snap.top}px`, left: `${snap.left}px`, width: `${snap.width}px`, margin: "0" });
     parent.appendChild(copy);
     this.copies.push(copy);
+    // Feel round 2: the new words wait for the old ones to be gone, so two lines of words are never seen over each other.
+    this.el.current?.setAttribute("data-swapped", "");
     setTimeout(() => { copy.remove(); this.copies = this.copies.filter((c) => c !== copy); }, EXIT_MS.toast);
   }
   componentWillUnmount() { for (const c of this.copies) c.remove(); this.copies = []; }

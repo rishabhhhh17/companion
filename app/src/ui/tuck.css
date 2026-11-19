@@ -5,7 +5,9 @@
 .dock .character { transform-origin: top center; transition: scale var(--dur-2) var(--ease-spring), translate var(--dur-2) var(--ease-spring); }
 .dock[data-tuck="take"] .character { scale: .82; translate: 0 -8px; }
 .dock[data-tuck="take"][data-calm] .character { scale: none; translate: none; }
-.dock[data-tuck="in"] .character { scale: .2; translate: 0 -70px; opacity: 0; transition: scale var(--dur-tuck) var(--ease-spring), translate var(--dur-tuck) var(--ease-spring), opacity var(--dur-tuck) var(--ease-exit); }
+/* Feel round 1: it goes to the notch itself (--tuck-dx and --tuck-dy, from the shell's tuck_aim; straight up when unknown),
+   and fades only over the last part of the way, so it is seen arriving rather than vanishing before it gets there. */
+.dock[data-tuck="in"] .character { scale: .2; translate: var(--tuck-dx, 0) var(--tuck-dy, -70px); opacity: 0; transition: scale var(--dur-tuck) var(--ease-spring), translate var(--dur-tuck) var(--ease-spring), opacity calc(var(--dur-tuck) * .4) var(--ease-exit) calc(var(--dur-tuck) * .6); }
 .dock[data-tuck="in"][data-calm] .character { opacity: 0; scale: none; translate: none; transition: opacity var(--dur-tuck-fade) linear; }
 .dock[data-tuck="out"] .character { animation: tuck-out var(--dur-tuck) var(--ease-spring) both; }
 .dock[data-tuck="out"][data-calm] .character { animation: tuck-fade var(--dur-tuck-fade) linear both; }

@@ -7,7 +7,6 @@ import { threadLands } from "./homeFlow.ts";
 import { ChangesCard } from "./changesCard.tsx";
 import { ConfirmStep } from "./confirm.tsx";
 import { FailingLine, fromTest, lineOf } from "./failingLine.tsx";
-import { FlowMini } from "./flowflowMini.tsx";
 import { Icon } from "./icons.tsx";
 import { buttonShown } from "./groups.ts";
 import { keyHint, type Keys } from "./keys.ts";
@@ -40,28 +39,10 @@ function Thread({ t, landed = false }: { t: ThreadState; landed?: boolean }) {
         <li key={k} className="thread-step" data-state={t[k]}>
           <span className="thread-node" aria-hidden="true">{t[k] === "done" && <span className="thread-tick"><Icon name="tick" size={10} /></span>}</span>
           <span className="thread-label">{label}</span>
-          <span className="thread-state">{S.practiceThread.state[t[k]]}{t[k] === "now" && <i className="live" aria-hidden="true" />}</span>
+          <span className="thread-state">{t[k] === "now" && <i className="live" aria-hidden="true" />}{S.practiceThread.state[t[k]]}</span>
         </li>
       ))}
     </ol>
-  );
-}
-
-/** Flowflow on the card's top edge with one short line (decorative: the thread says the same in words). It stays out of the
- *  work itself, never inside the steps, the buttons or the approval cards. */
-function Peek({ stage, review = false }: { stage: Practice["stage"]; review?: boolean }) {
-  // Done rests: Flowflow's "done" plays its success flash, three drops that read as confetti over the card (M51 review). The
-  // bubble and the ticks already say the checks pass; the reward is the evidence.
-  const state = stage === "fixing" || stage === "proving" ? "working" : "idle";
-  // While the fix or its checks run, Now carries the line (M51 polish: the same "On it." in two places read as chatter).
-  // A found problem says "Found it" in the card itself, so the bubble does not say it a third time (the review of 5 Nov).
-  const quiet = stage === "fixing" || stage === "proving" || stage === "found";
-  return (
-    <div className="pr-peek" aria-hidden="true">
-      {/* M72 (item 16): the key practice's last step is the review looking again, so it says that, not that checks pass. */}
-      {!quiet && <span className="say" key={stage}>{review && stage === "done" ? S.practiceKey.doneSay : S.practiceSay[stage]}</span>}
-      <FlowMini state={state} className="pr-char" />
-    </div>
   );
 }
 
@@ -163,14 +144,13 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
     : asks ? S.practiceAsks
     : entry.fix === "lesson" ? (p.nameSet ? S.practiceSettingNameSet : S.practiceSettingFailed)
     : entry.prove === "gate" && p.result?.proof !== "failed" ? S.practiceGateFailed : fixed ? S.practiceKey.notClean : S.practiceFailed;
-  // Flowflow's peek is in the flow above the card, never laid over it, so it can never cross the tab row however tall its
-  // line grows with bigger text (M51 review); the card is drawn over its foot, so it peeks over the card's top edge.
+  // The founder, 17 Nov 2026 ("I don't want the Flow Flow symbol to be on there"): no Flowflow over the practice card; the
+  // thread's own steps say where the practice is (feel round 1 took out the peek and its "Ready." line).
   return (<>
-    <Peek stage={p.stage} review={review} />
     <section className="panel practice" aria-label={S.practiceTitle} data-stage={p.stage} data-landed={landed.current ? "" : undefined}>
       <h2>{S.practiceTitle}</h2>
       <div className="line muted">{w.title}</div>
-      <Thread t={threadOf(p)} landed={landed.current} />
+      <Thread t={threadOf(p, checking || !!p.pretend)} landed={landed.current} />
       {note && <div className="line" role="status">{note}</div>}
       {p.stage === "start" && <>
         <div className="line">{(gate ? S.practiceStartGate : S.practiceStartIn)(folder, w.start)}</div>
@@ -306,10 +286,12 @@ export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, da
         <Lead className="ui-feature learn-lead" meaning="practice" labelledBy={`${base}-lead`}
           tag={<Tag meaning="practice" words={lead.state === "inProgress" ? S.practiceState.inProgress : undefined} />}
           title={<h2 className="ui-lead-title" id={`${base}-lead`}>{lead.title}</h2>}
-          line={<><p className="ui-lead-line">{why ? why.why : lead.teaches}</p><p className="learn-lead-fact" role="status">{opening === lead.entry.id ? S.practiceOpening : <>{lead.time}{lead.needsNode ? ` · ${S.practiceNeedsNode}` : ""}</>}</p></>}
+          line={<><p className="ui-lead-line">{why ? why.why : lead.teaches}</p><p className="learn-lead-fact" role="status">{opening === lead.entry.id ? S.practiceOpening : busy && !openId ? S.practiceWaits : <>{lead.time}{lead.needsNode ? ` · ${S.practiceNeedsNode}` : ""}</>}</p></>}
           actions={<>
-            <Button kind="primary" disabled={busy || lead.needsNode || !!opening} label={`${lead.state === "inProgress" ? S.practiceContinue : S.practiceStart}: ${lead.title}`}
-              onClick={() => (lead.state === "inProgress" && lead.there ? act.open(lead.entry.id) : act.start(lead.entry.id))}>{lead.state === "inProgress" ? S.practiceContinue : S.practiceStart}</Button>
+            {/* Feel round 2 (19 Nov 2026): while other work runs, the card says why in its own line instead of showing a greyed
+                Continue with the reason somewhere else; the button is back the moment it can be pressed. */}
+            {!(busy && !openId) && <Button kind="primary" disabled={busy || lead.needsNode || !!opening} label={`${lead.state === "inProgress" ? S.practiceContinue : S.practiceStart}: ${lead.title}`}
+              onClick={() => (lead.state === "inProgress" && lead.there ? act.open(lead.entry.id) : act.start(lead.entry.id))}>{lead.state === "inProgress" ? S.practiceContinue : S.practiceStart}</Button>}
             {/* A tutor's suggestion has Not this one in the tour's place; the tour is then a row of the list. */}
             {onTour && !why && <Button kind="secondary" onClick={onTour}>{S.firstLook.watch}</Button>}
             {why && <Button kind="quiet" label={`${S.tutor.notThis}: ${lead.title}`} describedBy={`${base}-notthis`} onClick={why.notThis}>{S.tutor.notThis}</Button>}
@@ -322,7 +304,7 @@ export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, da
       {damaged && <p className="page-caption">{S.practiceRecordDamaged}</p>}
       {note && <p className="page-caption" role="status">{note}</p>}
       {/* The open practice is itself the work in progress: then this line has nothing to add (M72, item 6). */}
-      {busy && !openId && <p className="page-caption">{S.practiceBusy}</p>}
+      {busy && !openId && !lead && <p className="page-caption">{S.practiceBusy}</p>}
       {nodeFix && rows.some((r) => r.needsNode) && <p className="page-caption">{S.practiceNodeList(nodeFix)}</p>}
       {withoutNode != null && !rows.some((r) => r.needsNode) && <p className="page-caption">{S.practiceWithoutNode(withoutNode)}</p>}
       <ListGroup label={S.practiceListTitle} shown>
@@ -335,9 +317,14 @@ export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, da
             : state === "inProgress" && !open ? () => act.open(id)
             : state === "notStarted" || (state === "done" && !r.there) ? () => act.start(id) : undefined;
           const goWord = state === "done" && r.there ? S.practiceStartOver : state === "inProgress" ? S.practiceContinue : S.practiceStart;
+          // Feel round 2 (19 Nov 2026): a row with its own action (Start over, Remove my copy) says its minutes in its line, so
+          // the minutes column stays one straight column down the list.
+          const hasAct = !!r.there && !busy;
+          const fact = state === "done" ? S.practiceState.done : S.practiceMin(r.entry.minutes);
+          const line = opening === id ? S.practiceOpening : state === "inProgress" ? S.practiceState.inProgress : short;
           return <Row key={id} id={rowOver} colour={state === "done" ? "green" : practiceColour(i)} icon={state === "done" ? "tick" : undefined} mark={state === "done" ? undefined : String(i + 1)}
-            title={r.title} line={opening === id ? S.practiceOpening : state === "inProgress" ? S.practiceState.inProgress : short}
-            fact={state === "done" ? S.practiceState.done : S.practiceMin(r.entry.minutes)} factColour={state === "done" ? "green" : undefined}
+            title={r.title} line={hasAct && state !== "done" ? `${line} · ${fact}` : line}
+            fact={hasAct && state !== "done" ? undefined : fact} factColour={state === "done" ? "green" : undefined}
             onOpen={go && !blocked ? go : undefined} openLabel={`${goWord}: ${r.title}`}
             // M72 (finding 5): a practice under way with its copy here can be started over (asked first; Remove my copy is
             // inside that question). Any other practice with a copy has Remove my copy, asked first.
@@ -345,7 +332,7 @@ export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, da
               : state === "inProgress" && r.there ? { id: rowAct, label: S.practiceStartOver, colour: "grey", ariaLabel: `${S.practiceStartOver}: ${r.title}`, onClick: () => setAsk({ id, what: "startOver", back: rowAct }) }
               : { id: rowAct, label: S.practiceRemove, colour: "grey", ariaLabel: `${S.practiceRemove}: ${r.title}`, onClick: () => setAsk({ id, what: "remove", back: rowAct }) }} />;
         })}
-        {(!lead || why) && onTour && <Row colour="blue" icon="eye" title={S.practiceTourRow} line={S.practiceTourLine} onOpen={onTour} openLabel={S.firstLook.watch} />}
+        {(!lead || why) && onTour && <Row colour="blue" icon="eye" title={S.practiceTourRow} line={S.practiceTourLine} fact={S.practiceTourTime} onOpen={onTour} openLabel={S.firstLook.watch} />}
       </ListGroup>
       {ask && askRow && ask.what === "startOver" && (
         <ConfirmStep className="learn-ask" label={S.practiceStartOverSure} back={overId} onCancel={() => setAsk(null)}><p className="learn-ask-line">{askRow.title}. {S.practiceStartOverSure}</p>

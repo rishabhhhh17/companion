@@ -96,7 +96,13 @@ describe("the one pill, in every state", () => {
     const at = panel.indexOf('className="nb-row"'), end = panel.indexOf("</div>", panel.indexOf('className="nb-pill"'));
     const hover = panel.slice(at, end);
     expect(at).toBeGreaterThan(0);
-    for (const gone of ["<Tile", "<Icon", "ip-home", "S.m93.openHome", "ip-line", "ip-act-row", "type=\"checkbox\""]) expect(hover).not.toContain(gone);
+    // Feel round 3 (19 Nov 2026), changed on purpose: the founder's HeyClicky reference of 18 Nov 2026 asks for a headline, one hint line and a row with the pill and a small round Open Home. The pill itself still has no icon; Open Home is a round icon button beside it, and a review's
+    // news leads with its tick or cross.
+    const pillOnly = panel.slice(panel.indexOf('className="nb-pill"'), panel.indexOf("</button>", panel.indexOf('className="nb-pill"')));
+    expect(pillOnly).not.toContain("<Icon");
+    for (const gone of ["<Tile", "ip-home", "ip-line", "ip-act-row", "type=\"checkbox\""]) expect(hover).not.toContain(gone);
+    expect(hover).toContain('className="nb-hint"');
+    expect(panel).toContain('className="nb-open"');
     expect(hover).toContain("<FlowMini");
     expect(hover).toContain('className="nb-greet"');
     expect(hover).toContain('className="nb-pill"');
@@ -136,7 +142,9 @@ describe("which state shows when", () => {
     expect(island).toContain('!was_open && on && island && matches!(source, "notch_chat" | "ask_key")');
     // Esc in Home closes it; Stop everything closes it at once and the island goes back to the bare notch.
     // Changed on purpose (founder round 1): Esc is heard on the window while Home shows, so it closes wherever the keys are.
-    expect(read("./card.tsx")).toContain('if (e.key === "Escape" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); }');
+    expect(read("./card.tsx")).toContain('if (e.key === "Escape" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); box.current?.blur(); player.current.hush(); closeHome(); }');
+    // Feel round 1 (18 Nov 2026): closeHome starts the fold on the page at once, then tells the shell.
+    expect(read("./card.tsx")).toContain('const closeHome = () => { homeStage.close(); void invoke("close_card"); };');
     expect(read("./card.tsx")).toContain('window.addEventListener("keydown", onEsc);');
     expect(main).toContain('home_stop_now("stop_everything")');
   });
@@ -163,7 +171,8 @@ describe("the sizes are one number on both sides", () => {
   const rs = read("../src-tauri/src/island.rs");
   const num = (re: RegExp) => Number(re.exec(rs)![1]);
   test("pointing: one row about 330 wide and 42 tall, inside the shell's limits", () => {
-    expect([HOVER_W, HOVER_H]).toEqual([330, 42]);
+    // Feel round 3 (the founder's HeyClicky reference, 18 Nov 2026): 96 tall now, a headline, a hint and the pill row.
+    expect([HOVER_W, HOVER_H]).toEqual([330, 96]);
     expect(LAYOUT_H).toEqual({ quick: HOVER_H, job: HOVER_H });
     expect(HOVER_W).toBeGreaterThanOrEqual(num(/pub const PANEL_W_MIN: f64 = ([\d.]+);/));
     expect(HOVER_W).toBeLessThanOrEqual(num(/pub const PANEL_W: f64 = ([\d.]+);/));
@@ -192,14 +201,15 @@ describe("the small chat: the recent news as bubbles", () => {
   test("the person's asks and Squibby's plain answers, oldest first, then what is at work and what waits", () => {
     const x = m({ history: [row({ id: 1, label: "fix the email check", startedAt: at(14, 0), endedAt: at(14, 10) }), row({ id: 2, label: "put the password check back", status: "not_done", proof: "failed", failedCheck: "npm test", startedAt: at(14, 40), endedAt: at(14, 41) })], review: batch(2), claudeWaiting: { project: P, message: "" } });
     const b = chatBubbles(x, P);
-    // The newest CHAT_MAX (3) fit the chat at the usual text size: the older ones are in Home's History.
-    expect(CHAT_MAX).toBe(3);
-    // Changed on purpose (founder round 1, 17 Nov 2026: the chat opened on an answer whose question was cut): tasks are cut
-    // whole, never one bubble of a pair. The newest task always shows with what waits; older ones only while they fit.
+    // Changed on purpose (feel round 2, 19 Nov 2026): the chat showed only the newest task over empty dots. It shows the
+    // recent thread, oldest at the top, and scrolls; older work is in Home's History.
+    expect(CHAT_MAX).toBe(14);
+    // Tasks are cut whole, never one bubble of a pair (founder round 1). Both tasks show now, in the order they were asked.
     expect(b.map((y) => [y.who, y.words])).toEqual([
+      ["you", "fix the email check"], ["squibby", S.m96.chat.proven(2)],
       ["you", "put the password check back"], ["squibby", S.m96.chat.failedCheck("npm test")], ["squibby", S.m96.chat.claude], ["squibby", S.m96.chat.review(2)],
     ]);
-    expect(chatBubbles(m({ history: x.history }), P).map((y) => y.words)).toEqual(["put the password check back", S.m96.chat.failedCheck("npm test")]);
+    expect(chatBubbles(m({ history: x.history }), P).map((y) => y.words)).toEqual(["fix the email check", S.m96.chat.proven(2), "put the password check back", S.m96.chat.failedCheck("npm test")]);
   });
   test("only the newest few, never more than fit", () => {
     const many = Array.from({ length: 9 }, (_, i) => row({ id: i + 1, label: `task ${i}`, startedAt: at(10 + i, 0), endedAt: at(10 + i, 5) }));
@@ -211,6 +221,10 @@ describe("the small chat: the recent news as bubbles", () => {
     expect(b.at(-1)!.words).toBe("Type a few words first.");
     expect(b.some((y) => y.words === "task 8")).toBe(true);   // the newest task's ask, with its answer after it
     expect(b.some((y) => y.words === "task 0")).toBe(false);
+    // Feel round 2: the recent thread, in the order asked (two tasks or more, not only the newest).
+    const asks = b.filter((y) => y.who === "you").map((y) => y.words);
+    expect(asks.length).toBeGreaterThan(1);
+    expect(asks).toEqual([...asks].sort((p, q) => Number(p.split(" ")[1]) - Number(q.split(" ")[1])));
   });
   test("each outcome in plain words", () => {
     expect(outcome(row({ proof: null, changed: 1 }))).toBe("Finished, not checked yet. It changed 1 file.");
@@ -235,6 +249,8 @@ describe("the small chat: the recent news as bubbles", () => {
     const b = chatBubbles(x, P);
     // Changed on purpose (round 1): the failed task's ask now shows above its answer.
     expect(b.map((y) => y.go ?? null)).toEqual([null, "now", "now", "review"]);
+    // Feel round 2: the failed reply, and only it, offers the Fix it pill.
+    expect(b.map((y) => y.fix ?? null)).toEqual([null, true, null, null]);
     expect(chatBubbles(m({ history: [row()] }), P).every((y) => !y.go)).toBe(true);
   });
   test("the field says which project an ask goes to", () => {
@@ -248,10 +264,21 @@ describe("the small chat: the recent news as bubbles", () => {
     expect(chatBubbles(m({ review: batch(2, { project: "/Users/me/other" }), claudeWaiting: { project: "/Users/me/other" } }), P).map((y) => y.words)).toEqual([S.m96.chat.empty("signup-page")]);
     expect(chatBubbles(m({ runnerUp: false }), P)[0]!.words).toBe(S.m96.chat.off);
   });
-  test("the time line: Today and the clock of the oldest task shown", () => {
-    expect(chatWhen(m({ history: [row()] }), P, NOW)).toEqual({ day: "Today", time: "2:41 pm" });
+  // Changed on purpose (feel round 2, 19 Nov 2026): the clock is when the oldest task shown was asked, not when it ended.
+  test("the time line: Today and the clock of the oldest task shown, when it was asked", () => {
+    expect(chatWhen(m({ history: [row()] }), P, NOW)).toEqual({ day: "Today", time: "2:30 pm" });
     expect(chatWhen(m({ history: [row({ startedAt: at(9, 5, 14), endedAt: at(9, 5, 14) })] }), P, NOW)?.day).toBe("Yesterday");
     expect(chatWhen(m(), P, NOW)).toBeNull();
+  });
+  // Feel round 2: two tasks asked on two days, both shown in the order asked, each day under its own time line, stamped
+  // from its own task's time.
+  test("each day's tasks under their own time line, in the order asked", () => {
+    const x = m({ history: [row({ id: 2, label: "add an email check", startedAt: at(14, 0), endedAt: at(14, 20), checkpoint: "cp_2" }), row({ id: 1, label: "make the signup button work", startedAt: at(9, 5, 14), endedAt: at(9, 9, 14), checkpoint: "cp_1" })] });
+    const b = chatBubbles(x, P, { now: NOW });
+    expect(b.filter((y) => y.who === "you").map((y) => y.words)).toEqual(["make the signup button work", "add an email check"]);
+    expect(b.filter((y) => y.when).map((y) => [y.words, y.when])).toEqual([["make the signup button work", { day: "Yesterday", time: "9:05 am" }], ["add an email check", { day: "Today", time: "2:00 pm" }]]);
+    // Without the time, no lines are stamped (the old callers).
+    expect(chatBubbles(x, P).some((y) => y.when)).toBe(false);
   });
   test("anything that needs a card of its own opens the chat out to all of Home", () => {
     const ok = { onboarded: true, vague: false, noProject: false, handoff: false, attached: 0, freshNotice: false, freshResult: false };
@@ -286,7 +313,8 @@ describe("the look: the black, one lavender blue, words in strings.ts", () => {
     const sheets = ["./ui/notch.css", "./ui/black.css", "./ui/parts.css", "./ui/home.css", "./style.css"].map(read).join("\n");
     const rules = sheets.split("}").filter((r) => /var\(--lav-/.test(r)).map((r) => r.split("{")[0]!.trim());
     expect(rules.length).toBeGreaterThan(0);
-    for (const sel of rules) expect(sel, sel).toMatch(/\.nb-pill|\.nc-me|\.nc-mic|\.nc-field/);
+    // Feel round 3 (19 Nov 2026): the small chat's suggestions are the same lavender pill (the founder's HeyClicky reference).
+    for (const sel of rules) expect(sel, sel).toMatch(/\.nb-pill|\.nc-me|\.nc-mic|\.nc-field|\.nc-pill/);
   });
   test("every word is in strings.ts, and none has an em dash", () => {
     for (const f of ["./notchChat.ts", "./notchChat.tsx", "./notchMinimal.ts"]) {
@@ -312,12 +340,14 @@ describe("round 1: the chat's order, what is live, and closing it", () => {
   test("two finished tasks never start with an answer whose ask was cut", () => {
     const b = chatBubbles(m({ history: two }), P);
     expect(b[0]!.who).toBe("you");
-    expect(b.map((y) => y.words)).toEqual(["make the button blue", S.m96.chat.proven(2)]);
-    expect(chatBubbles(m({ history: two, review: batch(2) }), P).map((y) => y.words)).toEqual(["make the button blue", S.m96.chat.proven(2), S.m96.chat.review(2)]);
+    // Changed on purpose (feel round 2, 19 Nov 2026): the recent thread shows, each ask with its answer, in the order asked.
+    expect(b.map((y) => y.words)).toEqual(["fix the signup form", S.m96.chat.proven(2), "make the button blue", S.m96.chat.proven(2)]);
+    expect(chatBubbles(m({ history: two, review: batch(2) }), P).map((y) => y.words)).toEqual(["fix the signup form", S.m96.chat.proven(2), "make the button blue", S.m96.chat.proven(2), S.m96.chat.review(2)]);
   });
   test("asks show in the order they were asked, not the order they ended", () => {
     const slow = [row({ id: 1, label: "first ask", checkpoint: "cp_1", startedAt: at(11, 0), endedAt: at(12, 0), changed: 0 }), row({ id: 2, label: "second ask", checkpoint: "cp_2", startedAt: at(11, 10), endedAt: at(11, 20), changed: 0 })];
-    expect(chatBubbles(m({ history: slow }), P).map((y) => y.words)).toEqual(["second ask", S.m96.chat.proven(0)]);
+    // Changed on purpose (feel round 2): both show now, the first asked first, though it ended last.
+    expect(chatBubbles(m({ history: slow }), P).map((y) => y.words)).toEqual(["first ask", S.m96.chat.proven(0), "second ask", S.m96.chat.proven(0)]);
   });
   test("no answer is ever first without its ask, for any number of tasks and waits", () => {
     for (let n = 0; n <= 5; n++) for (const waits of [{}, { review: batch(2) }, { review: batch(2), claudeWaiting: { project: P, message: "" } }]) {

@@ -253,7 +253,8 @@ describe("M71: one black look, colour for meaning only", () => {
    *  and the person's own bubble share it, on a faint dotted grid. Exactly these parts, named here, and nothing else;
    *  m96Notch.test.ts holds that the lavender appears nowhere else. */
   const M96_GLOW = /^(\.island-panel button\.nb-pill|\.notch-chat \.nc-mic|\.notch-chat \.nc-field|\.notch-chat \.nc-field:focus-within)$/;
-  const M96_GRADIENT = /^(\.island-panel button\.nb-pill|\.notch-chat \.nc-mic|\.notch-chat \.nc-me|\.home\[data-chat\] \.notch-chat)$/;
+  // Feel round 3 (19 Nov 2026): the small chat's suggestions are the same lavender pill (the founder's HeyClicky reference).
+  const M96_GRADIENT = /^(\.island-panel button\.nb-pill|\.notch-chat \.nc-mic|\.notch-chat \.nc-me|\.notch-chat \.nc-pill|\.home\[data-chat\] \.notch-chat)$/;
   test("no gradient outside the character's own art", () => {
     const bad: string[] = [];
     // A mask that fades a scrolling strip's edge is no colour: it is left to the clean up, which decides about it.
@@ -267,7 +268,8 @@ describe("M71: one black look, colour for meaning only", () => {
       if (M96_GRADIENT.test(r.sel) && /gradient\(/.test(v) && k.startsWith("background")) found.gradient.add(r.sel);
     }
     expect(found.glow.size).toBe(4);
-    expect(found.gradient.size).toBe(4);
+    // Feel round 3 (19 Nov 2026), changed on purpose: the small chat's suggestion pills are the fifth (no glow).
+    expect(found.gradient.size).toBe(5);
   });
   test("no glow or halo: no drop shadow, no glow or halo token, no blurred coloured shadow, outside the character's art", () => {
     const bad: string[] = [];

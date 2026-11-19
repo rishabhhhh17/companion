@@ -69,10 +69,13 @@ export const takesKeys = (v: NotchView, how: { clickedIn: boolean; askKey: boole
 
 /** `go`: where a press on the bubble opens all of Home (the changes to review, or Now for Claude Code waiting and a failed
  *  check, where Home's own Fix it and the AI tool's question are). Pressing one only opens out: it never starts anything. */
-export type Bubble = { key: string; who: "squibby" | "you"; words: string; go?: "review" | "now" };
+export type Bubble = { key: string; who: "squibby" | "you"; words: string; go?: "review" | "now";
+  /** Feel round 2: the first bubble of a day's tasks carries that day's time line (when its first task was asked). */
+  when?: { day: string; time: string };
+  /** Feel round 2: a reply that failed gets a Fix it pill under it (it only opens Home on Now, where Fix it is). */
+  fix?: true };
 
 const sameFolder = (a: string, b: string): boolean => !!a && a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
-const timeOf = (h: Pick<HistoryItem, "startedAt" | "endedAt">): number => { const t = Date.parse(h.endedAt ?? h.startedAt ?? ""); return Number.isFinite(t) ? t : 0; };
 /** When it was asked: the chat lists asks in that order (round 1: an ask that ended later never jumps over a newer one). */
 const askedAt = (h: Pick<HistoryItem, "startedAt" | "endedAt">): number => { const t = Date.parse(h.startedAt ?? h.endedAt ?? ""); return Number.isFinite(t) ? t : 0; };
 
@@ -121,11 +124,15 @@ export function outcome(h: HistoryItem): string {
   return h.failedCheck ? C.failedCheck(h.failedCheck) : C.notDone;
 }
 
-/** How many of the latest tasks the chat shows (each is two bubbles: what was asked, and what came of it). */
-export const CHAT_TASKS = 2;
-/** The most bubbles at once (what fits the chat at the usual text size under its time line). Tasks are cut whole: the
- *  newest task always shows, with what waits; an older one only while all of it fits. */
-export const CHAT_MAX = 3;
+/** How many of the latest tasks the chat shows (each is two bubbles: what was asked, and what came of it). Feel round 2
+ *  (19 Nov 2026): it showed only the newest and left empty dots above it. Now the recent thread, oldest at the top,
+ *  scrolled to the newest at the foot, as a chat is. */
+export const CHAT_TASKS = 6;
+/** The most bubbles at once. Tasks are cut whole: the newest task always shows, with what waits; an older one only while
+ *  all of it fits. The list scrolls; older work is in Home's History. */
+export const CHAT_MAX = 14;
+/** Feel round 3: a quiet time line goes over an ask asked more than this long after the one before it. */
+export const CHAT_GAP_MS = 30 * 60_000;
 
 /** The task at work, if it still runs: started and not yet answered by its receipt or its History row (round 1: the chat
  *  said Working on it under a task that had finished, and said its ask twice). */
@@ -145,6 +152,15 @@ function chatRows(m: Model, project: string, live: Model["task"]): HistoryItem[]
     .slice().sort((a, b) => askedAt(a) - askedAt(b)).slice(-CHAT_TASKS);
 }
 
+/** The day and the clock of a time, as the chat's time line says it. */
+function whenOf(t: number, now: number): { day: string; time: string } {
+  const d = new Date(t), today = new Date(now);
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOf(today) - startOf(d)) / 86_400_000);
+  const day = days <= 0 ? S.m96.chat.today : days === 1 ? S.m96.chat.yesterday : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return { day, time: shortClock(d) };
+}
+
 /** The tasks shown and their bubbles: the newest task always, older ones only while all their bubbles fit with `tail`. */
 function chatTasks(m: Model, project: string, tail: number): { rows: HistoryItem[]; live: Model["task"]; bubbles: Bubble[] } {
   const C = S.m96.chat;
@@ -154,7 +170,7 @@ function chatTasks(m: Model, project: string, tail: number): { rows: HistoryItem
     const k = keyOf(h.id, h.checkpoint), b: Bubble[] = [];
     if (h.label.trim()) b.push({ key: `you:${k}`, who: "you", words: h.label.trim() });
     const failed = h.status !== "done" && h.status !== "interrupted" && h.status !== "stopped" && !h.undone && !!h.failedCheck;
-    b.push({ key: `sq:${k}`, who: "squibby", words: outcome(h), ...(failed ? { go: "now" as const } : {}) });
+    b.push({ key: `sq:${k}`, who: "squibby", words: outcome(h), ...(failed ? { go: "now" as const, fix: true as const } : {}) });
     return { row: h, b };
   });
   if (live) {
@@ -177,7 +193,7 @@ function chatTasks(m: Model, project: string, tail: number): { rows: HistoryItem
  *  (from History), the task at work now, then what waits (Claude Code, changes to review), then a hint the ask box gave (a
  *  word is needed, the mic's keys). Only this project's, but a task at work in another project is named, so the chat's Stop
  *  and its greyed Send have a reason. With nothing to say, one line that invites a question. */
-export function chatBubbles(m: Model, project: string, o: { hint?: string | null } = {}): Bubble[] {
+export function chatBubbles(m: Model, project: string, o: { hint?: string | null; now?: number } = {}): Bubble[] {
   const C = S.m96.chat;
   if (!m.runnerUp) return [{ key: "off", who: "squibby", words: C.off }];
   if (m.connected === "none") return [{ key: "ready", who: "squibby", words: C.notReady }];
@@ -191,7 +207,21 @@ export function chatBubbles(m: Model, project: string, o: { hint?: string | null
   const rv = m.review;
   if (rv && rv.stage !== "reviewed" && rv.count > 0 && sameFolder(rv.project, project)) tail.push({ key: `review:${rv.batch}`, who: "squibby", words: C.review(rv.count), go: "review" });
   if (o.hint) tail.push({ key: "hint", who: "squibby", words: o.hint });
-  const out = [...chatTasks(m, project, tail.length).bubbles, ...tail];
+  const shown = chatTasks(m, project, tail.length);
+  // Feel round 2: each day's tasks under their own time line, from when the first of them was asked (never the time the
+  // chat was opened). Feel round 3 (19 Nov 2026): also wherever more than CHAT_GAP_MS passed since the ask before, so an
+  // hour old answer never reads as if it came just before the newest one.
+  if (o.now !== undefined) {
+    let lastDay = "", lastAt = 0;
+    for (const r of shown.rows) {
+      const t = askedAt(r);
+      if (!t) continue;
+      const w = whenOf(t, o.now), first = shown.bubbles.find((b) => b.key === `you:${keyOf(r.id, r.checkpoint)}` || b.key === `sq:${keyOf(r.id, r.checkpoint)}`);
+      if (first && (w.day !== lastDay || t - lastAt > CHAT_GAP_MS)) first.when = w;
+      lastDay = w.day; lastAt = t;
+    }
+  }
+  const out = [...shown.bubbles, ...tail];
   if (out.length === 0) out.push({ key: "empty", who: "squibby", words: C.empty(projectName(project)) });
   return out;
 }
@@ -201,14 +231,11 @@ export function chatBubbles(m: Model, project: string, o: { hint?: string | null
 export function chatWhen(m: Model, project: string, now: number, o: { hint?: string | null } = {}): { day: string; time: string } | null {
   const tail = chatBubbles(m, project, o).filter((b) => !b.key.startsWith("you:") && !b.key.startsWith("sq:")).length;
   const shown = chatTasks(m, project, tail);
-  const first = shown.rows.map(timeOf).find((x) => x > 0);
+  // Feel round 2: when the oldest task shown was asked, not when it ended.
+  const first = shown.rows.map(askedAt).find((x) => x > 0);
   const t = first ?? (shown.live || m.task ? now : 0);
   if (!t) return null;
-  const d = new Date(t), today = new Date(now);
-  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const days = Math.round((startOf(today) - startOf(d)) / 86_400_000);
-  const day = days <= 0 ? S.m96.chat.today : days === 1 ? S.m96.chat.yesterday : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  return { day, time: shortClock(d) };
+  return whenOf(t, now);
 }
 
 /** May a click elsewhere fold the small chat? Always with Close Home when I click another app on (`on`): nothing in the chat

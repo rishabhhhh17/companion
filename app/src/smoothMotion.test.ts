@@ -8,8 +8,9 @@ import { readFileSync } from "node:fs";
 import { ALL_CSS, PARTS_CSS, STYLE_CSS, TOKENS_CSS } from "./ui/cssFiles.ts";
 import { S } from "./strings.ts";
 import { MOTION_TOKENS, MAX_FADES, MAX_SLIDE, countAt, counts, gone, msOf, onScreen, pxOf, readTokens, slides, translateYOf, type Spot } from "./smoothMotion.ts";
+import { PLACE_OUT_MS } from "./smoothMotion.ts";
 import { initial, reduce, type Model } from "./model.ts";
-import { heroWords, timeLine } from "./homeHero.ts";
+import { clockOnly, heroWords, timeLine } from "./homeHero.ts";
 import { _resetForTests, takeSnapshot } from "./settingsStore.ts";
 import { shellSource } from "../dom/sourceText.ts";
 
@@ -147,7 +148,9 @@ describe("numbers count up rather than jumping", () => {
     expect(timeLine(65)).toBe("1:05 so far");
     expect(timeLine(4.6), "a count on its way lands on whole seconds").toBe("0:05 so far");
     expect(timeLine(0)).toBe("0:00 so far");
-    expect(card).toContain('<p className="job-meta"><span><CountUp value={Math.max(Math.floor(rl.ms / 1000), Math.floor((clock - (jobStart.current?.at ?? clock)) / 1000))} words={timeLine} step={1} /></span></p>');
+    // Changed on purpose (feel round 2): the time sits on the card's top line beside the step, so it is the clock alone.
+    expect(clockOnly(65)).toBe("1:05");
+    expect(card).toContain('<p className="job-meta run-time"><span><CountUp value={Math.max(Math.floor(rl.ms / 1000), Math.floor((clock - (jobStart.current?.at ?? clock)) / 1000))} words={clockOnly} step={1} /></span></p>');
   });
   test("it writes its words only when they change, and a new number takes over from wherever the count is", () => {
     const up = fnOf("CountUp");
@@ -298,13 +301,17 @@ describe("moving between places is a short cross fade and a small slide", () => 
     // Only what is new in the place comes in: what stays (a note shown on every place) is never faded out and in again.
     expect(hook).toContain("enterPlace(boxes.filter((b) => seen.has(b) && !was.seen.has(b)), t);");
     const fade = fnOf("fadeAway");
-    expect(fade).toContain("[{ opacity: 1 }, { opacity: 0 }], t.exit, t.easeExit");
+    // Changed on purpose (feel round 2, 19 Nov 2026): the old place fades out in PLACE_OUT_MS and the new one waits for it.
+    expect(fade).toContain("[{ opacity: 1 }, { opacity: 0 }], Math.min(t.exit, PLACE_OUT_MS), t.easeExit");
     const enter = fnOf("enterPlace");
     // The review, 3 Nov 2026: the old place under the new one drew text over text, so the new place waited for the old one
     // to go. M66 fix 22: waiting the whole --dur-exit left Home empty for 120 ms on every switch. The new place starts
     // halfway through the old one's leave (60 ms), and holds its first frame (invisible) until then. The two overlap for
     // 60 ms only while the old one is fading (it has about a third gone at 60 ms) and the new one starts from nothing.
-    expect(enter).toContain("{ duration: t.enter, delay: t.exit / 2, easing: t.easeEnter, fill: \"backwards\" }");
+    // Feel round 2: the 60 ms overlap still showed both places at half opacity (text over text). The new place starts once
+    // the old one has gone, and the old one goes quicker, so the two never show together.
+    expect(enter).toContain("{ duration: t.enter, delay: Math.min(t.exit, PLACE_OUT_MS), easing: t.easeEnter, fill: \"backwards\" }");
+    expect(PLACE_OUT_MS).toBeLessThanOrEqual(80);
     expect(enter).toContain("translateY(${t.slide}px)");
     expect(ms("--dur-exit")).toBeLessThan(ms("--dur-enter"));
     expect(pxOf(token("--slide-place"))).toBeLessThanOrEqual(8);

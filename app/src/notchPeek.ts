@@ -170,6 +170,14 @@ export type TodayKind = "reviewed" | "caught" | "asked" | "fixed" | "failed" | "
 export type TodayEntry = { key: string; kind: TodayKind; at: number; when: string; words: string; colour: Colour; icon: IconName };
 export const TODAY_MAX = 6;
 
+/** Today without the task Now's card already shows (feel round 1, 18 Nov 2026: the row said the card again under it). Null
+ *  when that task was all Today had to say, so Now draws no Today at all rather than an empty one that is not true. */
+export function todayBesides(entries: TodayEntry[], shownTask: number | null): TodayEntry[] | null {
+  if (shownTask === null) return entries;
+  const rest = entries.filter((e) => e.key !== `t${shownTask}`);
+  return rest.length === 0 && entries.length > 0 ? null : rest;
+}
+
 /** What happened today in this project, newest first, at most TODAY_MAX: changes reviewed, copies saved before a
  *  destructive command (caught), fixes proven or not, and what was undone. Only real rows; nothing when nothing happened. */
 export function todayLine(m: Model, now: number): TodayEntry[] {

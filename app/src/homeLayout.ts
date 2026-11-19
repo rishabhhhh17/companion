@@ -85,3 +85,21 @@ export function barContext(o: { project: string; foot: { start: string; end: str
 /** The key the top bar shows on its right: Fix it's, the one F28 key for being stuck, only while it is bound. No other key
  *  is ever named there, and none is added (the founder's four keys stay the only ones). */
 export const barKeyChord = (keys: { using: Record<string, string | null> }): string | null => keys.using.problem ?? null;
+
+/** Feel round 3 (19 Nov 2026): the tall Home's top bar had an empty gap between the project chip and Settings. On Learn,
+ *  History and Memory (where nothing else says how the project stands) it holds one quiet status: the state and when, or
+ *  Working while something runs. On Now the lead says it, so nothing. Words only from the strings file. */
+export function barStatusWords(o: { tab: Tab; kind: string; ago: string; working: boolean }): string {
+  if (o.tab === "now" || o.tab === "settings") return "";
+  return statusWords(o);
+}
+/** The project's state in a word or three (the tall bar off Now, and the small chat's top row): Working while something
+ *  runs, else what the last check said and when. "" when there is nothing to say. */
+export function statusWords(o: { kind: string; ago: string; working: boolean }): string {
+  if (o.working) return S.meaning.tag.working;
+  if (o.kind === "works") return S.homeNow.passedAgo(o.ago);
+  if (o.kind === "failing") return S.homeNow.pill.failed;
+  if (o.kind === "changed") return S.homeNow.pill.look;
+  if (o.kind === "unchecked") return S.homeNow.pill.new;
+  return "";
+}

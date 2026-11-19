@@ -19,7 +19,8 @@ describe("one glance in every state", () => {
     ["not checked yet", atRest, S.m96.act.check, null],
     ["changes to review", () => run([batch], atRest()), S.m96.changes(2), S.m93.line.changes(2)],
     ["Claude Code waits", () => run([{ type: "hook.waiting", project: PROJECT, waiting: true, message: "" }], atRest()), S.m96.act.claude, S.m93.line.claude],
-    ["a job runs", () => run(job, atRest()), S.m96.act.stop, null],
+    // Feel round 2: the job's own name is its news (the row said "hey there" over a running job).
+    ["a job runs", () => run(job, atRest()), S.m96.act.stop, "Make the button blue"],
     ["the engine stopped", () => ({ ...atRest(), runnerUp: false }), S.m96.act.seeWhy, S.m93.line.off],
     ["no project", () => run([{ type: "auth.status", method: "api_key", source: "keychain" }]), S.m96.act.pick, null],
   ];
@@ -27,13 +28,16 @@ describe("one glance in every state", () => {
     await renderPage(<IslandPanel m={m()} line="" shown />);
     const panel = document.querySelector(".island-panel")!;
     expect(panel.children.length).toBe(1);
-    expect(panel.querySelector(".nb-greet")?.textContent).toMatch(/^hey /);
+    // Changed on purpose (feel round 2, 19 Nov 2026): with news, the row says the news; the greeting only when there is none.
+    if (line) expect(panel.querySelector(".nb-greet")?.textContent).toBe(line);
+    else expect(panel.querySelector(".nb-greet")?.textContent).toMatch(/^hey /);
     expect(panel.querySelectorAll(".ip-line").length).toBe(0);
     if (line) expect(panel.querySelector(".nb-row")?.getAttribute("aria-label")).toContain(line);
     expect(panel.querySelectorAll(".nb-pill").length).toBe(1);
     expect(panel.querySelector(".nb-pill")?.textContent).toBe(pill);
     expect(panel.querySelectorAll(".nb-pill svg, .nb-pill .ui-mtile").length).toBe(0);
-    expect(panel.querySelectorAll("button").length).toBe(2);
+    // Feel round 3 (19 Nov 2026), changed on purpose: the founder's HeyClicky reference (18 Nov 2026) puts a small round Open Home beside the pill (none when the pill is Open Home already).
+    expect(panel.querySelectorAll("button").length).toBe(pill === S.m96.act.home ? 2 : 3);
     // Changed on purpose (founder round 1, 17 Nov 2026: "I don't want the Flowflow symbol to be on there"): the face shows
     // in the row only while Flowflow lives in the notch (the m96 round 1 tests hold that); on the screen edge, the hello alone.
     expect(panel.querySelectorAll(".ip-face").length).toBe(0);

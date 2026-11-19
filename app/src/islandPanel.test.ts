@@ -129,7 +129,8 @@ describe("the hover panel shows only what is live (F28, 4.3)", () => {
     // leads, with at most one short line under it; Settings and Open left the head (Open Home is the quiet second action).
     // M96 (changed on purpose, the founder approved the HeyClicky style mock, 15 Nov): one row, the face and a lowercase
     // hello as one button that opens the small chat, then one pill. The line is what VoiceOver hears, never a row.
-    expect(view).toContain('<span className="nb-greet" title={greet}>{greet}</span>');
+    // Changed on purpose (feel round 2): the row says the news when there is some, the greeting only when there is none.
+    expect(view).toContain('<span className="nb-greet" title={head.words} data-news={head.news ? "" : undefined}>{head.words}</span>');
     expect(view).toContain('aria-label={S.m93.say(greet, hline?.words ?? null)}');
     expect(view).toContain('const showButtons = useSetting("panel.showButtons") !== false;');
     for (const gone of ["greeting(", "ip-hi", "ip-go", "ip-pill", "ip-row", "S.panel.go", "S.look.chipFind", "S.look.chipSafe", "first_name", "panel.showHello"]) expect(view, gone).not.toContain(gone);

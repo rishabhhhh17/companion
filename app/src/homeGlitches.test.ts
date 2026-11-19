@@ -58,7 +58,8 @@ describe("the pointer leaving asks the page, as a click elsewhere does", () => {
     expect(at).toBeGreaterThan(-1);
     const body = card.slice(at, card.indexOf("\n", at));
     expect(body).toContain('closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true, typingNow())');
-    expect(body).toContain('invoke("close_card")');
+    expect(body).toContain("closeHome()");   // feel round 1: the page folds at once, then close_card
+    expect(card).toContain('const closeHome = () => { homeStage.close(); void invoke("close_card"); };');
   });
 });
 

@@ -15,7 +15,7 @@ import { forwardRef, useEffect, useRef, useState } from "react";
 import { FlowMini } from "./flowflowMini.tsx";
 import type { IslandLineKind } from "./home.ts";
 import { ARM_MS, answerHere, armed, cardReady, islandJobs, panelNote, panelView, PANEL_DO, type JobCard } from "./islandPanel.ts";
-import { keyHint, keysFrom, setKeysNow } from "./keys.ts";
+import { keycaps, keyHint, keysFrom, keysNow, setKeysNow } from "./keys.ts";
 import { answerApproval, stopAgent } from "./commands.ts";
 import type { Model } from "./model.ts";
 import { S } from "./strings.ts";
@@ -23,7 +23,7 @@ import { invoke } from "./tauri.ts";
 import { useSetting } from "./settingsStore.ts";
 import { homeStatus, notchStatusLine } from "./homeHero.ts";
 import { panelLayout } from "./notchQuick.ts";
-import { hoverAction, hoverGreeting, hoverLine, hoverPill } from "./notchMinimal.ts";
+import { hoverAction, hoverGreeting, hoverHeadline, hoverHint, hoverLine, hoverPill } from "./notchMinimal.ts";
 import { useGroups } from "./groups.ts";
 import { Button } from "./ui/parts.tsx";
 import { Icon } from "./icons.tsx";
@@ -99,6 +99,11 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   const layout = panelLayout(view);
   const full = layout === "quick" || layout === "job";
   const hline = hoverLine(m, now, { note, noteKind: note ? lineKind : null, job: view.kind === "job" ? view.job.title : null, reviewKey, unseen });
+  // Feel round 2: the row says the news when there is some, the greeting only when there is none (notchMinimal.ts).
+  const head = hoverHeadline(m, greet, hline, now);
+  // The key as its caps ("⌃⌥⌘F"), short enough for one quiet line.
+  const stuckKey = keycaps(keysNow().using.problem).join("");
+  const hint = hoverHint(head, hline?.words ?? null, stuckKey ? `${S.look.barKey.before} ${stuckKey} ${S.look.barKey.after}` : "");
   const action = hoverAction(m, now, { layout: layout === "job" ? "job" : "quick", on: groups.on, buttons: showButtons });
   const stopSay = `${S.stop}. ${keyHint("stop", S.look.stopKeys)}`;
   const questions = jobs.filter((j) => j.approval);
@@ -177,11 +182,18 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
         <button className="nb-hi" type="button" tabIndex={tab} aria-label={S.m96.openChat(greet)} onClick={openChat} data-tucked={tucked ? "" : undefined} data-out={out.dragging ? "" : undefined} title={tucked ? S.m111.tucked(who) : undefined}
           onPointerDown={out.onPointerDown} onPointerMove={out.onPointerMove} onPointerUp={out.onPointerUp} onPointerCancel={out.onPointerCancel} onLostPointerCapture={out.onLostPointerCapture}>
           {tucked && <FlowMini className="ip-face nb-face" state={m.character} still={!shown} />}
-          <span className="nb-greet" title={greet}>{greet}</span>
+          {head.tone && <span className="nb-tone" data-tone={head.tone} aria-hidden="true"><Icon name={head.tone === "ok" ? "tick" : "cross"} size={10} /></span>}
+          <span className="nb-greet" title={head.words} data-news={head.news ? "" : undefined}>{head.words}</span>
         </button>
-        <button className="nb-pill" type="button" tabIndex={tab} data-act={action.id} aria-label={action.id === "stop" ? stopSay : pill.dot ? `${pill.words}. ${S.m96.waits}` : undefined} title={action.id === "stop" ? keyHint("stop", S.look.stopKeys) : hline?.words ?? undefined} onClick={act}>
+        {/* Feel round 3 (the founder's HeyClicky reference, 18 Nov 2026): under the headline one quiet hint line (the news's
+            own line, or the key for being stuck), and the pill with a small round Open Home beside it. */}
+        {hint && <p className="nb-hint" aria-hidden="true">{hint}</p>}
+        {/* Feel round 1: with the question's own card under the row (its Allow and Don't allow), the pill does not offer a
+            second way to answer the same thing. */}
+        {!(hasLive && view.kind === "questions" && action.id === "answer") && <button className="nb-pill" type="button" tabIndex={tab} data-act={action.id} aria-label={action.id === "stop" ? stopSay : pill.dot ? `${pill.words}. ${S.m96.waits}` : undefined} title={action.id === "stop" ? keyHint("stop", S.look.stopKeys) : hline?.words ?? undefined} onClick={act}>
           {pill.dot && <span className="nb-dot" aria-hidden="true" />}{pill.words}
-        </button>
+        </button>}
+        {action.id !== "home" && <button className="nb-open" type="button" tabIndex={tab} aria-label={S.m93.openHome} title={S.m93.openHome} onClick={() => { if (ready()) void invoke("island_go").catch(() => {}); }}><Icon name="expand" size={13} /></button>}
       </div>
       {/* Round 2: a question or a result in the panel stays pressable here too, under the row. */}
       {hasLive && live}

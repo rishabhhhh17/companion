@@ -20,8 +20,9 @@ export function barPlaces(o: { practiceDone: boolean; learnWaits?: boolean; lear
   return [...(learn ? ["learn" as const] : []), "did", "memory", "settings"];
 }
 
-/** A round button pressed twice goes back to Now, as the back arrow does. */
-export const placeAfter = (open: Tab, pressed: Tab): Tab => (pressed === open ? "now" : pressed);
+/** Feel round 2 (19 Nov 2026): the places are one segmented control, so pressing the open one never toggles away to Now
+ *  (it left two places looking chosen at once). It stays where it is; card.tsx scrolls that place back to its top. */
+export const placeAfter = (_open: Tab, pressed: Tab): Tab => pressed;
 
 /** What the top of Home says: the job in big words and one short line under it. `tone` names the state for the page.
  *  detail: after a result, the verdict's own sentence (M45), drawn muted under the line. */
@@ -53,7 +54,10 @@ export function heroWords(m: Model, project: string, n: Need | null = need(m)): 
     const label = title(m.task?.label || characterWords(m));
     const now = activityNow(m, 1)[0]?.words;
     // M69 (F29): Squibby pays, so the line never counts what the job costs.
-    return { headline: label, line: m.task ? S.look.workingFree : now ?? characterWords(m), tone: "working" };
+    // Feel round 1 (18 Nov 2026): the line is the live step ("Running the tests") while there is one, never "Working"
+    // under a Working tag; the page puts the time since it started beside it.
+    const step = m.task?.proof?.steps.find((s) => s.status === "running")?.label;
+    return { headline: label, line: step ?? (m.task ? S.look.workingFree : now ?? characterWords(m)), tone: "working" };
   }
   // A practice open in this folder (its card is on Learn): the one next step in words, and Flowflow says the practice's own
   // word for the moment, so the bubble never says one thing while the line says another (the founder, 2 Nov 2026).
@@ -104,7 +108,8 @@ export function sayFor(m: Pick<Model, "receipt" | "research" | "rescue">, h: Her
  *  (its card is on Now, just below) or when nothing waits. */
 export type NeedMain = "practiceStart" | "practiceFix" | "openLearn";
 export function needMainFor(m: Model, n: Need | null, project: string): NeedMain | null {
-  if (!n || n.question || n.tab === "now" || !project) return null;
+  // Feel round 3: a ready practice's need is on Now itself (home.ts need), and its next step is still this button.
+  if (!n || n.question || (n.tab === "now" && !n.key.startsWith("practice:")) || !project) return null;
   // Founder round 1 (17 Nov 2026, screenshot 16): while anything runs (the practice's check, its pretend AI writing, a task),
   // the lead has only its Stop, never the practice's next step beside it (a second press sent a second check).
   if (stopCan(m) || m.point?.stage === "checking" || m.practice?.pretend === "writing") return null;
@@ -381,6 +386,8 @@ export function clockWords(ms: number): string {
 /** The work card's time so far, from the seconds the job has run ("1:05 so far"). A count on its way between two times
  *  lands on whole seconds (M55, smoothMotion.ts CountUp). */
 export const timeLine = (seconds: number): string => S.home.timeSoFar(clockWords(Math.round(seconds) * 1000));
+/** Feel round 2: the time alone ("0:42"), beside the step on the work card's top line. */
+export const clockOnly = (seconds: number): string => clockWords(Math.round(seconds) * 1000);
 
 
 // ---- cards that would say nothing (the founder, 2 Nov 2026: "About this project: A project: A plain web page." and "Where
@@ -424,9 +431,12 @@ export function askRoute(o: { prompt: string; project: string; newFolder: boolea
 
 /** What stops any work right now (item 12): no Claude key or plan, the engine stopped, or Anthropic's Claude missing or
  *  being fetched. Unknown (the engine has not said yet) blocks nothing. claude: claude_status's state, null until known. */
-export type Blocker = "key" | "engine" | "claude" | "claudeGetting";
-export function blockerOf(o: { connected: Model["connected"] | string; runnerUp: boolean; claude: string | null }): Blocker | null {
+export type Blocker = "key" | "engine" | "claude" | "claudeGetting" | "starting";
+/** `starting` (feel round 2): the engine has not said hello a little while after the page started (card.tsx waits
+ *  HELLO_GRACE_MS first, so a normal start never flashes it). */
+export function blockerOf(o: { connected: Model["connected"] | string; runnerUp: boolean; claude: string | null; starting?: boolean }): Blocker | null {
   if (!o.runnerUp) return "engine";
+  if (o.starting) return "starting";
   if (o.claude === "installing") return "claudeGetting";
   if (o.claude && o.claude !== "ready") return "claude";
   if (o.connected === "none") return "key";
@@ -448,6 +458,8 @@ export function blockLineFor(b: Blocker, project: string): string {
 export const fixOffered = (b: Blocker | null): boolean => b !== "key";
 /** The character's pose while a blocker shows: the error pose only when something really broke (the engine stopped, a part
  *  missing). Fixing not switched on yet, or a part on its way, is nothing broken (M98). */
+/** How long after Home's page starts the engine may take to say hello before Home says it is starting. */
+export const HELLO_GRACE_MS = 2000;
 export const blockerPose = (b: Blocker | null): "error" | undefined => (b === "engine" || b === "claude" ? "error" : undefined);
 
 /** Changes from another AI tool that lead Home (item 11): waiting to be reviewed, being reviewed, or reviewed with something

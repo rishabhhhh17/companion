@@ -7,7 +7,7 @@
 //   the body      Home itself, under the menu bar line: a middle that scales, and a foot with two round corners that move
 //   shoulders     small concave pieces: at the top edge beside the band, and where the band meets the wider body
 // Width and the band follow OPEN_W; the body's height follows OPEN_H, 60 ms later; everything folds back on CLOSE with no
-// bounce. Home's content arrives once the shape is mostly there, and leaves first. Pure: card.tsx draws it, homeShape.css
+// bounce. Home's content is clipped to the shape and arrives with it, and leaves first. Pure: card.tsx draws it, homeShape.css
 // moves it, island.rs places the window and hit tests the same rects.
 import { NOTCH, OPEN_H_DELAY_MS, type SpringK } from "./islandSpring.ts";
 import { DUR, EXIT_MS, springPath, springSettleSecs } from "./motionTokens.ts";
@@ -91,12 +91,36 @@ export const isOut = (p: HomePhase): boolean => p === "opening" || p === "open";
 export const springMs = (s: SpringK): number => Math.round(springSettleSecs(s) * 1000);
 /** When a spring's path first reaches `x` of the way, in ms after it starts. */
 const reachMs = (s: SpringK, x: number): number => { const at = springPath(s).findIndex((y) => y >= x); return at < 0 ? springMs(s) : at; };
-/** When Home's content starts to arrive, from the click: the height is 98.5 percent of the way there, so the content's
- *  bottom row (laid out at its full height, a little higher and smaller) is already inside the body when it starts to show
- *  (M66 step 5: at 80 percent it hung about 60 px below the body). Content never leads the shape. Rounded to 10 ms. */
+/** Feel round 2 (19 Nov 2026): the shape grew into an empty black box, and only then did the content arrive, so the open
+ *  played as two steps. Now Home's content is clipped to the growing shape (homeShape.css: a clip-path on the content's
+ *  frame that runs on the height's own spring, contentClip below), so nothing is ever drawn past the shape and the content
+ *  no longer has to wait for the height: the top bar starts with the height, the lead once the height is 30 percent there
+ *  and everything under it at 45 percent, each with the same 6 px rise. The whole page is readable by about 250 ms and the
+ *  open runs as one motion. Rounded to 10 ms. */
+export const BAR_SHARE = 0;
+export const LEAD_SHARE = 0.3;
+export const CONTENT_SHARE = 0.45;
 export function contentAtMs(): number {
-  return Math.round((OPEN_H_DELAY_MS + reachMs(NOTCH.OPEN_H, 0.985)) / 10) * 10;
+  return Math.round((OPEN_H_DELAY_MS + reachMs(NOTCH.OPEN_H, CONTENT_SHARE)) / 10) * 10;
 }
+export const barAtMs = (): number => Math.round(OPEN_H_DELAY_MS / 10) * 10;
+export const leadAtMs = (): number => Math.round((OPEN_H_DELAY_MS + reachMs(NOTCH.OPEN_H, LEAD_SHARE)) / 10) * 10;
+/** The clip on Home's content (feel round 2): how far in from each side and up from the bottom the content's frame is cut,
+ *  in points, so it is never larger than the shape. Open (and with no island to grow from) nothing is cut; closed it is cut
+ *  to the island at rest (no height under the band), or to the small panel Home grew from. Its sides run on the width's
+ *  spring and its bottom on the height's spring after the height's delay, exactly as the shape's own pieces do. */
+export function contentClip(g: HomeGeom, s: ShapeState): { x: number; b: number } {
+  if (g.kind === "free" || isOut(s.phase)) return { x: 0, b: 0 };
+  const hh = bodyHeight(g, s.bodyH);
+  // Feel round 3 (19 Nov 2026): closed, the clip's bottom is the closed shape's own bottom (it may sit above the body's
+  // top, an empty clip), so on the one clock the clip and the shape move as one rect and the clip is never below it.
+  const c = outline(g, { phase: "closed", hover: false, bodyH: s.bodyH, from: s.from ?? null });
+  return { x: Math.max(0, (g.body.w - c.w) / 2), b: Math.max(0, g.body.top + hh - (c.top + c.hm + c.r)) };
+}
+/** How long the shape holds before it folds on a close from open: the content's fade (EXIT_MS.menu, linear) is 40 percent
+ *  gone by then, so the two overlap instead of running one after the other (feel round 1: a 100 ms hold, then a 662 ms
+ *  fold, still looked open long after the press). A close while Home is still opening folds at once. */
+export const FOLD_AT_MS = 40;
 
 /** When the island's hover panel starts to show, from the moment its shape starts to grow: WORK is 92 percent of the way,
  *  so its words never show beyond the shape's edge (M66 step 5; M70 step 4: at 80 percent the bottom row was cut by the
@@ -106,8 +130,8 @@ export const islandPanelAtMs = (): number => Math.round(reachMs(NOTCH.WORK, 0.92
  *  uncovered while Home's band is narrower. Rounded to 10 ms. */
 export const islandHideAtMs = (): number => Math.round(reachMs(NOTCH.OPEN_W, 0.99) / 10) * 10;
 /** How long the page waits for a close to end before it says folded anyway (a hidden page sends no transitionend): the
- *  content leaves first (EXIT_MS.menu), then the shape folds on CLOSE. With reduced motion only the --dur-1 fade. */
-export const foldMs = (reduced: boolean): number => (reduced ? DUR[1] : EXIT_MS.menu + springMs(NOTCH.CLOSE)) + 80;
+ *  content leaves (EXIT_MS.menu) while the shape folds on CLOSE from FOLD_AT_MS. With reduced motion only the --dur-1 fade. */
+export const foldMs = (reduced: boolean): number => (reduced ? DUR[1] : Math.max(EXIT_MS.menu, FOLD_AT_MS + springMs(NOTCH.CLOSE))) + 80;
 /** How long the page waits for an opening to end before it says shown anyway: no transitionend comes for an opening by a
  *  keyboard shortcut (no growing, so at once), with Reduce motion or Less motion (only the --dur-1 fade), or for a shape that
  *  does not change as it opens (no island, "free"). Otherwise the width spring, or the height spring after its delay. */
@@ -199,8 +223,9 @@ export function shapeTransforms(g: HomeGeom, s: ShapeState): ShapeTransforms {
     topR: `${t(o.bw / 2 - Math.min(OVERLAP, o.sTop), 0)} scale(${n(o.sTop / P.shoulder)})`,
     joinL: `${t(-o.bw / 2 - o.sJoin + Math.min(OVERLAP, o.sJoin), o.bh - o.sJoin)} scale(${n(o.sJoin / P.shoulder)})`,
     joinR: `${t(o.bw / 2 - Math.min(OVERLAP, o.sJoin), o.bh - o.sJoin)} scale(${n(o.sJoin / P.shoulder)})`,
-    // The content arrives from the top: a little higher and smaller, then in place.
-    content: out ? "none" : "translateY(-6px) scale(.97)",
+    // The content arrives from the top: each piece a little higher, then in place (feel round 1: the pieces arrive in turn,
+    // so each moves on its own, by translation only).
+    content: out ? "none" : "translateY(-6px)",
     contentOpacity: out ? 1 : 0,
   };
 }

@@ -59,32 +59,17 @@ describe("one Stop, in the card (review, 1 Nov)", () => {
   });
 });
 
-describe("Flowflow sits whole above the practice card, never over the tab row (review, 1 Nov; whole since 2 Nov)", () => {
-  const look = LOOK_CSS();
-  test("the peek is in the flow above the card, so however tall its line grows it pushes the card down, never up over the bar", () => {
+// Changed on purpose (the founder, 17 Nov 2026: "I don't want the Flow Flow symbol to be on there"; feel round 1 took it
+// out): the practice card has no Flowflow peek over it any more, so nothing can cross the tab row at all.
+describe("No Flowflow over the practice card (the founder, 17 Nov 2026)", () => {
+  test("the practice panel draws no peek and no line beside one", () => {
     const panel = read("./practicePanel.tsx");
-    expect(panel).toMatch(/return \(<>\n\s*<Peek stage=\{p\.stage\} review=\{review\} \/>\n\s*<section className="panel practice"/);
-    const peek = rule(look, ".pr-peek") ?? "";
-    expect(peek).not.toMatch(/position: absolute|translate:|top:/);
-    expect(peek).toMatch(/display: flex;/);
-    // Whole and full size beside its line, never tucked under the card (the review, 2 Nov 2026: the tuck left a tiny head
-    // peeking over the card's corner). The card keeps a gap under it.
-    expect(peek).toMatch(/align-items: center;/);
-    expect(peek).not.toMatch(/-\.25/);
-    expect(peek).toMatch(/--peek: calc\(76rem \/ 14\);/);
-    expect(look).not.toContain(".home .view .panel.practice::before");
-    expect(rule(look, ".home .view .panel.practice")).toMatch(/position: relative; z-index: 1;/);
-    expect(rule(look, ".home .view .panel.practice") ?? "").not.toMatch(/margin-top/);
-    expect(rule(look, ".pr-char")).toMatch(/width: var\(--peek\);/);
-    expect(rule(look, ".pr-char")).toMatch(/height: var\(--peek\);/);
-  });
-  test("no little sparks over it when proven: the peek holds Flowflow still at rest once the checks pass", () => {
-    const panel = read("./practicePanel.tsx");
-    // FlowMini's "done" plays the success flash (three drops); the bubble already says the checks pass.
-    expect(panel).toContain('const state = stage === "fixing" || stage === "proving" ? "working" : "idle";');
-    expect(panel).not.toMatch(/stage === "done" \? "done"/);
+    expect(panel).not.toContain("<Peek");
+    expect(panel).not.toContain("S.practiceSay[");
+    expect(panel).toMatch(/return \(<>\n\s*<section className="panel practice"/);
   });
 });
+
 
 // The line Flowflow found. The first review (1 Nov) found a muddy olive tint under white words, so it became a solid yellow
 // highlighter; the polish review (1 Nov, next to HeyClicky) found that yellow the loudest thing on the screen, a worksheet's

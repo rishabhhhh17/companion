@@ -1,7 +1,8 @@
 // The notch's springs (M66 Part 2, docs/milestones/M66-smooth-and-flowy.md): one table for the island's own shape and for
 // Home growing out of the notch. Each is mass 1, written as a response (how long one swing takes) and a damping ratio, then
 // as stiffness and damping per second: k = (2 pi / response) squared, c = 4 pi x damping / response. Opening settles with
-// about one percent of overshoot; every close and tuck back never passes its target. A new target takes over from wherever
+// no visible overshoot (feel round 1, 18 Nov 2026: one percent of a 480 point body bobbed its bottom edge about 4 points);
+// every close and tuck back never passes its target. A new target takes over from wherever
 // the shape is (interruptible). With reduced motion (the Mac's, or Less motion in Settings, motion.ts) it is simply at its
 // target. Pure; island.tsx draws the island's shape with it and homeShape.ts turns it into CSS curves for Home's shape.
 // island.rs NOTCH_* holds the same numbers (island.test.ts pins the two equal).
@@ -19,25 +20,32 @@ export function fromResponse(response: number, damping: number): SpringK {
 export const NOTCH_TABLE = {
   /** The hover nudge, a press, the done pulse. */
   HOVER: { response: 0.38, damping: 0.8 },
-  /** The width when Home opens. */
-  OPEN_W: { response: 0.36, damping: 0.82 },
+  /** The width when Home opens: tight, under 0.1 percent of overshoot. */
+  OPEN_W: { response: 0.32, damping: 0.92 },
   /** The height when Home opens, starting OPEN_H_DELAY_MS after the width. */
-  OPEN_H: { response: 0.42, damping: 0.84 },
-  /** Every close and tuck back: critically damped, never past its target. */
-  CLOSE: { response: 0.45, damping: 1 },
-  /** The busy strip and its caption line growing. */
-  WORK: { response: 0.3, damping: 0.85 },
+  OPEN_H: { response: 0.32, damping: 0.92 },
+  /** Every close and tuck back: critically damped, never past its target, and quick (feel round 1: 0.45 still looked open
+   *  long after the press; feel round 3, 19 Nov 2026: 0.3 still left a black strip under the notch for 200 ms after the
+   *  content had gone, so a close now rests in about 360 ms). */
+  CLOSE: { response: 0.24, damping: 1 },
+  /** The busy strip, its caption line and the hover panel growing. Feel round 3: a light settle of about 1.5 percent (1 to 2
+   *  points on the small notch moves), which reads as alive, as HeyClicky's and Coucou's notches do. Home's own body never
+   *  uses it (OPEN_W, OPEN_H). */
+  WORK: { response: 0.28, damping: 0.8 },
 } as const;
 export type NotchSpringName = keyof typeof NOTCH_TABLE;
 export const NOTCH: Record<NotchSpringName, SpringK> = {
   HOVER: { k: 273, c: 26.5 },
-  OPEN_W: { k: 305, c: 28.6 },
-  OPEN_H: { k: 224, c: 25.1 },
-  CLOSE: { k: 195, c: 27.9 },
-  WORK: { k: 439, c: 35.6 },
+  OPEN_W: { k: 386, c: 36.1 },
+  OPEN_H: { k: 386, c: 36.1 },
+  CLOSE: { k: 685, c: 52.4 },
+  WORK: { k: 504, c: 35.9 },
 };
-/** The height starts this long after the width, so the notch reads as stretching sideways first, then dropping. */
-export const OPEN_H_DELAY_MS = 60;
+/** The height starts this long after the width (it was 60 ms, so the notch read as stretching sideways first). */
+// Feel round 3 (19 Nov 2026): 0. With the height 60 ms behind the width, Home's content needed two clips on two clocks, and
+// the second (narrower) one cut words at both edges while it grew. Width and height on one spring and one clock make the
+// shape and its content's one clip the same rect in every frame.
+export const OPEN_H_DELAY_MS = 0;
 
 /** The island's shape grows (wings out, the hover panel) on WORK and tucks back on CLOSE. */
 export const ISLAND_SPRING = NOTCH.WORK;
@@ -59,9 +67,10 @@ export const tuckHoldMs = (panelWas: boolean, panelNow: boolean, shrinking: bool
   (!reduced && panelWas && !panelNow && shrinking ? PANEL_EXIT_MS : 0);
 
 /** How long the shape takes to tuck back, within a point of the notch: the panel's words leaving (PANEL_EXIT_MS), then
- *  CLOSE from the wings (80 points wider) to the notch (460 ms). The app waits exactly as long before it makes the window
+ *  CLOSE from the wings (80 points wider) to the notch (within a point after about 250 ms; 370 ms leaves a margin for a
+ *  slow frame). The app waits exactly as long before it makes the window
  *  smaller (island.rs RETRACT_MS; island.test.ts pins the two equal and checks the spring has settled by then). */
-export const TUCK_MS = 460 + PANEL_EXIT_MS;
+export const TUCK_MS = 370 + PANEL_EXIT_MS;
 
 /** When the wings widen after the done tick shows: the tick waits 120 ms and draws in 280 ms (style.css island-draw). */
 export const CHEER_AT_MS = 400;

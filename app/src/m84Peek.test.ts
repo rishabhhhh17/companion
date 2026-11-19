@@ -11,7 +11,7 @@ import { initial, reduce, type HistoryItem, type Model } from "./model.ts";
 import type { ReviewCard } from "./review.ts";
 import type { DoneRow, DoneState } from "./doneSignal.ts";
 import type { ReviewRowView, SavedRowView } from "../../protocol/index.ts";
-import { TOOLS_SHOWN, undoOffered, latestReview, nextPeek, sideTools, todayLine, toolPeeks, toolsRow } from "./notchPeek.ts";
+import { TOOLS_SHOWN, undoOffered, latestReview, nextPeek, sideTools, todayBesides, todayLine, toolPeeks, toolsRow } from "./notchPeek.ts";
 import { HOVER_H } from "./notchMinimal.ts";
 import { LAYOUT_H, quickFact, quickFactKind } from "./notchQuick.ts";
 import { arrivalFrom } from "./home.ts";
@@ -240,6 +240,16 @@ describe("Now's calm timeline of today", () => {
     expect(todayLine(m({ history: many }), NOW)).toHaveLength(6);
     expect(todayLine(m(), NOW)).toEqual([]);
     expect(todayLine(m({ history: [row({ status: "running", endedAt: null })] }), NOW)).toEqual([]);
+  });
+  // Feel round 1 (18 Nov 2026): Now's card right above already shows the last fix, so Today does not say it again.
+  test("Today leaves out the task the card above already shows, and goes when that was all it had to say", () => {
+    const x = m({ history: [row(), row({ id: 2, label: "Make the menu open", startedAt: at(13, 11, 0), endedAt: at(13, 11, 5) })] });
+    const t = todayLine(x, NOW);
+    expect(todayBesides(t, 1)?.map((e) => e.key)).toEqual(["t2"]);
+    expect(todayBesides(t, null)).toEqual(t);
+    expect(todayBesides(todayLine(m({ history: [row()] }), NOW), 1)).toBeNull();
+    // Nothing happened today at all: the empty Today with its one next step stays.
+    expect(todayBesides([], 1)).toEqual([]);
   });
 });
 

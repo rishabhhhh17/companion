@@ -189,7 +189,7 @@ fn drop_dock(app: AppHandle) {
             save_prefs();
             // M111: let go over the notch: it shrinks up into it, then its window goes (no place on the screen to put it).
             let tuck = l.how == docking::Landing::Tuck;
-            if tuck { tuck_away(&a, "drag"); log("dock_tucked", json!({ "screen": l.screen.id })); } else {
+            if tuck { tuck_away(&a, "drag", Some(docking::tuck_aim(l.frame, &l.screen))); log("dock_tucked", json!({ "screen": l.screen.id })); } else {
             tied_close(docking::Change::Landed);
             // Let go and left where it is: the water springs back (the page's spring does the wobble, it is playing). Gone in at
             // an edge: it settles flat against it with no wobble (M51).
@@ -201,7 +201,7 @@ fn drop_dock(app: AppHandle) {
         // A let go that decided nothing (no display): the water still lets go.
         if landed.is_none() { let _ = a.emit_to("dock", "dock-press", json!({ "press": 0.0 })); }
         // M111: pulled out of the notch but never moved: it goes back in, nothing is saved.
-        if landed.is_none() && from_notch { with_prefs(|p| p.tucked = true); tuck_away(&a, "drag_back"); }
+        if landed.is_none() && from_notch { with_prefs(|p| p.tucked = true); tuck_away(&a, "drag_back", None); }
         // Only now, with the character at its new home, may anything else move it again.
         DRAG_LIVE.store(false, Ordering::SeqCst);
         DRAG_AT.store(0, Ordering::SeqCst);
@@ -281,13 +281,17 @@ fn take_said_clear() {
 
 /// Tucks Flowflow into the notch: it shrinks up into it on a short spring (a fade with Reduce Motion or Less motion), then
 /// its window is ordered out. Any visit beside a window ends. Main thread.
-fn tuck_away(app: &AppHandle, why: &str) {
+/// `aim`: where the notch is from the character's window (docking::tuck_aim), when the let go knows it; the page aims the
+/// shrink there (feel round 1), else straight up as before.
+fn tuck_away(app: &AppHandle, why: &str, aim: Option<(f64, f64)>) {
     let calm = reduce_motion();
     ROAM_GEN.fetch_add(1, Ordering::SeqCst);
     if roamer().visit().is_some() { roamer().end(); }
     tied_close(docking::Change::Tucked);
     let gen = TUCK_GEN.fetch_add(1, Ordering::SeqCst) + 1;
-    let _ = app.emit_to("dock", "dock-tuck", json!({ "on": true, "calm": calm, "ms": docking::tuck_ms(calm) }));
+    let mut said = json!({ "on": true, "calm": calm, "ms": docking::tuck_ms(calm) });
+    if let Some((dx, dy)) = aim { said["dx"] = json!(dx); said["dy"] = json!(dy); }
+    let _ = app.emit_to("dock", "dock-tuck", said);
     let a = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(docking::tuck_ms(calm)));
@@ -318,7 +322,7 @@ fn lives_set(app: &AppHandle, next: Prefs) {
     with_prefs(|p| *p = next);
     save_prefs();
     let a = app.clone();
-    let _ = app.run_on_main_thread(move || if tuck { if tucked() { tuck_away(&a, "setting"); } } else { come_out(&a, "setting"); });
+    let _ = app.run_on_main_thread(move || if tuck { if tucked() { tuck_away(&a, "setting", None); } } else { come_out(&a, "setting"); });
 }
 
 /// The Bring Flowflow out button in the opened notch. Only from the notch's own pages.

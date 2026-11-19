@@ -160,9 +160,15 @@ describe("every enter has an exit", () => {
   });
   test("Home's content (M66): arrives on --ease-out once the shape is all but there, leaves first, quicker, then the shape folds", () => {
     const sheet = SHEETS["ui/homeShape.css"];
-    expect(sheet).toContain('.home-stage[data-told]:is([data-phase="opening"], [data-phase="open"]) .home-frame { transition: opacity var(--dur-2) var(--ease-out) var(--seq-notch-content-at), transform var(--dur-2) var(--ease-out) var(--seq-notch-content-at); }');
-    expect(sheet).toMatch(/\.home-stage\[data-told\] \.home-frame \{[^}]*transition: opacity var\(--dur-exit-menu\) linear, transform var\(--dur-exit-menu\) var\(--ease-exit\); \}/);
-    expect(tokenMs("--dur-exit-menu")).toBeLessThan(tokenMs("--dur-2"));
+    // Feel round 1 (18 Nov 2026): it arrives in three steps (bar, lead, rest) on --ease-out, and its pieces leave together on
+    // --ease-exit (the frame itself only fades).
+    expect(sheet).toContain('.home-stage[data-told]:is([data-phase="opening"], [data-phase="open"]) .home-frame { transition: opacity var(--dur-2) var(--ease-out) var(--seq-notch-bar-at); }');
+    expect(sheet).toContain("transition: opacity var(--dur-2) var(--ease-out) var(--seq-notch-content-at), transform var(--dur-2) var(--ease-out) var(--seq-notch-content-at); }");
+    // Feel round 3 (19 Nov 2026), changed on purpose: the content leaves over the sheet's 180 ms while the clip folds it
+    // with the shape (a 100 ms fade left an empty black slab folding on its own).
+    expect(sheet).toContain('.home-stage[data-told] :is(.home-frame > .home > .inner > .work > *, .home-frame > .home > .inner > :not(.work)) { transform: var(--t-content); opacity: var(--o-content); transition: opacity var(--dur-exit-sheet) linear, transform var(--dur-exit-sheet) var(--ease-exit); }');
+    // Still quicker than the shape's fold, so the content is gone before the shape is.
+    expect(tokenMs("--dur-exit-sheet")).toBeLessThan(tokenMs("--dur-notch-close"));
     // The shape folds back on the CLOSE spring, which never passes its target (islandSpring.test.ts).
     expect(sheet).toContain(".hs > i, .hs > span, .hs > span > i { transition: transform var(--dur-notch-close) var(--ease-notch-close); }");
   });
@@ -203,5 +209,30 @@ describe("reduced motion keeps a plain fade, and nothing else", () => {
   });
   test("the notch keeps its fades too: only its animations stop", () => {
     expect(style).toContain("@media (prefers-reduced-motion: reduce) { .island *, .island *::before, .island *::after { animation: none !important; } }");
+  });
+});
+
+// Feel round 1 (18 Nov 2026): in the notch and its small chat a hover snapped (the pill's brightness, the chat's icon
+// buttons and Stop changed fill in one frame). A hover there that changes a fill, a colour or a filter eases it: the part
+// itself transitions that property (a soft change of fill on --dur-hover, tokens.css).
+describe("a hover in the notch and the small chat eases its fill", () => {
+  const FILL = /^(background|background-color|color|filter)$/;
+  const scoped = RULES.filter((r) => !r.at && (r.file === "ui/notch.css" || /\.notch-chat\b/.test(r.sel)));
+  test("each :hover that changes a fill has a transition on its part that covers it", () => {
+    const bad: string[] = [];
+    for (const r of scoped) for (const sel of commas(r.sel)) {
+      if (!/:hover/.test(sel)) continue;
+      const props = r.decl.filter(([k]) => FILL.test(k)).map(([k]) => k);
+      if (!props.length) continue;
+      // The part the hover is on: the selector up to and with :hover taken out; what changes may be a child of it.
+      const [partSel, child] = sel.split(/:hover/);
+      const target = child && child.trim() ? `${partSel.trim()} ${child.trim()}`.replace(/\s+/g, " ") : partSel.trim();
+      // Its owner: a rule for the same part (the last compound of the selector, its states and attributes aside).
+      const key = (x: string) => (x.trim().split(/\s+/).at(-1) ?? "").replace(/\[[^\]]*\]/g, "").replace(/:not\([^)]*\)/g, "");
+      const owners = scoped.filter((x) => commas(x.sel).some((s) => !/:(hover|active|focus|disabled)/.test(s) && key(s) === key(target)));
+      const covers = (p: string) => owners.some((o) => o.decl.some(([k, v]) => k === "transition" && (v.includes("all ") || commas(v).some((t) => t.startsWith(p === "background" ? "background" : p) || (p === "background" && t.startsWith("background-color"))))));
+      for (const p of props) if (!covers(p)) bad.push(`${sel} { ${p} } has no transition on ${target}`);
+    }
+    expect(bad).toEqual([]);
   });
 });

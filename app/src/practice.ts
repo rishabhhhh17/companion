@@ -191,9 +191,11 @@ export type Thread = { find: NodeState; fix: NodeState; prove: NodeState };
 /** Where the person is in find, fix, prove, from the practice's own stage and nothing else: a step is done only when the stage
  *  after it was reached, and the third step is empty ("failed") when the checks did not pass. Plain code, so the picture can
  *  never say more than the model knows (rule 14). */
-export function threadOf(p: { stage: string; result?: unknown }): Thread {
+export function threadOf(p: { stage: string; result?: unknown }, finding = true): Thread {
   switch (p.stage) {
-    case "start": return { find: "now", fix: "todo", prove: "todo" };
+    // Feel round 3 (19 Nov 2026): a practice that is ready but not started said "Doing it" beside Find it, as if something
+    // already ran. Find is under way only while its check really runs (`finding`); before the first press all three wait.
+    case "start": return { find: finding ? "now" : "todo", fix: "todo", prove: "todo" };
     case "found": case "lesson": case "fixing": return { find: "done", fix: "now", prove: "todo" };
     case "proving": return { find: "done", fix: "done", prove: "now" };
     case "done": return { find: "done", fix: "done", prove: "done" };

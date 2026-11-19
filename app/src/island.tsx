@@ -93,7 +93,7 @@ function Mark({ w, count, reduced }: { w: Wings; count: number; reduced?: boolea
   // Thinking: one dot that breathes. Working and checking: a thin round arc (13 points across) that turns. Looking at the
   // screen (M46, rule 5): a ring with a dot in the middle that holds still, a light rather than a spinner.
   const inner = mark === "dots" ? <i />
-    : mark === "arc" ? <svg viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="6.5" /></svg>
+    : mark === "arc" ? <svg viewBox="0 0 16 16" width="16" height="16"><circle className="arc-track" cx="8" cy="8" r="6.5" /><circle cx="8" cy="8" r="6.5" /></svg>
     : mark === "look" ? <svg viewBox="0 0 16 16" width="16" height="16"><circle className="look-ring" cx="8" cy="8" r="6.25" /><circle className="look-dot" cx="8" cy="8" r="2.5" /></svg>
     : mark === "bars" ? <><i /><i /><i /><i /></>
     : mark === "tick" ? <svg viewBox="0 0 14 14" width="14" height="14"><path d="M3 7.5l3 3 5-6.5" /></svg>
@@ -437,7 +437,11 @@ function Island() {
         <button className="island-hit" type="button" aria-label={islandName(line)} title={unseen > 0 ? S.panel.unseen(unseen) : undefined} onClick={tap}>
           {showWings && w && <span aria-hidden="true">
             {/* M70: the Visor's lights only with Show wings at rest on; otherwise the left wing is plain black. */}
-            <span className="island-wing left">{wingsAtRest && <FlowMini className="island-flow" state={w.state} band mood={mood} />}</span>
+            {/* Feel round 2 (19 Nov 2026): without the Visor's lights (the founder: no Flowflow symbol), the left wing was
+                empty and the pair looked lopsided. It holds a small still dot for the state, the same size and inset as the
+                mark on the right. Feel round 3: a bare dot read as a leftover, so it is a small three bar meter in the
+                state's own colour, moving only while work runs. */}
+            <span className="island-wing left">{wingsAtRest ? <FlowMini className="island-flow" state={w.state} band mood={mood} /> : rowMarkShown(rowMode, w.mark) && <span className="mark" data-mark="state" data-state={w.state}><i /><i /><i /></span>}</span>
             <span className="island-wing right">{st && shape.wing > WING_USUAL && <StepWord step={st} />}{rowMarkShown(rowMode, w.mark) && <Mark w={w} count={m.approvals.length} reduced={reduced} />}</span>
           </span>}
           {/* M68: the wings at rest. The lights glance once toward a new word on the right. */}

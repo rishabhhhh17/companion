@@ -55,6 +55,11 @@
 /* The work: one column beside the list, at least as tall as Home, so the ask box sits at its bottom even when little shows. */
 .home[data-side] .work { display: flex; flex-direction: column; min-width: 0; min-height: calc(100vh - var(--hair)); box-sizing: border-box; padding: var(--space-3) var(--space-6) 0; }
 .home[data-side] .work > * { flex: none; }
+/* Feel round 2 (19 Nov 2026): the wide Home's top bar stays at the top while its column scrolls (a practice starting
+   scrolled Close and Stop out of the panel), on the shape's own black, as the tall Home's does. */
+.home[data-side] .work > .bar { position: sticky; top: 0; z-index: 4; margin-top: calc(var(--space-3) * -1); padding-top: var(--space-3); background: var(--notch); }
+/* Close keeps its place in the first row, centred on the project chip, under the bar's new top padding. */
+.home[data-side] .work > .bar .places .close { top: calc(var(--space-3) + (var(--h-place) - 32px) / 2); }
 /* The top row keeps only what is not a place: Stop while a job runs (beside Close), and Close. */
 .home[data-side] .places { flex: none; order: 0; margin: 0 0 0 auto; padding-right: calc(var(--h-sm) + var(--space-2)); }
 /* The ask box along the bottom of the work, as a chat app's composer: drawn after the rest, and kept in view while the work

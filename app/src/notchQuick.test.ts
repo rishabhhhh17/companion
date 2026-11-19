@@ -177,7 +177,8 @@ describe("the layout and its fixed heights (M70: no jumps)", () => {
     const panel = read("./islandPanel.tsx");
     // M93 (changed on purpose): the first word of the typed name (notchMinimal.ts hoverGreeting), never the Mac's (F28).
     expect(panel).toContain('const greet = hoverGreeting(useSetting("you.name"));');
-    expect(panel).toContain('<span className="nb-greet" title={greet}>{greet}</span>');
+    // Changed on purpose (feel round 2): the news in place of the greeting when there is some.
+    expect(panel).toContain('<span className="nb-greet" title={head.words} data-news={head.news ? "" : undefined}>{head.words}</span>');
     // M70 step 4: the panel's one column never grows past it, or a long fact pushed Open out of the panel.
     expect(read("./style.css")).toMatch(/\.island-panel \{[^}]*display: grid; grid-template-columns: minmax\(0, 1fr\);/);
   });
@@ -204,7 +205,10 @@ describe("at rest (M70: the bare notch by default)", () => {
   test("while live with wings off, only the mark: no lights, no step word", () => {
     const page = read("./island.tsx");
     expect(page).toContain("const step = showStep && wingsAtRest ? notchStep(m, wings, tries) : null;");
-    expect(page).toContain("{wingsAtRest && <FlowMini className=\"island-flow\" state={w.state} band mood={mood} />}");
+    // Changed on purpose (feel round 2, 19 Nov 2026): with the lights off, the left wing holds a still state dot (never the
+    // Flowflow symbol), so the two wings balance.
+    // Feel round 3 (19 Nov 2026): the left wing's state is a small three bar meter (changed on purpose from one dot).
+    expect(page).toContain("{wingsAtRest ? <FlowMini className=\"island-flow\" state={w.state} band mood={mood} /> : rowMarkShown(rowMode, w.mark) && <span className=\"mark\" data-mark=\"state\" data-state={w.state}><i /><i /><i /></span>}");
   });
 });
 
@@ -273,10 +277,12 @@ describe("M70 step 4: the small panel says something useful at once, and leaves 
     // most one short line; Settings and Open left it (Open Home is the quiet second action, Settings is in Home).
     // M96 (changed on purpose): one row; the line is in its name for VoiceOver, never drawn.
     const head = view.slice(view.indexOf('<div className="nb-row"'), view.indexOf("</div>", view.indexOf('<div className="nb-row"')));
-    expect(head).toContain("{greet}");
+    // Changed on purpose (feel round 2): the greeting, or the news when there is some (notchMinimal.ts hoverHeadline).
+    expect(head).toContain("{head.words}");
     expect(head).toContain("hline?.words");
     expect(head).not.toContain("S.notch.settings");
-    expect(head).not.toContain("<Icon");
+    // Feel round 3 (19 Nov 2026), changed on purpose: the founder's HeyClicky reference of 18 Nov 2026 asks for a headline, one hint line and a row with the pill and a small round Open Home; a review's news leads with its tick or cross. No other drawing in the head.
+    expect(head.match(/<Icon /g)?.length ?? 0).toBeLessThanOrEqual(2);
     expect(view).not.toContain("ip-fact\" role=\"status\" title={fact}>{fact}</p>");
     // M84 changed this on purpose (the milestone asks for Flowflow's live face beside the greeting): the opt in hello's
     // Visor, and the face in the head of the quick and job layouts. Nothing else in the panel draws the character.
@@ -377,7 +383,10 @@ describe("M70 step 5: Home grown from the panel, the band the shell hit tests (i
     expect(shapeRects(g, { phase: "open", hover: false, bodyH: 480, from: { w: 400, h: 120 } }).band[2]).toBe(265);
     const rs = read("../src-tauri/src/island.rs");
     expect(rs).toContain("pub fn shape_rects_from(");
-    expect(rs).toContain("pub const FROM_BAND_MS: u64 = 780;");
+    // Changed on purpose (feel round 1, 18 Nov 2026): the quicker springs took it from 780 to 480 (island.rs pins it to the tokens).
+    // Feel round 3 (19 Nov 2026), changed on purpose: one clock for width and height and a quicker CLOSE (island.rs pins it
+    // against tokens.css).
+    expect(rs).toContain("pub const FROM_BAND_MS: u64 = 410;");
   });
 });
 

@@ -40,7 +40,7 @@ import { FailLead, ProofTicks, Replay, RunRows } from "./runListView.tsx";
 import { RecheckList } from "./recheckList.tsx";
 import { stillOf } from "./fixRecheck.ts";
 import { ASKED_NOTICE_MS, arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
-import { jobStep, needMainWords, goLiveAnswer, reviewHeroSays, askRoute, blockerOf, blockLineFor, blockMainFor, fixOffered, MAIN_TOOL, heroCompact, homeFixRoute, jobLive, timeLine, reviewLead, aboutWorthACard, needMainFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
+import { jobStep, needMainWords, goLiveAnswer, reviewHeroSays, askRoute, blockerOf, blockLineFor, blockMainFor, fixOffered, MAIN_TOOL, heroCompact, homeFixRoute, jobLive, timeLine, clockOnly, HELLO_GRACE_MS, reviewLead, aboutWorthACard, needMainFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
 import { notePress, orderWays, readCounts, type Counts, type Way } from "./usedOften.ts";
 import { homeKey } from "./homeKeys.ts";
 import { paletteMove, paletteRows, paletteShown, type PaletteAction, type PaletteRow } from "./palette.ts";
@@ -52,7 +52,7 @@ import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
 import { ChangesCard } from "./changesCard.tsx";
 import { RecentList } from "./recentList.tsx";
 import { FlowMini } from "./flowflowMini.tsx";
-import { barContext, barKeyChord, layoutOf, sideOn, sidePlaces, sideRecent, useMoreBelow } from "./homeLayout.ts";
+import { barContext, barKeyChord, barStatusWords, statusWords, layoutOf, shortPath, sideOn, sidePlaces, sideRecent, useMoreBelow } from "./homeLayout.ts";
 import { askChips, firstWayTip } from "./askChips.ts";
 import { checkedAgo, lastFix, nowRows, restCards, restHero, restMainLabel, resultHero, sinceRows, workedFor } from "./homeRest.ts";
 import { ShotPair } from "./homeRest.tsx";
@@ -113,7 +113,7 @@ import { missedLead, practiceNotesDue, type Learned } from "./tutor.ts";
 import { AiToolsNowRow, useDoneState } from "./aiToolsScreen.tsx";
 import { StatusStrip } from "./statusStrip.tsx";
 import { homeFacts, type NotchFactId } from "./notchQuick.ts";
-import { sideTools, todayLine } from "./notchPeek.ts";
+import { sideTools, todayBesides, todayLine } from "./notchPeek.ts";
 import { waitingTool, waitingWhy } from "./toolFinished.ts";
 import { TodayLine } from "./todayLine.tsx";
 import { NowRunway } from "./runwayRing.tsx";
@@ -284,6 +284,45 @@ function ResearchNote({ text, source }: { text: string; source: string }) {
 }
 
 // A web address shown on Home, with its Open button.
+/** When the job on screen started working (feel round 1): set when `on` turns true, cleared when it turns false. */
+function useWorkSince(on: boolean): number | null {
+  const [since, setSince] = useState<number | null>(null);
+  useEffect(() => { setSince(on ? Date.now() : null); }, [on]);
+  return on ? since : null;
+}
+/** How long a job has worked, " · 0:12", ticking once a second only while it is drawn. Hidden from VoiceOver: a count
+ *  that changes every second would be read again and again. */
+function Elapsed({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(id); }, []);
+  return <span className="hero-elapsed" aria-hidden="true">{S.look.elapsed(Math.max(0, Math.floor((now - since) / 1000)))}</span>;
+}
+
+/** Memory while it looks up what it knows (feel round 1, 18 Nov 2026: one grey line squeezed under the places over an
+ *  empty panel): three quiet rows in the list's own shape where the list will be, at the same top gap as every page, and
+ *  after SLOW_MS a plain line with Try again, so a look up that never answers always has a next step. */
+// Feel round 2 (19 Nov 2026): two seconds, then the quiet rows give way to the plain line and Try again.
+const MEMORY_SLOW_MS = 2000;
+/** Feel round 3 (19 Nov 2026): a look up that answers quickly never flashes the quiet rows first: they wait this long. */
+export const MEMORY_SKELETON_MS = 150;
+function MemoryLoading({ onRetry }: { onRetry: () => void }) {
+  const [slow, setSlow] = useState(false);
+  const [rows, setRows] = useState(false);
+  useEffect(() => {
+    const a = window.setTimeout(() => setRows(true), MEMORY_SKELETON_MS), b = window.setTimeout(() => setSlow(true), MEMORY_SLOW_MS);
+    return () => { window.clearTimeout(a); window.clearTimeout(b); };
+  }, []);
+  return (
+    <div className="mem-loading">
+      <p className="sr" role="status">{S.homeMemoryLoading}</p>
+      {!slow && rows && <ul className="ui-mlist mem-skel" aria-hidden="true">{[0, 1, 2].map((i) => <li key={i} className="mem-skel-row"><i className="mem-skel-tile" /><span><i className="mem-skel-bar" /><i className="mem-skel-bar short" /></span></li>)}</ul>}
+      {/* Feel round 3: the slow state is one small centred block (a quiet tile, the line, Try again under it), not one line
+          run together with its button over an empty panel. */}
+      {slow && <div className="mem-slow" role="status"><span className="ui-mtile mem-slow-tile" aria-hidden="true"><Icon name="memory" size={14} /></span><p className="mem-slow-line">{S.homeMemorySlow}</p><button className="btn secondary" type="button" onClick={() => { setSlow(false); setRows(true); onRetry(); }}>{S.tryAgain}</button></div>}
+    </div>
+  );
+}
+
 /** The bar's place buttons: the Places landmark in the tall Home, a plain group beside the wide Home's side list, which is the
  *  Places landmark there (the audit, item 51: two landmarks had the same name). */
 function PlacesBox({ side, children }: { side: boolean; children: ReactNode }) {
@@ -399,7 +438,6 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
   const shown = filtering ? filterHistory(items, q) : items.slice(0, 20);
   const undoId = useId();
   const offers = project ? shown.map((h) => historyUndo(items, h, u?.stage === "done" ? u.checkpoint : null)) : [];
-  const explainWhy = offers.includes("older");
   // The task whose marks are open under the list (a press on its row), or the one an Undo is being asked about.
   const [sel, setSel] = useState<number | null>(null);
   const picked = shown.find((h) => h.id === sel) ?? null;
@@ -438,12 +476,8 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
     <section className="panel bare hist" aria-label={S.recentTitle}>
       <h2 className="sr">{S.recentTitle}</h2>
       <Lead className="hist-lead" title={<p className="ui-lead-title" role="heading" aria-level={2}>{S.screens.historyLead}</p>}
-        line={<p className="ui-lead-line">{items.length ? S.screens.historyCount(items.length, name) : S.screens.historyNone(name)}{explainWhy ? ` ${S.screens.undoCaption}` : ""}</p>} />
+        line={<p className="ui-lead-line">{items.length ? S.screens.historyCount(items.length, name) : S.screens.historyNone(name)}</p>} />
       {weekLine && <div className="line hist-week" role="status">{weekLine}</div>}
-      {/* M79: the weekly summary, on this row's press only. */}
-      {project && <WeekPart project={project} send={send} />}
-      {/* M88 (a): Your numbers, on this row's press only (off in Settings, Privacy). */}
-      {project && <NumbersPart project={project} send={send} />}
       {items.length > 0 && (
         <div className="row hist-search" role="search">
           <input type="search" autoComplete="off" spellCheck={false} value={q.words} placeholder={S.historySearch} aria-label={S.historySearch}
@@ -512,7 +546,7 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
             const lineWords = [historyWords(h), (h.changed ?? 0) > 0 ? S.screens.filesChanged(h.changed ?? 0) : ""].filter(Boolean).join(" · ");
             return <Fragment key={h.id}><ListRow rowId={`history-${h.id}`} flash={focus === h.id} colour={MEANING_COLOUR[meaning]} icon={v ? verdictMark(v).mark : "spin"}
               title={<>{task}<SaveMarksLine lastWorking={h.lastWorking} star={h.star} name={h.name} /></>}
-              line={lineWords} fact={<time className="hist-time" dateTime={h.endedAt ?? h.startedAt}>{when(h)}</time>}
+              line={<>{lineWords}{when(h) ? <>{lineWords ? " · " : ""}<time className="hist-time" dateTime={h.endedAt ?? h.startedAt}>{when(h)}</time></> : null}</>}
               onOpen={h.checkpoint && project ? () => setSel(sel === h.id ? null : h.id) : undefined} openLabel={h.checkpoint ? `${S.fix.star}, ${S.fix.nameIt}: ${task}` : undefined}
               action={offers[i] === "undo" && !undoBusy(u) ? { id: backId, label: S.historyUndo, colour: "orange", ariaLabel: `${S.historyUndo}: ${task}`, onClick: () => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint }) } : null}
               expanded={h.checkpoint && project ? sel === h.id : undefined} />
@@ -529,6 +563,10 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
           })}
         </ListGroup>
       )}
+      {/* Feel round 2 (19 Nov 2026): History leads with its search and its list; the week and the numbers follow it, so after
+          ten visits the person no longer scrolls past them. M79: the weekly summary, on this row's press only. M88 (a): Your
+          numbers, on this row's press only (off in Settings, Privacy). */}
+      {project && <div className="hist-more"><WeekPart project={project} send={send} /><NumbersPart project={project} send={send} /></div>}
     </section>
   );
 }
@@ -677,6 +715,9 @@ export function Card() {
   const root = useRef<HTMLElement>(null);
   // M66: the black shape Home grows out of the notch in, and its state (homeStage.tsx).
   const homeStage = useHomeStage();
+  // Feel round 1 (18 Nov 2026): the X, Escape and the chat's close start the fold on this page at once, then tell the shell
+  // (close_card always closes, shell_setup.rs). Waiting for the shell's "closing" first put a round trip before any motion.
+  const closeHome = () => { homeStage.close(); void invoke("close_card"); };
   const stageOpen = useRef(homeStage.open); stageOpen.current = homeStage.open;
   // Where the keyboard goes back to for a place: its round button, or on Now (which has none) the ask box.
   const placeEl = (t: Tab): HTMLElement | null => document.getElementById(tabId(t)) ?? (t === "now" ? box.current : null);
@@ -1492,6 +1533,8 @@ export function Card() {
       const k = frontKindOf({ kind: (e.payload as { front?: unknown } | null)?.front });
       if (k) setFrontKind(k);
       homeDispatch({ type: "opened", keyboard });
+      // Feel round 1: Home opened by its keys shows focus rings at once; opened by a click it shows none until a key is used.
+      document.documentElement.toggleAttribute("data-keys", keyboard);
       // Round 1: something that needs all of Home already waits (a question to allow, a plan): Home opens out at once, so the
       // chat never paints for a moment and the shape never grows twice.
       const small = (e.payload as { chat?: unknown } | null)?.chat === true;
@@ -1863,6 +1906,9 @@ export function Card() {
   }, []);
   // Guided lessons: each step is pointed at once (the light comes on first), and the person's own click moves it on.
   const pickTab = (t: Tab) => homeDispatch({ type: "pick", tab: t });
+  // Feel round 2: a place in the row pressed while it is open goes back to its top (smoothly, unless motion is reduced),
+  // never away to another place.
+  const pressPlace = (t: Tab) => { if (t === home.tab) { root.current?.scrollTo?.({ top: 0, behavior: reducedMotion() ? "auto" : "smooth" }); return; } pickTab(t); };
   // M73 (fluid, item 9): Up and Down move the keyboard between the rows of the one list on this place (never the example row).
   const moveRow = (dir: 1 | -1): boolean => {
     const rows = Array.from(document.querySelectorAll<HTMLElement>(".work .ui-mlist > li:not([data-ghost]) :is(button.ui-mrow-main, .ui-mrow-act)")).filter((b) => b.offsetParent !== null);
@@ -1885,11 +1931,22 @@ export function Card() {
   // Round 1 (the founder: "when I open the chat, I cannot close it fully"): Esc closes Home (and so the small chat) wherever
   // the keys are in it, also after a click on its plain part, which leaves them on the page itself, not in Home. Only while
   // Home shows; a field, a menu or a choice that uses Esc itself stops it first (its own stopPropagation or preventDefault).
-  const escClose = useRef(() => {}); escClose.current = () => { box.current?.blur(); player.current.hush(); void invoke("close_card"); };
+  // Feel round 1 (the founder's shots, 18 Nov 2026: a thick ring on a place after a click, and on opening): a focus ring
+  // shows only once the keyboard is used in Home (data-keys on the page's root), never after a click or a focus Home set
+  // itself. A key that is only a modifier does not count; a press of the pointer takes the rings away again.
+  useEffect(() => {
+    const el = document.documentElement;
+    const onKey = (e: KeyboardEvent) => { if (!["Shift", "Control", "Alt", "Meta", "CapsLock", "Fn"].includes(e.key)) el.setAttribute("data-keys", ""); };
+    const onPointer = () => el.removeAttribute("data-keys");
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("pointerdown", onPointer, true);
+    return () => { window.removeEventListener("keydown", onKey, true); window.removeEventListener("pointerdown", onPointer, true); };
+  }, []);
+  const escClose = useRef(() => {}); escClose.current = () => { box.current?.blur(); player.current.hush(); closeHome(); };
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
       if (e.defaultPrevented || !homeShown.current) return;
-      if (e.key === "Escape" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); }
+      if (e.key === "Escape" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); box.current?.blur(); player.current.hush(); closeHome(); }
     };
     window.addEventListener("keydown", onEsc);
     return () => window.removeEventListener("keydown", onEsc);
@@ -1985,7 +2042,7 @@ export function Card() {
   const onboardingNow = useRef(!onboarded); onboardingNow.current = !onboarded;
   // Step aside for what Home opens (home.stepAside, off unless turned on): after a link, the email for Report a problem or
   // Finder showing the support log, Home closes the way Esc does, unless something on it waits for the person (home.ts).
-  const stepAside = () => { if (stepsAside(nowModel.current, onboardingNow.current, setting("home.stepAside") === true)) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } };
+  const stepAside = () => { if (stepsAside(nowModel.current, onboardingNow.current, setting("home.stepAside") === true)) { box.current?.blur(); player.current.hush(); closeHome(); } };
   opened.stepAside = stepAside;
   // A new version is ready (the shell's "update-ready", from the daily check or Settings): a notice on every tab with
   // Install, pressed by the person, never while something runs (updates.ts installAllowed; the shell checks again).
@@ -2010,11 +2067,11 @@ export function Card() {
   useEffect(() => {
     // Founder round 1 (17 Nov 2026, "when I open the chat, I cannot close it fully"): the small chat holds nothing that waits
     // for a tap (chatHolds opens it out for that), so a click elsewhere always folds it, unless words are being typed in it.
-    const off = listen("home-click-away", () => { if (chatOn.current ? chatClosesAway(setting("home.closeOnClickAway") === true, typingNow()) : closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true, typingNow())) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
+    const off = listen("home-click-away", () => { if (chatOn.current ? chatClosesAway(setting("home.closeOnClickAway") === true, typingNow()) : closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true, typingNow())) { box.current?.blur(); player.current.hush(); closeHome(); } });
     // M66 step 5: the pointer left a Home that pointing opened. It folds back the same way, only when nothing on it waits for
     // the person (a question, an approval, words being typed); else it stays, and is the person's now (the shell asks once).
     // Step 6: and only with Close Home when I click another app on, as the shell also checks.
-    const offLeft = listen("home-pointer-left", () => { if (chatOn.current ? chatClosesAway(setting("home.closeOnClickAway") === true, typingNow()) : closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true, typingNow())) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
+    const offLeft = listen("home-pointer-left", () => { if (chatOn.current ? chatClosesAway(setting("home.closeOnClickAway") === true, typingNow()) : closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true, typingNow())) { box.current?.blur(); player.current.hush(); closeHome(); } });
     return () => { off.then((f) => f()); offLeft.then((f) => f()); };
   }, []);
   // A task that has ended on a question needs the person, but nothing runs: no Stop, and the ask box stays.
@@ -2081,8 +2138,13 @@ export function Card() {
     // M75: a vague ask with nothing added shows choices built from what is known here; the words stay in the box.
     if (setting("ask.choices") !== false && !attachedNow.current.length && isVague(prompt)) { setVague(vagueChoices(prompt, vagueStateOf(m, project))); return; }
     setVague(null);
+    // Feel round 3 (19 Nov 2026): in the small chat, the ask shows as the person's bubble the moment it is sent, with
+    // Squibby's working dots under it, until the engine's own task takes its place (notchChat.tsx pending).
+    if (chat) setChatSent(prompt);
     sendTask(prompt);
   };
+  const [chatSent, setChatSent] = useState<string | null>(null);
+  useEffect(() => { if (!chat) setChatSent(null); }, [chat]);
   // M75 (shortlist 10): a vague ask gets choices first; nothing runs until one is tapped (rule 13).
   const [vague, setVague] = useState<VagueChoice[] | null>(null);
   // M82: the words handed to the hand off card (a new press opens a new card).
@@ -2295,7 +2357,10 @@ export function Card() {
   const side = sideOn({ layout, text: textSizeFrom(useSetting("display.textSize")), onboarded, tab: home.tab });
   // What stops any work (the audit, item 12) and changes waiting for a review (item 11): each leads Now when it is there.
   const [claudeSt, setClaudeSt] = useClaudeStatus();
-  const blocker = onboarded ? blockerOf({ connected: m.connected, runnerUp: m.runnerUp, claude: claudeSt?.state ?? null }) : null;
+  // Feel round 2: the engine has a moment to say hello before Home says it is starting (homeHero.ts HELLO_GRACE_MS).
+  const [helloLate, setHelloLate] = useState(false);
+  useEffect(() => { const id = window.setTimeout(() => setHelloLate(true), HELLO_GRACE_MS); return () => window.clearTimeout(id); }, []);
+  const blocker = onboarded ? blockerOf({ connected: m.connected, runnerUp: m.runnerUp, claude: claudeSt?.state ?? null, starting: helloLate && !m.helloSeen }) : null;
   const rlead = reviewOn ? reviewLead(m.review, project) : null;
   const mode = homeMode(m, needNow, { blocker, review: rlead });
   const status = homeStatus(m, project, clock);
@@ -2332,13 +2397,15 @@ export function Card() {
     needsInstall: m.about?.project === project && m.about.needsInstall,
   });
   // The one way out of a block, or into the review, as the main button.
+  // Feel round 2 (19 Nov 2026): with the engine stopped or still starting, the send arrow waits and its tooltip says why.
+  const sendWhy = blocker === "engine" || blocker === "starting" ? S.home.blocked[blocker].headline : null;
   const blockMain = blocker && S.home.blocked[blocker].main ? blocker : null;
   // M98 (F29): fixing not switched on has no Try again; Check my project works without the engine, so it is the button.
   const blockAct = blockMainFor(blocker, project);
   const reviewMain = mode === "review" && rlead?.main === "review";
   const doBlockMain = () => {
     // M98 (F29): fixing not switched on has no button of its own (blockMainFor); only a stopped engine restarts.
-    if (blocker === "engine") void invoke("restart_engine").catch(() => {});
+    if (blocker === "engine" || blocker === "starting") void invoke("restart_engine").catch(() => {});
     else if (blocker === "claude") getClaude(setClaudeSt);
   };
   // The limit card takes the result's place and has its own main button, so Home's main button steps aside while it shows.
@@ -2460,7 +2527,12 @@ export function Card() {
   const safeSaid = jobShown && m.task?.checkpoint ? S.fixRun.safeLine : "";
   // M69 step 3: while a fix works with its safety copy kept, the line under the title says so, in place of a line the
   // status already says ("Working" under WORKING).
-  const heroLine = safeSaid && (!heroShown.line || heroLineSaid(heroStatus, heroShown.headline, heroShown.line)) ? safeSaid : heroShown.line;
+  // Feel round 2 (19 Nov 2026): while the working card shows, it says the step under way, so the line under the title no
+  // longer says it a second time ("Running the tests" twice): only the safety copy line, or nothing. The tag says the
+  // card's own step word ("Checking"), never a second word for the same moment ("Working").
+  const heroLine = jobShown ? safeSaid : safeSaid && (!heroShown.line || heroLineSaid(heroStatus, heroShown.headline, heroShown.line)) ? safeSaid : heroShown.line;
+  const runNow = jobShown && m.task ? runList(m, m.task.proof?.of ?? (Number(setting("work.tries")) || 3)) : null;
+  const tagWord = runNow ? S.home.steps[runNow.at - 1] : undefined;
   // M71 (meaning.ts): the lead's meaning, so its tag, its colour and the list's agree. A practice that waits on the person is
   // "Practice ready" in purple, never needs you (the founder, 5 Nov 2026).
   const practiceLead = !!m.practice && !!needNow && needNow.key.startsWith("practice:") && !atRest;
@@ -2521,6 +2593,8 @@ export function Card() {
   // M69 step 3: the bar's context line says what the hero does not: when it was checked and that Undo is ready only while
   // the hero says neither (at rest and over a result it does), and in the tall Home the kind of project without its folder.
   const barLine = barContext({ project, foot: atRest || resHero ? null : foot, about: m.about, tall: !side });
+  const barSaid = barLine.filter((x) => x !== shortPath(project));
+  const barStatus = project ? barStatusWords({ tab: home.tab, kind: status.kind, ago: status.ago, working: stopCan(m) }) : "";
   const retryCan = !!rcpt && groups.on("followUp") && canRetry({ ...m, followUp: "idle" }, project);
   const chips: ChipId[] = rcpt ? resultChips({
     changed: rcpt.changed.length, undone, failed: rcpt.proof === "failed",
@@ -2635,10 +2709,18 @@ export function Card() {
   // it says what will appear and offers one action: Connect your AI tools while none is, else all of History.
   const todayBlock = () => {
     if (!atRest || home.tab !== "now" || !project || setup) return null;
-    const entries = todayLine(m, clock);
+    // Feel round 1: the last fix shown in Now's list above is not said a second time here.
+    const listShowsFix = !!restShow && !!restFix;
+    const entries = todayBesides(todayLine(m, clock), listShowsFix ? restFix!.item.id : null);
+    if (!entries) return null;
+    // One empty state per screen (feel round 1): while Now's list is drawn above (its practice row and its own empty row
+    // say what comes next), an empty Today with nothing to offer is not drawn under it as a second one.
+    const listShown = !!restShow && (!!restFix || (restShow === "practice" && groups.groupOn("guide") && !m.practice));
     const act = entries.length > 0 ? null : doneTools && !anyConnected(doneTools)
       ? { label: S.m84.todayEmptyConnect, onClick: () => { setSetPlace("fixing.tools"); pickTab("settings"); } }
       : m.history.length > 0 ? { label: S.m84.todayEmptyAct, onClick: () => { setHistoryQ(NO_FILTER); pickTab("did"); } } : null;
+    // An empty Today with its own next step (Connect your AI tools, all of History) stays: that step is said nowhere else.
+    if (entries.length === 0 && listShown && !act) return null;
     return <TodayLine entries={entries} act={act} />;
   };
   const today = todayBlock();
@@ -2659,7 +2741,12 @@ export function Card() {
   // While the review card leads (changes waiting), the strip says the rest; the card says the changes.
   // M84 review: with the side list on and saying the AI tools, the strip leaves them out (a fact is never said twice).
   const sideSaysTools = side && !!project && (() => { const t = sideTools(m, doneTools); return !!t && (t.kind === "tools" || t.kind === "connect"); })();
-  const stripFacts = !setup && project && home.tab === "now" && (atRest || !!resHero || mode === "review") ? homeFacts(listOwnsCaught ? { ...m, caught: null } : m, { now: clock, tools: doneTools }).filter((f) => !(mode === "review" && f.id === "changes") && !(sideSaysTools && f.id === "tools")) : [];
+  // Feel round 1 (18 Nov 2026): while a job works, the line under its name says for how long (Elapsed), from the moment
+  // Home first saw it working.
+  const workSince = useWorkSince(mode === "working");
+  const stripFacts = !setup && project && home.tab === "now" && (atRest || !!resHero || mode === "review") ? homeFacts(listOwnsCaught ? { ...m, caught: null } : m, { now: clock, tools: doneTools }).filter((f) => !(mode === "review" && f.id === "changes") && !(sideSaysTools && f.id === "tools") && !((atRest || !!resHero) && f.id === "check")) : [];
+  // Feel round 1 (18 Nov 2026): at rest and over a result the lead's own line says when it was last checked, so the strip
+  // does not say it a second time in a bordered card.
   const stripOpen = (id: NotchFactId) => {
     if (id === "changes") openReview();
     else if (id === "tools") { setSetPlace("fixing.tools"); pickTab("settings"); }
@@ -2802,10 +2889,15 @@ export function Card() {
       )}
 
       </div>  );
+  const gearWaits = waitsOn === "settings" && home.tab !== "settings";
+  const gearButton = <Button key="settings" id={tabId("settings")} kind="icon" className="bar-gear" label={S.home.places.settings} title={S.home.places.settings} onClick={gear}><Icon name="gear" size={16} />{gearWaits && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}</Button>;
+  const barStop = barStopCan(m, home.tab) && <Button kind="secondary" size="sm" className="bar-stop" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void stopNow()}><Icon name="stop" size={14} />{S.stop}</Button>;
+  const closeButton = <Button kind="icon" className="close" label={S.look.close} title={S.look.close} onClick={() => { player.current.hush(); closeHome(); }}><Icon name="close" size={14} /></Button>;
   return (
     <HomeStage stage={homeStage}>
     <main className={`card home${dragging ? " dropping" : ""}`} ref={root} data-view={home.tab} data-layout={layout} data-chat={chat ? "" : undefined} data-side={side ? "" : undefined} data-tone={hero.tone} data-talking={m.voice?.stage === "listening" ? "" : undefined}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
+      onScroll={(e) => { const el = e.currentTarget; el.toggleAttribute("data-scrolled", el.scrollTop > 0); }}
       onDragOver={(e) => { if (!onboarded || !carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDragging(true); }}
       onDragLeave={(e) => { if (!e.relatedTarget || !root.current?.contains(e.relatedTarget as Node)) setDragging(false); }}
       onDrop={(e) => { setDragging(false); if (!carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); if (onboarded) addDropped(e.dataTransfer?.files); }}
@@ -2821,6 +2913,7 @@ export function Card() {
       {/* M96: the small chat out of the notch, only while Home is the small chat; everything else in Home stays laid out but
           hidden until it opens out (black.css), so nothing in it is lost. */}
       {chat && <NotchChat m={m} project={project} greet={hoverGreeting(setting("you.name"))} now={clock} hint={askHint ?? micSaid} boxRef={chatBox} working={working}
+        pending={chatSent} state={project ? { words: statusWords({ kind: status.kind, ago: status.ago, working: stopCan(m) }), dot: statusDot(status.kind) } : null}
         talk={{ on: groups.on("talk") && !!keys.using.talk, title: talkKeysLine(keys), label: keys.using.talk ? S.m96.chat.micKeys(chordLabel(keys.using.talk)) : S.m96.chat.mic }}
         stop={stopCan(m) ? { label: `${S.m96.chat.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`, title: keyHint("stop", S.look.stopKeys, keys) } : null} onStop={() => void stopNow()}
         onBubble={(go) => { openOut(); if (go === "review") onArrival.current({ do: "review" }); else pickTab("now"); }}
@@ -2852,8 +2945,13 @@ export function Card() {
               it key moved to the foot of the ask box (homeLayout.ts barKeyChord). */}
           {/* M71: the project chip, its dot the project's own state (green works, orange changed, red failing, grey not
               checked; meaning.ts statusDot), with the folder menu inside it. */}
-          {home.tab === "now" && <span className="bar-chip">{project && <Dot colour={statusDot(status.kind)} />}<Menu id={linkId} value="" size="sm" label={S.folderLabel} title={project || undefined} placeholder={project ? (project.split("/").filter(Boolean).at(-1) ?? project) : S.look.noProject} options={folderOptions} onChange={pickFromFolderMenu} /></span>}
-          {home.tab === "now" && barLine.length > 0 && <p className="bar-meta" title={barLine.join(" · ")}>{barLine.join(" · ")}</p>}
+          {/* Feel round 1 (18 Nov 2026): in the tall Home the project row stays on every place (only Settings has its own
+              title there), so the row of places never moves when you switch. */}
+          {(home.tab === "now" || (!side && home.tab !== "settings")) && <span className="bar-chip">{project && <Dot colour={statusDot(status.kind)} />}<Menu id={linkId} value="" size="sm" label={S.folderLabel} title={project || undefined} placeholder={project ? (project.split("/").filter(Boolean).at(-1) ?? project) : S.look.noProject} options={folderOptions} onChange={pickFromFolderMenu} /></span>}
+          {/* Feel round 3 (19 Nov 2026): in the tall Home, off Now, one quiet status after the chip (Now's lead says it there). */}
+          {!side && barStatus && <p className="bar-status" data-kind={stopCan(m) ? "working" : status.kind}>{stopCan(m) && <i className="live" aria-hidden="true" />}{barStatus}</p>}
+          {/* Feel round 1: the folder's path is the chip's own tooltip, so the line beside it never says it a second time. */}
+          {home.tab === "now" && barSaid.length > 0 && <p className="bar-meta" title={barSaid.join(" · ")}>{barSaid.join(" · ")}</p>}
           {home.tab !== "now" && <>
             {/* The tall Home's row of places names the open one and leads back to Now, so the back arrow is only for Settings,
                 where that row steps aside (the review, 2 Nov 2026: a back arrow beside the row was a second way to the same place). */}
@@ -2864,23 +2962,27 @@ export function Card() {
           {/* In the wide Home the side list is the one Places landmark, so the bar's buttons are a plain group then (item 51). */}
           <PlacesBox side={side}>
             {/* M73 (fluid, item 5): one highlight slides between the places of the tall Home's row (ui/parts.tsx PlacesGlide). */}
-            {!side && home.tab !== "settings" && <PlacesGlide k={`${home.tab}:${barStopCan(m, home.tab) ? 1 : 0}`} colour={PLACE_COLOUR[home.tab]} />}
+            {!side && home.tab !== "settings" && <PlacesGlide k={home.tab} colour={PLACE_COLOUR[home.tab]} />}
             {/* While a job runs, Stop is one press away on every place, not only on Now (Now has its own, in the hero or the
-                working card). */}
-            {barStopCan(m, home.tab) && <Button kind="secondary" size="sm" className="bar-stop" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void stopNow()}><Icon name="stop" size={14} />{S.stop}</Button>}
+                working card). Feel round 2: in the tall Home it sits in the top right corner beside Settings and Close, so the
+                row of places never moves under the pointer when a job starts. */}
+            {side && barStop}
             {/* In Settings the sidebar is the only way around: the place buttons step back (the spec, 3.1). */}
             {/* The tall Home (M51 polish): Now is a place in the row too, so the open place always shows which it is. */}
             {/* M71: each place with its own colour tile (Now blue, Learn purple, History orange, Memory pink), the open one on
                 its soft fill; Settings is a grey gear at the end. */}
-            {home.tab !== "settings" && !side && <PlaceButton place="now" label={S.look.now} on={home.tab === "now"} onClick={() => pickTab("now")} />}
+            {home.tab !== "settings" && !side && <PlaceButton place="now" label={S.look.now} on={home.tab === "now"} onClick={() => pressPlace("now")} />}
             {home.tab !== "settings" && places.map((t) => {
               const waits = waitsOn === t && t !== home.tab;
               return t === "settings"
-                ? <Button key={t} id={tabId(t)} kind="icon" className="bar-gear" label={S.home.places[t]} title={S.home.places[t]} onClick={gear}><Icon name="gear" size={16} />{waits && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}</Button>
-                : <PlaceButton key={t} id={tabId(t)} place={t} label={S.home.places[t]} on={t === home.tab} waits={waits} waitsWord={S.homeTabWaiting} onClick={() => pickTab(placeAfter(home.tab, t))} />;
+                ? (side ? gearButton : null)
+                : <PlaceButton key={t} id={tabId(t)} place={t} label={S.home.places[t]} on={t === home.tab} waits={waits} waitsWord={S.homeTabWaiting} onClick={() => pressPlace(placeAfter(home.tab, t))} />;
             })}
-            <Button kind="icon" className="close" label={S.look.close} title={S.look.close} onClick={() => { player.current.hush(); void invoke("close_card"); }}><Icon name="close" size={14} /></Button>
+            {side && closeButton}
           </PlacesBox>
+          {/* Feel round 1 (the founder, 18 Nov 2026: "take the X button to the side"): in the tall Home, Settings and Close sit
+              in the panel's top right corner, on the same edge as the cards, in the first row; the places fill the row under it. */}
+          {!side && <div className="bar-end">{barStop}{home.tab !== "settings" && gearButton}{closeButton}</div>}
         </header>
       )}
       {/* Each place sits in its own boundary (must fix 4): a part that fails to draw shows one line and Reload this part,
@@ -2896,9 +2998,12 @@ export function Card() {
         data={{ "data-mode": mode, "data-rest": atRest ? "" : undefined, "data-tight": compact ? "" : undefined }}
         wordsData={{ "data-line-said": !statusFirst && heroLineSaid(heroStatus, heroShown.headline, heroLine) ? "" : undefined }}>
           {atRest
-            ? restWords.pill && <Tag meaning={PILL_MEANING[restWords.pill]} words={S.homeNow.pill[restWords.pill]} />
+            ? restWords.pill && <Tag meaning={PILL_MEANING[restWords.pill]} words={restWords.tag ?? S.homeNow.pill[restWords.pill]} />
             : resHero ? <Tag meaning={resHero.pill === "proven" ? "proven" : "problem"} words={S.homeNow.resultPill[resHero.pill]} tick={resHero.pill === "proven"} />
-            : statusLineShown(heroStatus, statusFirst ? status.verdict.headline : heroShown.headline) && <Tag meaning={leadMeaning} words={heroStatus === "needs" && leadMeaning !== "question" ? undefined : S.ui.status[heroStatus]} />}
+            // Feel round 1: what blocks (no key, a missing part) is its own headline; the check's tag over it said another thing.
+            // Feel round 2: a blocker keeps the tag's place, so the lead never changes shape between states.
+            : blocker ? <Tag meaning="notChecked" words={S.home.blockedTag[blocker]} />
+            : !blocker && statusLineShown(heroStatus, statusFirst ? status.verdict.headline : heroShown.headline) && <Tag meaning={leadMeaning} words={heroStatus === "needs" && leadMeaning !== "question" ? undefined : tagWord ?? S.ui.status[heroStatus]} />}
           {/* data-foot-says: the footer line already says this line (Checked 4 min ago), so Instrument shows it once. */}
           {/* M71: at rest and over a result, the outcome is the headline and the why the one line under it (homeRest.ts). */}
           {atRest
@@ -2915,7 +3020,7 @@ export function Card() {
               <Swap k={`h:${leadHeadline}`}><h1 id={home.tab === "now" ? "home-title" : undefined} className="ui-lead-title headline"><Said text={leadHeadline} friendly={heroShown.friendly?.headline} /></h1></Swap>
               {/* M69 (F29): no cost counts up here any more; Squibby pays. */}
               {/* M69 step 3: while a fix works with its safety copy kept, that is said once, under the title (not in the card). */}
-              <Swap k={`l:${heroLine}`}><p className={`ui-lead-line subline${heroLine === safeSaid && safeSaid ? " hero-safe" : ""}`}>{heroLine === safeSaid && safeSaid ? safeSaid : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p></Swap>
+              {(heroLine || !jobShown) && <Swap k={`l:${heroLine}`}><p className={`ui-lead-line subline${heroLine === safeSaid && safeSaid ? " hero-safe" : ""}`}>{heroLine === safeSaid && safeSaid ? safeSaid : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}{mode === "working" && !jobShown && workSince ? <Elapsed since={workSince} /> : null}</p></Swap>}
               {heroShown.detail && !compact && <p className="subline muted">{heroShown.detail}</p>}
             </>}
           {/* One main button: the way out of a block, Review the changes, the status's own, or the next step elsewhere. None
@@ -2972,15 +3077,17 @@ export function Card() {
             <div className="ask-row">
               {/* M69 step 2: while the review card leads, the token is the place it points at (file and line, never its text). */}
               {project && (cardLeads && rvHead?.pointed
-                ? <span className="ask-token" title={S.review.at(rvHead.pointed.file, rvHead.pointed.line)} role="note" aria-label={S.look.askAbout(S.homeNow.tokenLine(rvHead.pointed.file, rvHead.pointed.line))}><span className="ask-token-dot" aria-hidden="true" />{S.homeNow.tokenLine(rvHead.pointed.file, rvHead.pointed.line)}</span>
-                : <span className="ask-token" data-c={statusDot(status.kind)} title={project} role="note" aria-label={S.look.askAbout(projectName)}><span className="ask-token-dot" aria-hidden="true" />{projectName}</span>)}
+                ? <span className="ask-token" title={S.review.at(rvHead.pointed.file, rvHead.pointed.line)} role="note" aria-label={S.look.askAbout(S.homeNow.tokenLine(rvHead.pointed.file, rvHead.pointed.line))}><span className="ask-token-dot" aria-hidden="true" /><span className="ask-token-name">{S.homeNow.tokenLine(rvHead.pointed.file, rvHead.pointed.line)}</span></span>
+                // Feel round 2 (19 Nov 2026): the project chip at the top already names the open project, so the box does not
+                // name it a second time (in the wide Home it was cut to "Squibby practice…"); only VoiceOver hears where it goes.
+                : <span className="sr" role="note">{S.look.askAbout(projectName)}</span>)}
               {askChipList.map((c) => <button type="button" className="ask-chip" key={c.id} onClick={() => fillBox(c.words)}>{c.words}</button>)}
               {/* M82: hand the job to your AI tool. The words go to the hand off card below; nothing is sent until a press there. */}
               {project && <button type="button" className="ask-chip ask-handoff" title={S.m82.haveAiHelp} onClick={() => { const w = box.current?.value.trim() ?? ""; if (!w) { needWords(S.m82.needWords); return; } setVague(null); setHandoff({ words: w, n: Date.now() }); clearBox(); }}>{S.m82.haveAi}</button>}
               {/* A click may never open the microphone (rule 5): the press says which keys to hold, and the tooltip too. */}
               {groups.on("talk") && keys.using.talk && <Button kind="icon" className="ask-mic" label={S.look.micLabel} title={talkKeysLine(keys)} onClick={() => setAskHint(S.look.micHint(chordLabel(keys.using.talk!)))}><Icon name="mic" size={16} /></Button>}
               {/* While a job works the arrow stays, greyed, so the box keeps its shape (M51 polish); Stop is on the job's card. */}
-              {buttonShown("start") && <Button kind="icon" className="send" label={S.look.send} title={S.look.send} disabled={working} onClick={submit}><Icon name="send" size={16} /></Button>}
+              {buttonShown("start") && <Button kind="icon" className="send" label={S.look.send} title={sendWhy ?? S.look.send} disabled={working || !!sendWhy} onClick={submit}><Icon name="send" size={16} /></Button>}
             </div>
           </div>
           {/* M73 (fluid, item 8): as you type, the ask with your words first (Return, as always), then the actions whose words
@@ -3046,7 +3153,11 @@ export function Card() {
               check the main button already offers is not here twice. A ticked option is said on the line that opens them. */}
           {/* M83: the quiet foot under the ask box: More ways to ask on the left and the Fix it key on the right (it was alone
               in the top bar's corner). */}
-          {home.tab === "now" && (!working || barKey) && <div className="ask-foot">
+          {/* Feel round 1: the foot row stays while a job works (More ways to ask steps aside, its room kept), so nothing
+              under the ask box jumps when a job starts or ends. */}
+          {/* Feel round 3 (19 Nov 2026): while work runs, the foot (More ways to ask, the stuck key) steps aside as one, so it
+              never stands lopsided with only its key on the right; the working card has Stop. */}
+          {home.tab === "now" && !working && <div className="ask-foot">
           {!working && (
             <details className="more">
               <summary onClick={(e) => { setWayCounts(readCounts()); const d = e.currentTarget.parentElement; setTimeout(() => setMoreDesc(firstWayTip(d)), 0); }}>{S.look.more}{off && <span> · {S.offRecord}</span>}</summary>
@@ -3404,17 +3515,22 @@ export function Card() {
         const odd = lines.filter((l) => l.outcome === "blocked" || l.outcome === "denied" || l.outcome === "needs_approval");
         return (
           <section className="panel job" aria-label={m.task.label || S.home.jobLabel}>
+            {/* Feel round 2 (19 Nov 2026): the step, how far and the time so far on the left of one line, Stop on the right, on
+                one baseline (the time sat alone under the list, the left of the top line was empty). */}
             <div className="job-top">
-              <p className="run-count" aria-label={rl.say}><span aria-hidden="true">{S.home.steps[rl.at - 1]}{rl.counter ? ` · ${rl.counter}` : ""}</span></p>
+              {/* Feel round 3 (19 Nov 2026): the lead's tag already says the step ("Checking"), and "3 of 4" counted steps the
+                  list did not show, so the card's top line is the time so far and Stop. The step and the count stay for
+                  VoiceOver. */}
+              <p className="run-count sr" aria-label={rl.say}><span aria-hidden="true">{S.home.steps[rl.at - 1]}{rl.counter ? ` · ${rl.counter}` : ""}</span></p>
+              {/* The cost so far is the hero's line (the audit, item 53), so only the time is said here. M55: it ticks a second
+                  at a time, and counts up to the time it is when Home comes back after being away, never jumping there. */}
+              <p className="job-meta run-time"><span><CountUp value={Math.max(Math.floor(rl.ms / 1000), Math.floor((clock - (jobStart.current?.at ?? clock)) / 1000))} words={clockOnly} step={1} /></span></p>
               {stopCan(m) && <Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void stopNow()}><Icon name="stop" size={14} />{S.stop}</Button>}
             </div>
             {/* M73 (fluid, item 10): a 2 point line that grows only when a real step ends (the step under way, from the
                 engine's states, runList.ts), never on a timer. A picture: the step is said in words beside it. */}
             <span className="run-line" aria-hidden="true" style={{ "--run": String(Math.max(0, Math.min(1, (rl.at - 1) / Math.max(1, rl.of)))) } as CSSProperties} />
             <RunRows rows={rl.rows} label={S.fixRun.label} under={live.kind === "files" ? <JobLive view={live} /> : null} />
-            {/* The cost so far is the hero's line (the audit, item 53), so only the time is said here. M55: it ticks a second at
-                a time, and counts up to the time it is when Home comes back after being away, never jumping there. */}
-            <p className="job-meta"><span><CountUp value={Math.max(Math.floor(rl.ms / 1000), Math.floor((clock - (jobStart.current?.at ?? clock)) / 1000))} words={timeLine} step={1} /></span></p>
             {odd.map((l, i) => <div key={i} className="line blocked">{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "denied" ? `${S.denied}: ` : `${S.waiting}: `}{l.words}</div>)}
           </section>
         );
@@ -3839,7 +3955,7 @@ export function Card() {
 
 
       {show("memory") && !project && <div className="line muted">{S.homeMemoryNoProject}</div>}
-      {show("memory") && project && !m.memory && !m.memoryNote && m.runnerUp && <div className="line muted" role="status">{S.homeMemoryLoading}</div>}
+      {show("memory") && project && !m.memory && !m.memoryNote && m.runnerUp && <MemoryLoading onRetry={() => { dispatch({ type: "ui.memoryRetry" }); void send(listMemory(project)); }} />}
       {show("memory") && project && !m.memory && m.memoryNote && (
         <div className="line" role="alert">{m.memoryNote} <button className="btn" type="button" onClick={() => { dispatch({ type: "ui.memoryRetry" }); void send(listMemory(project)); }}>{S.tryAgain}</button></div>
       )}

@@ -19,20 +19,27 @@ const hero = (history: HistoryItem[], o: { sinceChanged?: boolean; reviews?: Rev
 const NOT_CHECKED = S.homeNow.pill.new;
 
 describe("the hero at rest, two tones from the latest real state", () => {
-  test("a proven fix: the outcome, then when it was proven, under LAST CHECK PASSED", () => {
-    expect(hero([task()])).toEqual({ pill: "passed", first: "my-shop checked out fine.", second: "Proven 2 hours ago." });
+  // Changed on purpose (feel round 2, 19 Nov 2026): the hero said one fact three times. The tag says the state and when, the
+  // headline what changed since, the line the next step.
+  test("a proven fix: the tag says passed and when, the headline that nothing changed since, the line the next step", () => {
+    expect(hero([task()])).toEqual({ pill: "passed", tag: "Passed 2 hours ago", first: "No changes since then.", second: S.homeNow.nextAsk });
+    const h = hero([task()]);
+    // No word of the tag is said again by the headline.
+    expect(h.first).not.toMatch(/pass|proven|fine|check/i);
   });
-  test("proven, then files changed: says so, counted only when one review counted them", () => {
-    expect(hero([task()], { sinceChanged: true }).second).toBe("Proven 2 hours ago. Files changed since.");
-    expect(hero([task()], { sinceChanged: true, reviews: [review({ count: 3 })] }).second).toBe("Proven 2 hours ago. 3 files changed since.");
-    expect(hero([task()], { sinceChanged: true, reviews: [review(), review({ at: ago(10), count: 2 })] }).second).toBe("Proven 2 hours ago. Files changed since.");
+  test("proven, then files changed: the headline says so, counted only when one review counted them", () => {
+    expect(hero([task()], { sinceChanged: true }).first).toBe("Files changed since.");
+    expect(hero([task()], { sinceChanged: true }).second).toBe(S.homeNow.checkAgainLine);
+    expect(hero([task()], { sinceChanged: true }).tag).toBe("Passed 2 hours ago");
+    expect(hero([task()], { sinceChanged: true, reviews: [review({ count: 3 })] }).first).toBe("3 files changed since.");
+    expect(hero([task()], { sinceChanged: true, reviews: [review(), review({ at: ago(10), count: 2 })] }).first).toBe("Files changed since.");
     // A review older than the proven fix is not "since".
-    expect(hero([task()], { sinceChanged: true, reviews: [review({ at: ago(300) })] }).second).toBe("Proven 2 hours ago. Files changed since.");
+    expect(hero([task()], { sinceChanged: true, reviews: [review({ at: ago(300) })] }).first).toBe("Files changed since.");
   });
   test("a failed check: red tag, the problem in the project's name", () => {
     const h = hero([task({ proof: "failed" })]);
     expect(h.pill).toBe("failed");
-    expect(h.first).toBe("my-shop has a problem.");
+    expect(h.first).toBe("Found a problem.");
     expect(PILL_TONE[h.pill!]).toBe("stop");
   });
   test("never NOT CHECKED YET next to a proven run, whatever came after it", () => {

@@ -86,7 +86,7 @@ describe("Home is one calm column, status first (F28, the overhaul spec 4.1)", (
   test("one main button: the ask field's Start is a quiet drawing, and every other way to ask is behind one quiet line", () => {
     const more = card.indexOf('<details className="more">');
     expect(more).toBeGreaterThan(-1);
-    const startAt = card.indexOf('<Button kind="icon" className="send" label={S.look.send} title={S.look.send} disabled={working} onClick={submit}>');
+    const startAt = card.indexOf('<Button kind="icon" className="send" label={S.look.send} title={sendWhy ?? S.look.send} disabled={working || !!sendWhy} onClick={submit}>');
     expect(startAt).toBeGreaterThan(-1);
     expect(startAt).toBeLessThan(more);
     expect(card).not.toContain('"btn primary icon send"');

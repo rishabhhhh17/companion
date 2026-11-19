@@ -91,7 +91,9 @@ export function need(m: Model): Need | null {
   if (waitsForAnswer(m)) return { key: `asks:${m.receipt?.checkpoint ?? ""}`, tab: "now", why: S.receiptAsks, question: true };
   if (m.walk && m.showme && SHOWME_PROBLEMS.includes(m.showme.stage)) return { key: `showme:${m.showme.req ?? ""}:${m.showme.stage}`, tab: "learn", why: S.showMe };
   if (m.walk && WALK_NEEDS.includes(m.walk.stage)) return { key: `walk:${m.walk.id}:${m.walk.index}:${m.walk.stage}`, tab: "learn", why: S.lessonsTitle };
-  if (m.practice && PRACTICE_NEEDS.includes(m.practice.stage)) return { key: `practice:${m.practice.project}:${m.practice.stage}`, tab: "learn", why: S.practiceTitle };
+  // Feel round 3 (the founder, 17 Nov 2026: "I like the first screen, man, of what it was"): a practice that is ready lands on
+  // Now, with its chip, its headline, one line and Start (homeHero.ts needMainFor). Once it runs, its card on Learn leads.
+  if (m.practice && PRACTICE_NEEDS.includes(m.practice.stage)) return { key: `practice:${m.practice.project}:${m.practice.stage}`, tab: m.practice.stage === "start" ? "now" : "learn", why: S.practiceTitle };
   if (m.ph && PH_NEEDS.includes(m.ph.stage)) return { key: `ph:${m.ph.stage}`, tab: "now", why: S.phTitle, mustShow: true };
   if (m.eh && EH_NEEDS.includes(m.eh.stage)) return { key: `eh:${m.eh.req ?? ""}:${m.eh.stage}`, tab: "now", why: S.ehTitle, mustShow: true };
   if (m.sl && SL_NEEDS.includes(m.sl.stage)) return { key: `sl:${m.sl.req ?? ""}:${m.sl.stage}`, tab: "now", why: S.slTitle, mustShow: true };
@@ -153,6 +155,8 @@ export function homeReduce(s: HomeState, a: HomeAction): HomeState {
       if (key === s.needKey) return s;   // the same thing as before: never pulls the person back to it
       if (!a.need) return { ...s, needKey: "" };
       if (a.need.tab === s.tab) return { ...s, needKey: key };
+      // Feel round 3: a practice is at home on Learn too (its card), so a practice need never pulls the person off Learn.
+      if (key.startsWith("practice:") && s.tab === "learn") return { ...s, needKey: key };
       if (onlyMarked(s, a)) return { ...s, needKey: key };
       return { tab: a.need.tab, needKey: key };
     }

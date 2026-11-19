@@ -312,7 +312,7 @@ button, select, input, textarea { font: inherit; }
 .ui-tag[data-tone="stop"] { border-color: transparent; background: var(--tag-stop-bg); color: var(--bad); }
 /* M69 (spec 1.2, 1.7): the status is a short tag, a pill with its dot and its word in the meaning's colour on a faint tint
    of it, uppercase and a little open. The only uppercase words in the app (rule 16, M69 correction 5). */
-.ui-status { display: inline-flex; align-items: center; gap: var(--pill-gap); justify-self: start; width: fit-content; min-height: var(--h-pill); box-sizing: border-box; margin: 0; padding: 0 var(--pill-x); border-radius: var(--r-pill); background: var(--neutral-tint); color: var(--fg-2); font: var(--w-eyebrow) var(--t-eyebrow) / var(--lh-eyebrow) var(--font); letter-spacing: var(--track-eyebrow); text-transform: uppercase; }
+.ui-status { display: inline-flex; align-items: center; gap: var(--pill-gap); justify-self: start; width: fit-content; min-height: var(--h-pill); box-sizing: border-box; margin: 0; padding: 0 var(--pill-x); border-radius: var(--r-pill); background: var(--neutral-tint); color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); letter-spacing: 0; text-transform: none; }
 .ui-status-dot { flex: none; width: var(--dot); height: var(--dot); border-radius: var(--r-round); background: currentColor; }
 .ui-status[data-tone="needs"] { background: var(--warn-tint); color: var(--amber); }
 .ui-status[data-tone="proven"] { background: var(--ok-tint); color: var(--ok); }
@@ -320,7 +320,7 @@ button, select, input, textarea { font: inherit; }
 /* A section's short label over a card (LAST FIX, SINCE THEN): the same tag's type, in the second words, no pill. */
 .ui-eyebrow { margin: 0; color: var(--fg-2); font: var(--w-eyebrow) var(--t-eyebrow) / var(--lh-eyebrow) var(--font); letter-spacing: var(--track-eyebrow); text-transform: uppercase; }
 .ui-status[data-tone="working"] { background: var(--acc-tint); color: var(--status-working); }
-.ui-status[data-tone="working"] .ui-status-dot { background: var(--ring-working); }
+.ui-status[data-tone="working"] .ui-status-dot { background: var(--ring-working); animation: ui-dot-breathe calc(var(--loop-busy) * 1.2) var(--ease-loop) infinite alternate; }
 .ui-dot { display: inline-block; flex: none; width: var(--dot-bar); height: var(--dot-bar); border-radius: var(--r-round); background: var(--fg-2); }
 .ui-dot[data-tone="needs"] { background: var(--ring-needs); }
 .ui-dot[data-tone="proven"] { background: var(--ring-proven); }
@@ -420,12 +420,18 @@ button, select, input, textarea { font: inherit; }
 .ui-mtile[data-size="btn"] { width: var(--tile-btn); height: var(--tile-btn); border-radius: var(--r-tile-sm); font-size: var(--t-caption); }
 .ui-mtile .ic * { stroke-width: 2.25; }
 .ui-mdot { display: inline-block; flex: none; width: var(--dot-m); height: var(--dot-m); border-radius: var(--r-round); background: var(--mc); transition: background-color var(--dur-2) var(--ease-out); }
-.ui-mtag { display: inline-flex; align-items: center; gap: var(--pill-gap); width: fit-content; min-height: var(--h-pill); box-sizing: border-box; margin: 0; padding: 0 var(--space-2); border-radius: var(--r-pill); background: var(--mc-soft); color: var(--mc-text); font: var(--w-bold) var(--t-eyebrow) / var(--lh-eyebrow) var(--font); letter-spacing: var(--track-eyebrow); text-transform: uppercase; transition: background-color var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out); }
+.ui-mtag { display: inline-flex; align-items: center; gap: var(--pill-gap); width: fit-content; min-height: var(--h-pill); box-sizing: border-box; margin: 0; padding: 0 var(--space-2); border-radius: var(--r-pill); background: var(--mc-soft); color: var(--mc-text); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); letter-spacing: 0; text-transform: none; transition: background-color var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out); }
 .ui-mtag-tick { display: inline-grid; flex: none; color: var(--mc); }
 .ui-mtag-tick .ic * { stroke-width: 3; stroke-dasharray: 24; stroke-dashoffset: 0; animation: ui-tick-draw var(--dur-4) var(--ease-out) var(--dur-2) both; }
 @keyframes ui-tick-draw { from { stroke-dashoffset: 24; } }
+/* Feel round 1 (18 Nov 2026): while something works or is checked, its dot breathes slowly, so the person can see it is
+   alive. Opacity only, and still under Reduce motion or Less motion. */
+.ui-mtag[data-meaning="working"] .ui-mtag-dot { animation: ui-dot-breathe calc(var(--loop-busy) * 1.2) var(--ease-loop) infinite alternate; }
+@keyframes ui-dot-breathe { from { opacity: .45; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ui-mtag-dot, .ui-status-dot { animation: none !important; } }
+:root[data-less-motion] .ui-mtag[data-meaning="working"] .ui-mtag-dot, :root[data-less-motion] .ui-status[data-tone="working"] .ui-status-dot { animation: none !important; }
 .ui-mtag-dot { flex: none; width: var(--dot-tag); height: var(--dot-tag); border-radius: var(--r-round); background: var(--mc); transition: background-color var(--dur-2) var(--ease-out); }
-.ui-mlist { margin: 0; padding: 0; list-style: none; border-radius: var(--r-list); background: var(--surface-1); overflow: clip; }
+.ui-mlist { margin: 0; padding: 0; list-style: none; border-radius: var(--r-list); background: var(--surface-1); box-shadow: inset 0 0 0 var(--hair) var(--edge, var(--line)), inset 0 var(--hair) 0 var(--sheen-line); overflow: clip; }
 .ui-mrow { display: flex; align-items: center; gap: var(--space-2); min-height: var(--h-list-row); padding-inline-end: var(--space-4); animation: ui-row-in var(--dur-2) var(--ease-out) both; }
 .ui-mrow + .ui-mrow { box-shadow: inset 0 var(--hair) 0 var(--edge); }
 .ui-mrow-main { display: flex; align-items: center; gap: var(--space-3); flex: 1; min-width: 0; align-self: stretch; margin: 0; padding: var(--space-3) 0 var(--space-3) var(--space-4); border: 0; background: transparent; color: var(--fg); text-align: start; font: inherit; }
@@ -436,7 +442,9 @@ button.ui-mrow-main:hover { background: var(--surface-2); }
 .ui-mrow-line { color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
 .ui-mrow-fact { flex: none; color: var(--fg-2); font: var(--w-bold) var(--t-small) / var(--lh-small) var(--font); font-variant-numeric: tabular-nums; }
 .ui-mrow-fact[data-c] { color: var(--mc-text); }
-.ui-mrow-act { flex: none; min-height: var(--h-sm); margin: 0; padding: 0 var(--space-2); border: 0; border-radius: var(--r-control); background: transparent; color: var(--mc-text); font: var(--w-bold) var(--t-small) / var(--lh-small) var(--font); transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
+/* Feel round 2 (19 Nov 2026): its padding reaches out past the row's right edge, so its words end on the same edge as the
+   plain words of the rows around it. */
+.ui-mrow-act { flex: none; min-height: var(--h-sm); margin: 0 calc(var(--space-2) * -1) 0 0; padding: 0 var(--space-2); border: 0; border-radius: var(--r-control); background: transparent; color: var(--mc-text); font: var(--w-bold) var(--t-small) / var(--lh-small) var(--font); transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .ui-mrow-act:hover { background: var(--mc-soft); }
 .ui-mrow-act:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
 /* M101: an action that cannot be pressed now (its row's line says why). */
@@ -452,6 +460,8 @@ button.ui-mrow-main:hover { background: var(--surface-2); }
 .ui-lead-char { display: grid; place-items: center; width: var(--lead-char); min-height: var(--lead-char); }
 .ui-place { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; min-height: var(--h-place); margin: 0; padding: 0 var(--space-3) 0 var(--space-1); border: 0; border-radius: var(--r-pill); background: transparent; color: var(--fg-2); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .ui-place:hover { color: var(--fg); background: var(--surface-1); }
+/* Feel round 1: a place's ring is fine and hugs its pill. */
+.ui-place:focus-visible { outline-width: calc(var(--ring) * .75); outline-offset: calc(var(--ring-offset) / 2); }
 .ui-place[aria-pressed="true"] { background: var(--mc-soft); color: var(--fg); }
 /* A sidebar item with a colour tile (M71): the open one on its colour's soft fill. */
 .sb-item[data-c][aria-current="page"] { background: var(--mc-soft); }
@@ -480,6 +490,9 @@ button.ui-mrow-main:active { background: var(--surface-2); transform: scale(var(
 /* 6. Swap (parts.tsx): the old words stay laid over the same place for their exit while the new ones rise in. */
 .ui-swap-old { position: absolute; margin: 0; pointer-events: none; animation: ui-swap-out var(--dur-exit-menu) linear both; }
 .ui-swap-new { animation: ui-swap-in var(--dur-2) var(--ease-out) var(--stagger-list) both; }
+/* Feel round 2: words that replace others come in once the old ones have gone (never both at once, never a double
+   exposure); words shown for the first time keep the short stagger. */
+.ui-swap-new[data-swapped] { animation-delay: var(--dur-exit-menu); }
 @keyframes ui-swap-out { to { opacity: 0; } }
 @keyframes ui-swap-in { from { opacity: 0; translate: 0 var(--rise-words); } }
 /* 5. The side list's places: one highlight behind them, moved by transform to the place you are on, its colour fading

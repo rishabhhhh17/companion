@@ -2,6 +2,54 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Home that feels finished: 19 Nov 2026
+
+- **Opening reveals, closing folds.** Home's content is cut by the panel's own edge as it grows, never by a second, narrower box, so no word is cut at both sides. Closing folds the content away with the panel instead of leaving an empty black slab, and it is done in about a third of a second.
+- **Changing your mind mid motion is smooth.** Closing Home while it is still opening (or opening it while it folds) carries on from where it is, so there is no flat black bar under the notch.
+- **Switching places springs.** Going from Now to Learn grows or shrinks the panel smoothly instead of jumping.
+- **The places are one control.** Now, Learn, History and Memory sit in one full width track, and the open one's coloured pill slides inside it.
+- **Buttons are pills.** Home's buttons are round ended, the same height and weight, and press in a little under your finger. Settings and Close are round buttons on a soft fill, and Stop looks the same everywhere.
+- **A quiet status line.** On Learn, History and Memory the top bar says how the project stands ("Passed 40 minutes ago", or "Working") beside the project.
+- **A ready practice opens on Now** with its headline, one line and Check my project, as it used to. The steps on Learn say Waiting until the practice really starts.
+- **History is tidier.** When a task ended is part of its line, Undo and Open are small pill buttons, and This week and Your numbers are one card.
+- **Memory never flashes.** A quick answer shows no grey rows first; a slow one shows one small centred block with Try again.
+- **The small chat answers at once.** Your words show as your bubble the moment you press Return, with the working dots under them. A quiet time line shows wherever more than half an hour passed. The top row shows the project's state under its name, and an empty chat offers a couple of questions to start from.
+- **The notch panel has a little more to say.** Pointing at the notch shows the headline, one quiet hint line, the action pill and a small round Open Home. A finished review leads with a green tick or a red cross. While work runs, the left of the notch shows a small moving meter instead of a dot.
+
+## Home and the chat open as one smooth motion: 19 Nov 2026
+
+- **Opening is one motion.** Home's content grows with its black shape instead of waiting for an empty black box to finish. Nothing is ever drawn outside the shape while it grows, so no grey rectangles flash on the desktop.
+- **The small chat grows from its field up.** The field you opened it for is the first thing you see, and the messages come into view above it.
+- **Switching places never shows two pages at once.** The old page fades out quickly, then the new one slides in.
+- **The row of places stays still.** Stop sits in the top right corner beside Settings and Close, so starting a check never moves the tabs under your pointer. Pressing the place you are on takes you to its top instead of jumping to Now.
+- **Close and Settings answer your pointer.** A soft round fill on hover and a small press, like every other button.
+- **Now says each thing once.** The tag says when it passed ("Passed 40 minutes ago"), the headline what changed since, and the line what to do next. While work runs, the tag and the card use the same word, and the card's top line reads "Checking · 3 of 4 · 0:42" with Stop beside it.
+- **Even spacing.** The ask box follows the last card at the same gap as everything else, and the panel ends with the same room as its sides.
+- **The notch says the news.** When a review is in, the notch row says what changed ("The button is blue now.") instead of "hey there". While work runs, both sides of the notch hold a small mark, so it looks balanced.
+- **The small chat is a real thread.** Your recent tasks show oldest first with your words and the answers, each day under its own time, small tails on the bubbles, a Fix it pill under a reply that failed, and Settings always visible in its top row.
+- **Learn lines up.** Step states, minutes and Start over sit in straight columns, the practice card's button matches Now's, and while other work runs the card says why instead of showing a greyed button.
+- **History leads with your list.** Search and your tasks come first; This week and Your numbers follow them.
+- **Starting up is said plainly.** If Squibby's engine has not started yet, Home says so with Restart, and the send arrow waits, instead of looking like a normal empty project.
+- **Memory never waits forever.** After two seconds with no answer it says so and offers Try again.
+- **Clean corners while Home grows.** The content is cut to the shape's round corners the whole way, so no square grey corner shows past it for a moment.
+- **Words change cleanly.** When a headline or its line changes, the old words leave before the new ones come in, so two lines are never seen on top of each other.
+- **The small chat's way on is blue.** Send turns blue once you type, and Fix it under a failed reply is the same blue as Fix it in Home. The field shows one quiet ring while you type, and older messages fade out under the top row instead of being cut.
+- **Every place starts at the same spot.** Learn and Memory begin as far under the row of places as Now and History, and anything scrolled under the top bar fades into it.
+
+## Home that closes when you close it, and uses all its room: 19 Nov 2026
+
+- **Close is in the corner.** In the tall Home, Settings and Close sit in the top right corner, on the same edge as the cards and the ask box, and Now, Learn, History and Memory share the whole row under the project. The row never moves when you switch places, and it stays at the top while the page scrolls.
+- **Closing is quick and it stays closed.** Close, Esc or a click away starts folding at once, without waiting on anything. If the pointer is still resting on the notch, Home does not spring open again until you move away and come back.
+- **Opening shows something at once.** The top bar shows within about a fifth of a second, then the main card, then the rest. Nothing is drawn outside the panel while it grows, in Home or in the small chat.
+- **Starting a check no longer scrolls the page.** The card that says what is being checked stays in view.
+- **While something works, you can see it working.** The task's name, the step running now, a clock in the step card and a slowly breathing dot. The small chat shows three quiet dots under "Working on it."
+- **Less said twice.** The headline no longer repeats the project's name, Today leaves out the fix already shown above it, the folder's path is the project chip's tooltip, and "Fixing is not switched on" no longer has a "Not checked yet" tag over it. A project never checked asks "Where does it stand?"
+- **Calmer, finer details.** A fine edge and a soft shadow round Home, one card style everywhere, the keys drawn as keys, Memory shows quiet rows while it looks things up (and Try again if it takes long), and History says itself in one line.
+- **Focus rings only from the keyboard.** A click, or Home opening, no longer leaves a thick ring on a button.
+- **The small chat says when Send is ready.** Send lights up once you type and only one thing glows at a time. Settings and Bring out show when you point at the top row.
+- **No Flowflow inside Home.** The practice card no longer has Flowflow peeking over it.
+- **Tucking aims at the notch.** Let go of Flowflow beside the notch and it shrinks into the notch itself, fading only as it arrives.
+
 ## Which AI tool finished, and did it work: 18 Nov 2026
 
 - **The notch names the tool that finished.** When Codex, Cursor, Claude Code or another connected AI tool says it is done, the notch says which one and what the review found: "Codex finished in shop: works", or "... 2 problems". One press opens the review card, where Undo is.

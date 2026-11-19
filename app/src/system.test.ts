@@ -156,16 +156,18 @@ describe("type, tags, keys and elevation (spec 1.1, 1.6, 1.7)", () => {
     // No weight over 600 anywhere (spec 1.1).
     for (const m of ALL_CSS().matchAll(/font-weight:\s*(\d+)/g)) expect(Number(m[1])).toBeLessThanOrEqual(600);
   });
-  test("the status tag is a pill with a word, upper case only there and on a card's short label (rule 16)", () => {
+  // Changed on purpose (feel round 1, 18 Nov 2026): the status and meaning tags are sentence case at the small size, medium
+  // weight, no tracking (the upper case tag was loud next to the headline). Only a card's short label stays upper case.
+  test("the status tag is a pill with a word in sentence case; upper case only on a card's short label (rule 16)", () => {
     const parts = blocks(PARTS_CSS());
     const status = parts.find((b) => b.sel === ".ui-status")!.decl;
-    expect(status).toMatchObject({ "border-radius": "var(--r-pill)", "text-transform": "uppercase", "letter-spacing": "var(--track-eyebrow)", background: "var(--neutral-tint)" });
+    expect(status).toMatchObject({ "border-radius": "var(--r-pill)", "text-transform": "none", "letter-spacing": "0", background: "var(--neutral-tint)" });
     for (const [tone, tint] of [["needs", "--warn-tint"], ["proven", "--ok-tint"], ["stop", "--danger-tint"], ["working", "--acc-tint"]]) {
       expect(parts.find((b) => b.sel === `.ui-status[data-tone="${tone}"]`)!.decl.background, tone).toBe(`var(${tint})`);
     }
     const upper = blocks(ALL_CSS()).filter((b) => /text-transform:\s*uppercase/.test(Object.entries(b.decl).map(([k, v]) => `${k}: ${v}`).join(";")));
     // M71: the meaning tag (ui/parts.tsx Tag) is the same short status tag, in its meaning's colour.
-    expect(upper.map((b) => b.sel).sort()).toEqual([".ui-eyebrow", ".ui-mtag", ".ui-status"]);
+    expect(upper.map((b) => b.sel).sort()).toEqual([".ui-eyebrow"]);
     // The words in a tag are short: the status words are one to three words.
     for (const w of Object.values(S.ui.status)) expect(w.split(" ").length, w).toBeLessThanOrEqual(3);
   });
@@ -270,6 +272,8 @@ describe("one layout grammar (spec 3)", () => {
   });
   test("the footer line lives in the top bar in every look, never under the ask box", () => {
     expect(card).not.toContain("<FootLine");
-    expect(card).toContain('<p className="bar-meta" title={barLine.join(" · ")}>{barLine.join(" · ")}</p>');
+    // Feel round 1 (18 Nov 2026): without the folder's path, which the project chip's tooltip already says.
+    expect(card).toContain('<p className="bar-meta" title={barSaid.join(" · ")}>{barSaid.join(" · ")}</p>');
+    expect(card).toContain("const barSaid = barLine.filter((x) => x !== shortPath(project));");
   });
 });

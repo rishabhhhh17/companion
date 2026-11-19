@@ -279,7 +279,8 @@ function Dock() {
     wasDone.current = state === "done";
   }, [state]);
   return (
-    <main className="dock" data-drop={dropMark} data-character={charLook} data-tuck={tuck.look ?? undefined} data-calm={tuck.calm || reduced ? "" : undefined}>
+    <main className="dock" data-drop={dropMark} data-character={charLook} data-tuck={tuck.look ?? undefined} data-calm={tuck.calm || reduced ? "" : undefined}
+      style={tuck.aim ? ({ "--tuck-dx": `${tuck.aim.dx}px`, "--tuck-dy": `${tuck.aim.dy}px` } as React.CSSProperties) : undefined}>
       <button ref={button} className="character" type="button" style={{ ...skinVars(SKIN), "--char-scale": String(SIZE_SCALE[sizeOf(sizeSet)]) } as React.CSSProperties} data-character={charLook} data-flow={flow.ready && !orb ? "on" : undefined} data-live={live ? "on" : undefined} data-state={state} data-motion={live ? undefined : motionFor(state, reduced)} data-pose={orb ? undefined : pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={orb ? undefined : react?.r} data-mood={mood ?? undefined}
         data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark} data-peek={peek.pose} data-peek-edge={peek.edge}
         aria-label={spoken}

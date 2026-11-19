@@ -5,6 +5,8 @@ import { S } from "./strings.ts";
 
 describe("the thread says only what the stage knows", () => {
   test("start: only find is under way", () => { expect(threadOf({ stage: "start" })).toEqual({ find: "now", fix: "todo", prove: "todo" }); });
+  // Feel round 3 (19 Nov 2026): ready but not started, nothing says "Doing it".
+  test("start before its check runs: all three wait", () => { expect(threadOf({ stage: "start" }, false)).toEqual({ find: "todo", fix: "todo", prove: "todo" }); });
   test("found, lesson and fixing: find is done, fix is now, prove waits", () => {
     for (const stage of ["found", "lesson", "fixing"]) expect(threadOf({ stage })).toEqual({ find: "done", fix: "now", prove: "todo" });
   });

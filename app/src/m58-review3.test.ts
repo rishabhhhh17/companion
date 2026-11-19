@@ -148,7 +148,9 @@ describe("the first run keeps Continue on the first screen and names what the ch
 describe("the key practice says Found it once, and Skip is quiet", () => {
   const panel = readFileSync(join(import.meta.dir, "./practicePanel.tsx"), "utf8");
   test("the bubble is quiet on a found problem; Skip the practice is a quiet button", () => {
-    expect(panel).toContain('const quiet = stage === "fixing" || stage === "proving" || stage === "found";');
+    // Changed on purpose (the founder, 17 Nov 2026: no Flowflow symbol on Home): there is no bubble over the card at all now.
+    expect(panel).not.toContain("<Peek ");
+    expect(panel).not.toContain("FlowMini");
     expect(panel).toContain('<button className="btn quiet" type="button" onClick={act.close}>{S.practiceSkip}</button>');
   });
   test("the tall Home's title is for VoiceOver only (the row of places names the open one)", () => {

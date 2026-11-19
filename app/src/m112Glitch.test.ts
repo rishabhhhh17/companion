@@ -108,7 +108,9 @@ describe("the glitch: nothing is cut by a window's edge", () => {
     // Changed on purpose (round 2): the shown name is fitted to the row's room (fit ?? shown) and the element is measured
     // (ref); the tooltip and VoiceOver still have the whole name.
     expect(tsx).toContain('<span className="nc-proj" ref={projRef} title={C.project(name)}><span aria-hidden="true">{fit ?? shown}</span><span className="sr">{name}</span></span>');
-    expect(tsx).toMatch(/placeholder=\{ask\} aria-label=\{askFull\}/);
+    // Feel round 3 (19 Nov 2026), changed on purpose: the top row names the project, so the hint is the short ask; the
+    // field's spoken name keeps the whole name.
+    expect(tsx).toMatch(/placeholder=\{C\.ask\} aria-label=\{askFull\}/);
   });
 });
 

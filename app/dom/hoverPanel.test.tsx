@@ -32,7 +32,8 @@ describe("the hover panel's one action", () => {
     await renderPage(<IslandPanel m={atRest()} line="" shown />);
     expect(screen.getByRole("group", { name: "hey there." })).toBeTruthy();
     expect(document.querySelector(".ip-line")).toBeNull();
-    expect(panelButtons()).toEqual([hello(), S.m96.act.check]);
+    // Feel round 3 (19 Nov 2026), changed on purpose: the founder's HeyClicky reference (18 Nov 2026) puts a small round Open Home beside the pill.
+    expect(panelButtons()).toEqual([hello(), S.m96.act.check, S.m93.openHome]);
     await press(S.m96.act.check);
     await press(hello());
     expect(goes()).toEqual([{ then: { do: "find" } }]);
@@ -59,7 +60,9 @@ describe("the hover panel's one action", () => {
     await settle();
     expect(document.querySelector(".nb-greet")?.textContent).toBe("hey rishabh");
     expect(panelButtons()).not.toContain("Settings");
-    expect(panelButtons()).not.toContain(S.m93.openHome);
+    // Feel round 3 (19 Nov 2026), changed on purpose: the founder's HeyClicky reference (18 Nov 2026) puts a small round Open Home beside the pill, as a round icon button after the pill, never in the head.
+    expect(panelButtons().at(-1)).toBe(S.m93.openHome);
+    expect(document.querySelector(".nb-hi")?.textContent ?? "").not.toContain(S.m93.openHome);
     await press(hello("hey rishabh"));
     expect(goes()).toEqual([]);
     expect(app.invoked("island_chat").length).toBe(1);
@@ -165,7 +168,8 @@ describe("the hover panel's one action", () => {
     expect(screen.queryByRole("group", { name: new RegExp(S.m84.reviewLabel) })).toBeNull();
     // M96 (changed on purpose): with nothing waiting and the last fix undoable, the pill offers Undo last change, which
     // only asks Home's own Undo question (arrival.rs "undo").
-    expect(panelButtons()).toEqual([hello(), S.m96.act.undo]);
+    // Feel round 3 (19 Nov 2026), changed on purpose: the founder's HeyClicky reference (18 Nov 2026) puts a small round Open Home beside the pill.
+    expect(panelButtons()).toEqual([hello(), S.m96.act.undo, S.m93.openHome]);
     await press(S.m96.act.undo);
     expect(goes()).toEqual([{ then: { do: "undo" } }]);
     expect(app.sentTypes()).toEqual([]);

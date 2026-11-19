@@ -49,7 +49,8 @@ export const panelLayout = (v: PanelView): PanelLayout => (v.kind === "questions
 // M96 (the founder, 15 Nov 2026: "just see how HeyClicky does it"): one 42 point row, the face, the greeting and the one
 // pill (notchMinimal.ts HOVER_H, which m96Notch.test.ts pins to the same number; written out here so the two modules never
 // load each other in a circle).
-export const LAYOUT_H = { quick: 42, job: 42 } as const;
+// Feel round 3 (the founder's HeyClicky reference, 18 Nov 2026): a headline, a hint line and the pill row, 96 points.
+export const LAYOUT_H = { quick: 96, job: 96 } as const;
 
 const nameOf = (project: string): string => project.split("/").filter(Boolean).at(-1) ?? "";
 const projectOf = (m: Model): string => m.task?.project ?? m.folder ?? "";

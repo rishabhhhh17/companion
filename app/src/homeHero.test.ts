@@ -63,15 +63,21 @@ describe("no side list, no title bar: quiet buttons with words at the top (F28, 
     // A view open inside Home has a back arrow to Now.
     expect(card).toMatch(/className="back"[^>]*onClick=\{\(\) => pickTab\("now"\)\}/);
   });
-  test("pressing the open one again goes back to Now", () => {
-    expect(placeAfter("did", "did")).toBe("now");
+  // Changed on purpose (feel round 2, 19 Nov 2026): the places are a segmented control; pressing the open one stays there
+  // (and scrolls it to the top) instead of jumping to Now with two places looking chosen.
+  test("pressing the open one again stays on it", () => {
+    expect(placeAfter("did", "did")).toBe("did");
+    expect(placeAfter("learn", "learn")).toBe("learn");
     expect(placeAfter("now", "learn")).toBe("learn");
     expect(placeAfter("learn", "memory")).toBe("memory");
   });
   test("a place that waits for the person still shows its dot, and says so to VoiceOver", () => {
     const places = card.slice(card.indexOf("places.map((t) =>"), card.indexOf("places.map((t) =>") + 900);
-    expect(places).toContain('<span className="tabdot" aria-hidden="true" />');
-    expect(places).toContain("S.homeTabWaiting");
+    expect(places).toContain("waits={waits} waitsWord={S.homeTabWaiting}");
+    // Feel round 1: the gear is one button drawn in the corner (tall) or among the places (wide), with the same dot.
+    const gear = card.slice(card.indexOf("const gearButton = "), card.indexOf("\n", card.indexOf("const gearButton = ")));
+    expect(gear).toContain('<span className="tabdot" aria-hidden="true" />');
+    expect(gear).toContain("S.homeTabWaiting");
   });
   test("the project's name is a menu: change the folder, open one from a link, or one used before (no buttons at the foot)", () => {
     expect(card).toContain("<Menu id={linkId} value=\"\" size=\"sm\" label={S.folderLabel}");
@@ -91,7 +97,7 @@ describe("the gear opens Settings inside Home, the one Settings (F28, T17: the s
     expect(card).toContain('const gear = () => pickTab("settings");');
     expect(card).not.toContain("openSettings(invoke");
     expect(card).toContain('pickTab(t.place === "settings" ? "settings" : "learn")');
-    expect(card).toContain('label={S.home.places[t]} title={S.home.places[t]} onClick={gear}');   // M71: the grey gear
+    expect(card).toContain('label={S.home.places.settings} title={S.home.places.settings} onClick={gear}');   // M71: the grey gear (feel round 1: one gearButton)
   });
 });
 
@@ -132,7 +138,9 @@ describe("the top says the job in big words", () => {
     // M73: the old words stay for their exit while the new ones rise in (ui/parts.tsx Swap).
     expect(card).toContain('<Swap k={`h:${leadHeadline}`}><h1 id={home.tab === "now" ? "home-title" : undefined} className="ui-lead-title headline"><Said text={leadHeadline} friendly={heroShown.friendly?.headline} /></h1></Swap>');
     // M69 (F29): the line under it never counts a cost; Squibby pays.
-    expect(card).toContain('<Swap k={`l:${heroLine}`}><p className={`ui-lead-line subline${heroLine === safeSaid && safeSaid ? " hero-safe" : ""}`}>{heroLine === safeSaid && safeSaid ? safeSaid : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p></Swap>');
+    expect(card).toContain('<Swap k={`l:${heroLine}`}><p className={`ui-lead-line subline${heroLine === safeSaid && safeSaid ? " hero-safe" : ""}`}>{heroLine === safeSaid && safeSaid ? safeSaid : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}{mode === "working" && !jobShown && workSince ? <Elapsed since={workSince} /> : null}</p></Swap>');
+    // Feel round 1 (18 Nov 2026): while a job works with no job card under it, the line ends with how long it has worked
+    // (the job card keeps its own clock, so there is never a second one that disagrees).
     const h = /\.headline \{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(h).toMatch(/font-size: var\(--t-display\)/);
     expect(tokens).toContain("--t-display: calc(22rem / 14);");
@@ -173,7 +181,7 @@ describe("one ask field, and the main button does what the existing paths do", (
     // M69 step 2: while the review card leads Now, the box asks about that change (spec 3.3).
     expect(card).toContain("placeholder={cardLeads ? S.homeNow.askAbout : S.home.ask} aria-label={cardLeads ? S.homeNow.askAbout : S.home.ask}");
     expect(S.home.ask).toBe("What are you stuck on?");
-    expect(card).toContain('<Button kind="icon" className="send" label={S.look.send} title={S.look.send} disabled={working} onClick={submit}>');
+    expect(card).toContain('<Button kind="icon" className="send" label={S.look.send} title={sendWhy ?? S.look.send} disabled={working || !!sendWhy} onClick={submit}>');
     expect(card).toMatch(/<textarea ref=\{box\} id=\{askId\}/);
   });
   test("Fix it and Check my project run the same check as the Fix it key, in the project; Check before going live runs the ship check", () => {
@@ -211,14 +219,18 @@ describe("it springs open from the notch, and not at all with less motion", () =
     // The content arrives once the shape is all but there: --dur-2 on the strong ease out, from a little higher and smaller
     // (M66 step 5: later and quicker, so it never shows beyond the body).
     expect(sheet).toContain("transition: opacity var(--dur-2) var(--ease-out) var(--seq-notch-content-at), transform var(--dur-2) var(--ease-out) var(--seq-notch-content-at);");
-    expect(read("./homeShape.ts")).toContain('content: out ? "none" : "translateY(-6px) scale(.97)",');
+    // Feel round 1 (18 Nov 2026): each piece arrives in turn, so each moves on its own, by translation only.
+    expect(read("./homeShape.ts")).toContain('content: out ? "none" : "translateY(-6px)",');
     expect(tokens).toContain("--dur-3: 240ms;");
     expect(tokens).toContain("--ease-out: cubic-bezier(.23, 1, .32, 1);");
-    // Only transform and opacity; never a clip painted on every frame.
-    expect(sheet).not.toMatch(/transition:[^;]*clip-path/);
+    // Only transform and opacity on the content's parts. Changed on purpose (feel round 2, 19 Nov 2026): the content's frame
+    // alone is clipped to the growing shape (a layer showed past it, grey on the desktop), so a clip moves only there.
+    // Feel round 3 (19 Nov 2026), changed on purpose: one clip, on the content's frame's child, whose closing curve is its
+    // default rule, and which also follows an open Home's resize (data-phase="open").
+    for (const rule of sheet.split("\n").filter((l) => /transition:[^;]*clip-path/.test(l))) expect(rule).toMatch(/^\.home-stage\[data-told\](\[data-phase="(opening|closing|open)"\])?(\[data-(reopen|quick)\])? \.home-frame( > \*)? \{/);
     // M26: opened by a keyboard shortcut it is simply there (the shell says so, island.rs animates_open).
     expect(card).toContain("stageOpen.current(!!(e.payload as { instant?: boolean } | null)?.instant, fromOf(e.payload));");
-    expect(sheet).toContain(".home-stage[data-instant] :is(.hs > i, .hs > span, .hs > span > i, .home-frame) { transition: none; }");
+    expect(sheet).toContain(".home-stage[data-instant] :is(.hs > i, .hs > span, .hs > span > i, .home-frame, .home-frame > .home > .inner > .work > *, .home-frame > .home > .inner > :not(.work)) { transition: none; }");
   });
   test("reduced motion and Less motion stop it (the rules that stop every animation in the file)", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition-property: opacity, color, background-color, border-color, outline-color, fill, stroke !important;");
@@ -424,10 +436,13 @@ describe("one main button per state", () => {
     // lookFixes.test.ts).
     expect(card).toContain("{stopCan(m) && !jobShown && mode !== \"question\" && <div className=\"hero-main ui-lead-acts\"><Button kind=\"secondary\" size=\"sm\"");
     const bar = card.slice(card.indexOf('<header className="bar">'), card.indexOf("</header>", card.indexOf('<header className="bar">')));
-    expect(bar).toContain('{barStopCan(m, home.tab) && <Button kind="secondary" size="sm" className="bar-stop"');
-    expect(bar).toContain("onClick={() => void stopNow()}><Icon name=\"stop\" size={14} />{S.stop}</Button>}");
-    // Drawn before the places, and outside the Settings condition, so Settings gets it too.
-    expect(bar.indexOf("bar-stop")).toBeLessThan(bar.indexOf('{home.tab !== "settings" && places.map('));
+    expect(card).toContain('const barStop = barStopCan(m, home.tab) && <Button kind="secondary" size="sm" className="bar-stop"');
+    expect(card).toContain("onClick={() => void stopNow()}><Icon name=\"stop\" size={14} />{S.stop}</Button>;");
+    // Changed on purpose (feel round 2, 19 Nov 2026): Stop pushed into the row of places moved every tab under the pointer.
+    // In the tall Home it sits in the top right corner beside Settings and Close; in the wide Home before the places.
+    // Outside the Settings condition both times, so Settings gets it too.
+    expect(bar).toContain('{!side && <div className="bar-end">{barStop}{home.tab !== "settings" && gearButton}{closeButton}</div>}');
+    expect(bar.indexOf("{side && barStop}")).toBeLessThan(bar.indexOf('{home.tab !== "settings" && places.map('));
   });
   test("the labels are the spec's, and a project not chosen yet has its own", () => {
     // M55, adapts to you: Carry on (a task left half way) and Explain an error (a terminal in front), by the same names.
@@ -508,7 +523,9 @@ describe("the working card's four steps read only the runner's real states (4.2)
     expect(job).not.toContain("job-safe");
     expect(card).toContain('const safeSaid = jobShown && m.task?.checkpoint ? S.fixRun.safeLine : "";');
     // M69 (spec 3.4): the four steps are the counter now ("2 of 4"), and the run list says each step (runList.test.ts).
-    expect(job).toContain('<p className="run-count" aria-label={rl.say}><span aria-hidden="true">{S.home.steps[rl.at - 1]}{rl.counter ? ` · ${rl.counter}` : ""}</span></p>');
+    // Feel round 3 (19 Nov 2026): the count is for VoiceOver only now (changed on purpose: the tag says the step, and the
+    // card's rows are not the four steps, so "3 of 4" could not be checked by eye).
+    expect(job).toContain('<p className="run-count sr" aria-label={rl.say}><span aria-hidden="true">{S.home.steps[rl.at - 1]}{rl.counter ? ` · ${rl.counter}` : ""}</span></p>');
     expect(job).toContain("<RunRows rows={rl.rows} label={S.fixRun.label}");
     expect(S.home.steps).toEqual(["Finding", "Fixing", "Checking", "Proven"]);
   });

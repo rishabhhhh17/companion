@@ -126,6 +126,8 @@ export const S = {
     answerBelow: "The answer is just below.",
     working: (cost: string) => `${aboutCost(cost)} so far`,
     workingFree: "Working",
+    // Feel round 1: how long a job has worked, after its live step ("Running the tests · 0:12").
+    elapsed: (secs: number) => ` · ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`,
     // Return was just pressed and the engine has not answered yet (the audit, item 27).
     starting: "Starting…",
     // What Flowflow says over the water: one short line in sentence case (M51 polish), only at a moment that matters, never a feeling (rule 16).
@@ -212,7 +214,12 @@ export const S = {
       engine: { headline: `${PRODUCT} stopped working`, line: "Restart it to carry on. Your work is kept.", main: "Restart" },
       claude: { headline: `${PRODUCT} is missing a part on this Mac`, line: "It is needed before anything can run.", main: "Get it" },
       claudeGetting: { headline: `${PRODUCT} is getting ready on this Mac`, line: "This takes a minute or two.", main: "" },
-    } as Record<"key" | "engine" | "claude" | "claudeGetting", { headline: string; line: string; main: string }> & { key: { lineNoProject: string } },
+      // Feel round 2 (19 Nov 2026): the engine has not said hello yet, so Home never looks like a healthy, never checked
+      // project with buttons that do nothing.
+      starting: { headline: `${PRODUCT} is starting`, line: "This takes a few seconds. If it does not start, restart it. Your work is kept.", main: "Restart" },
+    } as Record<"key" | "engine" | "claude" | "claudeGetting" | "starting", { headline: string; line: string; main: string }> & { key: { lineNoProject: string } },
+    // Feel round 2 (19 Nov 2026): the short tag over each of those headlines, in the place every state's tag takes.
+    blockedTag: { key: "Fixing off", engine: "Stopped", claude: "A part missing", claudeGetting: "Setting up", starting: "Starting" } as Record<"key" | "engine" | "claude" | "claudeGetting" | "starting", string>,
     // Return with no project open (the audit, item 2): the words wait for the person to pick one of these.
     noProjectAsk: "Which project is this for?",
     chooseMine: "Choose my project",
@@ -996,7 +1003,7 @@ export const S = {
       opens: (fact: string) => `${fact}. Opens ${PRODUCT}`,
       // M83: Home's status strip says the same facts as a small caption over a short value.
       labels: { job: "Now", check: "Last check", changes: "Waiting", tools: "AI tools", caught: "This week" } as Record<"job" | "check" | "changes" | "tools" | "caught", string>,
-      checkValue: { works: (when: string) => `${when} · working`, failing: (when: string) => `${when} · failed`, changed: (when: string) => `${when} · changed since` },
+      checkValue: { works: (when: string) => `${when} · passed`, failing: (when: string) => `${when} · failed`, changed: (when: string) => `${when} · changed since` },
       toolNames: (names: string[]) => (names.length <= 2 ? names.join(" and ") : `${names[0]}, ${names[1]} and ${names.length - 2} more`),
       noToolShort: "None connected",
       caughtShort: (n: number) => `${n} caught`,
@@ -1509,9 +1516,9 @@ export const S = {
       doneMore: "That is the whole loop: the link and the page now have the same address, and the checks prove it.",
     },
     import: {
-      short: `What Cannot find module means`,
+      short: "What “Cannot find module” means",
       title: "A file that was renamed",
-      teaches: "What Cannot find module means after an AI tool moves or renames a file.",
+      teaches: "What “Cannot find module” means after an AI tool moves or renames a file.",
       start: "Its price list will not start, because a file it uses was renamed and one line still uses the old name.",
       foundMore: `${PRODUCT} ran the project's own checks and found the line that still uses the old name. Cannot find module means the file it names is not there. Nothing was changed yet.`,
       doneMore: "That is the whole loop: the line now uses the file's new name, and the checks prove it.",
@@ -1616,6 +1623,8 @@ export const S = {
   practiceAllDoneTitle: "Every practice is done",
   practiceTourRow: "A 15 second tour",
   practiceTourLine: "A recorded run. Nothing on your Mac changes.",
+  // Feel round 3 (19 Nov 2026): the tour's row has its length on the right, as every practice row has.
+  practiceTourTime: "15 sec",
   practiceMinutes: (n: number) => `About ${n} ${n === 1 ? "minute" : "minutes"}`,
   practiceCostKey: (cents: number) => `About ${cents} ${cents === 1 ? "cent" : "cents"}`,
   practiceFree: "Free, no Claude",
@@ -1635,6 +1644,8 @@ export const S = {
   practiceKeptOld: (name: string) => `Your old copy could not go to the Trash, so it is still in your home folder as ${name}. The fresh copy is a new folder.`,
   practiceRecordDamaged: `${PRODUCT} could not read which practices you did, so the list starts again. Your copies are still in your home folder.`,
   practiceBusy: "Wait for the work in progress to finish, or press Stop, then start a practice. A practice opens its own folder.",
+  // Feel round 2 (19 Nov 2026): on the practice card itself, in place of a greyed button with no reason beside it.
+  practiceWaits: "Waiting for the work in progress to finish. Press Stop to start now.",
   practiceOpenList: "Open the practice list",
   practiceRemoveAll: "Move all my practice copies to the Trash",
   practiceRemoveAllSure: `Move every practice copy ${PRODUCT} made to the Trash? You can put them back from the Trash.`,
@@ -2451,6 +2462,8 @@ export const S = {
   historyFirstFix: "Ask for a first fix",
   historyRecent: "Searches your last 50 tasks in this project.",
   homeMemoryLoading: "Looking up what I know…",
+  // Feel round 1: what Memory says when looking up takes longer than about 3 seconds, with Try again beside it.
+  homeMemorySlow: "This is taking longer than usual.",
   homeMemoryNoProject: "Choose a project folder first, on Now.",
   islandOpen: `Open ${PRODUCT}`,
   // Only heard (VoiceOver), never shown: idle, the notch is the bare notch with no words on it.
@@ -3052,7 +3065,7 @@ export const S = {
   m79: {
     week: {
       rowTitle: "This week",
-      rowLine: "What was reviewed, caught and proven in the last seven days. Opens when you press it.",
+      rowLine: "What was reviewed, caught and proven this week.",
       open: "Open",
       openLabel: "Open this week's summary",
       title: "This week",
@@ -3407,22 +3420,32 @@ export const S = {
   },
   homeNow: {
     pill: { passed: "Last check passed", look: "Needs a look", failed: "A check failed", new: "Not checked yet" } as Record<"passed" | "look" | "failed" | "new", string>,
-    fine: (name: string) => `${name} checked out fine.`,
+    // Feel round 1 (18 Nov 2026): the project chip right above already names the project, so the headline does not.
+    fine: (_name: string) => "Checked out fine.",
     proven: (ago: string) => `Proven ${ago}.`,
+    // Feel round 2 (19 Nov 2026): the hero said one fact three times ("Last check passed", "Checked out fine.", "Proven 40
+    // minutes ago."). Now each line has one job: the tag says the state and when, the headline what changed since, the line
+    // what to do next.
+    passedAgo: (ago: string) => (ago ? `Passed ${ago}` : "Last check passed"),
+    nothingSince: "No changes since then.",
+    nextAsk: "Ask for the next change below, or check it before it goes live.",
+    checkAgainLine: "Check it again to know it still works.",
     changedSince: "Files changed since.",
     filesChangedSince: (n: number) => (n === 1 ? "1 file changed since." : `${n} files changed since.`),
-    problem: (name: string) => `${name} has a problem.`,
+    problem: (_name: string) => "Found a problem.",
     failedAgo: (ago: string, rung?: string | null) => `${failedCheckWords(rung)} ${ago}.`,
     stillAgo: (ago: string) => (ago ? `Checked again ${ago}: a problem is still there.` : "Checked again: a problem is still there."),
     foundNow: "Its own checks found it just now.",
-    checksPass: (name: string) => `${name}'s checks pass.`,
+    // Feel round 1: none of the headlines at rest names the project; the chip right above does.
+    checksPass: (_name: string) => "Its checks pass.",
     checksPassLine: "Its own checks ran just now. Nothing was fixed.",
-    fresh: (name: string) => `${name} needs a fresh check.`,
+    fresh: (_name: string) => "Needs a fresh check.",
     lastProven: (ago: string) => `Last proven ${ago}.`,
-    notProven: (name: string) => `${name} is not proven yet.`,
+    notProven: (_name: string) => "Not proven yet.",
     lastTask: (headline: string, ago: string) => `Last task: ${headline.replace(/[.!]$/, "").toLowerCase()}, ${ago}.`,
-    newFirst: (name: string) => `${name} is not checked yet.`,
-    newSecond: "Check it once to see where it stands.",
+    // The tag above already says Not checked yet, so the headline asks the open question instead of saying it again.
+    newFirst: (_name: string) => "Where does it stand?",
+    newSecond: "One check shows it. Nothing is changed.",
     noProject: "No project open.",
     noProjectLine: "Pick a folder, or practice on a sample project.",
     checkAgain: "Check it again",
@@ -3537,11 +3560,13 @@ export const S = {
     today: "Today",
     yesterday: "Yesterday",
     earlier: "Earlier",
-    undoCaption: "Undo is on the newest fix that changed files, so newer work is never taken back by accident.",
+    // Feel round 1: one short line (the reason is in the word "newest": newer work is never taken back).
+    undoCaption: "Undo sits on the newest fix that changed files.",
     historyEmpty: "Nothing here yet. Your first fix will show up here with its proof.",
     // M71: History's lead, with its count, and its empty row (what will appear there, and one action).
     historyLead: `What ${PRODUCT} did`,
-    historyCount: (n: number, name: string) => (n === 1 ? `1 task in ${name}, newest first.` : `${n} tasks in ${name}, newest first.`),
+    // Feel round 1: the project chip above names the folder, so the count does not.
+    historyCount: (n: number, _name: string) => (n === 1 ? "1 task, newest first." : `${n} tasks, newest first.`),
     historyNone: (name: string) => `Nothing done in ${name} yet.`,
     historyEmptyTitle: "Your first fix",
     historyEmptyLine: "It shows up here with its proof.",
@@ -4025,7 +4050,7 @@ export const S = {
   m88: {
     numbers: {
       rowTitle: "Your numbers",
-      rowLine: "This week in counts, from this project's own history on this Mac. Nothing leaves your Mac unless you send it.",
+      rowLine: "This week in counts. Nothing leaves your Mac.",
       open: "Open",
       openLabel: "Open your numbers",
       close: "Close",
@@ -4234,9 +4259,16 @@ export const S = {
       micKeys: (keys: string) => `Hold ${keys} to talk`,
       stop: "Stop",
       today: "Today",
+      // Feel round 2 (19 Nov 2026): under a reply that failed, one pill that opens Home on Now, where Fix it is.
+      fix: "Fix it",
+      fixTitle: "Open Home to fix it",
       yesterday: "Yesterday",
       history: "What happened lately",
-      empty: (project: string) => (project ? `Ask me anything about ${project}${project.endsWith("…") ? "" : "."}` : "Pick a project, or ask me anything."),
+      // Feel round 3 (19 Nov 2026): the top row names the project, so the empty line does not say it a third time.
+      empty: (project: string) => (project ? "Ask me anything about this project." : "Pick a project, or ask me anything."),
+      // Feel round 3: under the empty line, a few questions to start from. A press only puts the words in the field.
+      suggest: ["What changed today?", "Is it ready to go live?"] as readonly string[],
+      suggestLabel: "Put this question in the field",
       working: "Working on it.",
       // Round 1: a task at work in another project, named, so the chat's Stop and its greyed Send have a reason.
       workingIn: (project: string) => `Working in ${project}${project.endsWith("…") ? "" : "."}`,

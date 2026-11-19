@@ -47,9 +47,12 @@ describe("fixing not switched on for this Mac yet", () => {
   });
   test("the status tag is the project's own colour, never the problem red (review of M98)", async () => {
     await notOn();
-    const tag = document.querySelector(".hero .ui-mtag");
-    expect(tag?.textContent).toMatch(/not checked yet/i);
-    expect(tag?.getAttribute("data-meaning")).toBe("notChecked");
+    // Changed on purpose (feel round 1, 18 Nov 2026): "Not checked yet" over "Fixing is not switched on" said two different
+    // things. Changed again on purpose (feel round 2, 19 Nov 2026): the tag keeps its place so the lead never changes shape,
+    // and it says the blocker's own short word. The lead keeps the project's own colour, never the problem red.
+    const tags = [...document.querySelectorAll(".hero .ui-mtag")].map((t) => t.textContent);
+    expect(tags).toEqual([S.home.blockedTag.key]);
+    expect(tags.join(" ")).not.toContain(S.homeNow.pill.new);
     expect(document.querySelector(".hero")?.getAttribute("data-meaning")).toBe("notChecked");
   });
   test("with no project open: no line about your project, and the tick says only checking is ready (review of M98)", async () => {

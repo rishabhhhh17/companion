@@ -67,8 +67,11 @@ describe("one Settings, inside Home (F28, T17)", () => {
     // In Settings the top bar is Back, its name and Close: the place buttons (Settings among them) step back.
     expect(card).toContain('{home.tab !== "settings" && places.map((t) => {');
     // M71: Settings is the grey gear at the end of the places; the others open their place.
-    expect(card).toContain('label={S.home.places[t]} title={S.home.places[t]} onClick={gear}');
-    expect(card).toContain('onClick={() => pickTab(placeAfter(home.tab, t))}');
+    // Feel round 1: the gear is one button (gearButton), drawn in the top right corner of the tall Home and among the places
+    // in the wide one.
+    expect(card).toContain('label={S.home.places.settings} title={S.home.places.settings} onClick={gear}');
+    // Feel round 2: the open place pressed again scrolls it to the top instead of leaving it (pressPlace).
+    expect(card).toContain('onClick={() => pressPlace(placeAfter(home.tab, t))}');
   });
   test("Command F searches, Esc clears the search first, Command [ goes back to Now, and the arrows move through the sidebar", () => {
     const view = page.slice(page.indexOf("export function SettingsView("));

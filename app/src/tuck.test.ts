@@ -23,6 +23,9 @@ describe("the tuck's motion", () => {
   });
   test("the shell's words are read safely", () => {
     expect(tuckFrom({ on: true, calm: true })).toEqual({ on: true, calm: true });
+    // Feel round 1: where the notch is from the character (docking.rs tuck_aim), when the shell knows it; never a wild value.
+    expect(tuckFrom({ on: true, calm: false, dx: -40.5, dy: -170 })).toEqual({ on: true, calm: false, aim: { dx: -40.5, dy: -170 } });
+    for (const bad of [{ dx: "1", dy: 2 }, { dx: Number.NaN, dy: 2 }, { dx: 1 }, { dx: 1e7, dy: 0 }]) expect(tuckFrom({ on: true, ...bad }).aim).toBeUndefined();
     for (const bad of [null, 3, "on", { on: "yes" }]) expect(tuckFrom(bad)).toEqual({ on: false, calm: false });
     expect(hintFrom({ on: true })).toBe(true);
     for (const bad of [null, {}, { on: 1 }]) expect(hintFrom(bad)).toBe(false);

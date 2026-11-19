@@ -177,7 +177,8 @@ mod wiring {
         // island.peekOnHover, openDelay and closeDelay: given to the hover each time the pointer comes or goes.
         let hover = body("fn island_hover_changed(");
         assert!(hover.contains("let times = home_set().hover;") && hover.contains("h.set_times(times);"));
-        assert!(body("fn reset_hover(").contains("h.set_times(times)"));
+        // Feel round 1: the fresh hover after a close takes the waits too (Hover::after_close sets them).
+        assert!(body("fn reset_hover(").contains("island::Hover::after_close(times, "));
         // home.closeOnClickAway: read at each look of Home's watch (M66: the watch also runs the click through), so turning it
         // off stops the click away at once.
         assert!(body("fn open_card(").contains("if !was_open { watch_home(&a); }"));

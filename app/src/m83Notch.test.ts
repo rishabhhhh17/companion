@@ -129,7 +129,7 @@ describe("Home's status strip (M83 Part C): the same facts as a caption over a s
   const caught = { since: "2026-11-05", falseDones: 1, keys: 1, weakened: 0, saved: 0, undone: 0 };
   test("checked and working with tools: the check's time, the tools and what was caught, each with its caption", () => {
     const f = homeFacts(m({ history: [row()], caught }), { now: NOW, tools });
-    expect(f.map((x) => [x.label, x.value, x.colour])).toEqual([["Last check", "2:14 pm · working", "green"], ["AI tools", "Claude Code and Cursor", "blue"], ["This week", "2 caught", "grey"]]);
+    expect(f.map((x) => [x.label, x.value, x.colour])).toEqual([["Last check", "2:14 pm · passed", "green"], ["AI tools", "Claude Code and Cursor", "blue"], ["This week", "2 caught", "grey"]]);
   });
   test("changes waiting and a failing check are both said; at most four", () => {
     const f = homeFacts(m({ history: [row({ proof: "failed" })], review: review(3), caught }), { now: NOW, tools });
@@ -165,7 +165,9 @@ describe("the new size, pinned on both sides (M83)", () => {
   // (notchMinimal.ts HOVER_H; m93Hover.test.ts holds the rows).
   test("the quick and job layouts are one fixed height, inside the shell's limits", () => {
     // M96 changed it again on purpose (the founder, 15 Nov: "just see how HeyClicky does it"): one 42 point row.
-    expect({ ...LAYOUT_H } as Record<string, number>).toEqual({ quick: 42, job: 42 });
+    // Feel round 3 changed it again on purpose (the founder's HeyClicky reference, 18 Nov 2026): a headline, a hint line and
+    // the pill row, 96 points.
+    expect({ ...LAYOUT_H } as Record<string, number>).toEqual({ quick: 96, job: 96 });
     const rs = read("../src-tauri/src/island.rs");
     const max = Number(/pub const PANEL_MAX: f64 = ([\d.]+);/.exec(rs)![1]);
     expect(LAYOUT_H.quick).toBeLessThanOrEqual(max);

@@ -11,7 +11,7 @@ import { backStill, focusLost, focusSpot } from "./a11y.ts";
 
 /** An element the keyboard can be put on. */
 export type Focusable = {
-  focus(): void;
+  focus(o?: FocusOptions): void;
   readonly isConnected: boolean;
   readonly tagName: string;
   readonly disabled?: boolean;
@@ -67,7 +67,9 @@ export function refocus(seen: Seen, tab: () => Focusable | null, p: Page = PAGE)
   const el = where === "back" ? asked : where === "spot" ? spot : tab();
   if (!el) return null;
   if (where === "spot" && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
-  el.focus();
+  // A part of Home (a section, a group) holds the keyboard where it is: focusing it never scrolls the page, or a check that
+  // just started would push its own card under the top bar (feel round 1, 18 Nov 2026).
+  el.focus(where === "spot" ? { preventScroll: true } : undefined);
   return el;
 }
 

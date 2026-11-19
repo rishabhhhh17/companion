@@ -19,7 +19,7 @@ export type RestPill = "passed" | "look" | "failed" | "new";
 /** The tag's tone, as ui/parts.css .ui-status reads it (green, amber, red, grey). */
 export const PILL_TONE: Record<RestPill, "proven" | "needs" | "stop" | "plain"> = { passed: "proven", look: "needs", failed: "stop", new: "plain" };
 /** The two tone headline: the outcome, then the why in the softer tone, at the same size (spec 1.1). */
-export type RestHero = { pill: RestPill | null; first: string; second: string };
+export type RestHero = { pill: RestPill | null; first: string; second: string; tag?: string };
 
 const nameOf = (project: string): string => project.split("/").filter(Boolean).at(-1) ?? "";
 const at = (h: HistoryItem): string => h.endedAt ?? h.startedAt;
@@ -56,11 +56,13 @@ export function restHero(i: RestInput): RestHero {
   if (i.status.kind === "failing") return { pill: "failed", first: S.homeNow.problem(name), second: i.status.still ? S.homeNow.stillAgo(i.status.ago) : i.status.ago ? S.homeNow.failedAgo(i.status.ago, i.status.failed) : S.homeNow.foundNow };
   if (i.status.kind === "works" || i.status.kind === "changed") {
     const ago = i.status.ago || agoWords(proven ? at(proven) : null, i.now);
-    if (i.status.kind === "works") return { pill: "passed", first: S.homeNow.fine(name), second: S.homeNow.proven(ago) };
+    // Feel round 2: one job per line. The tag carries the state and when; the headline what changed since; the line the next step.
+    const tag = S.homeNow.passedAgo(ago);
+    if (i.status.kind === "works") return { pill: "passed", tag, first: S.homeNow.nothingSince, second: S.homeNow.nextAsk };
     // Changed since: how many only when one review counted them (two reviews may name the same files twice).
     const since = reviewsAfter(i.reviews ?? [], proven ? at(proven) : null);
     const more = since.length === 1 && since[0].count > 0 ? S.homeNow.filesChangedSince(since[0].count) : S.homeNow.changedSince;
-    return { pill: "passed", first: S.homeNow.fine(name), second: `${S.homeNow.proven(ago)} ${more}` };
+    return { pill: "passed", tag, first: more, second: S.homeNow.checkAgainLine };
   }
   if (i.goLive === "blocked") return { pill: "look", first: S.home.notReadyOnline(name), second: S.home.notReadyOnlineSub };
   if (i.pointClear || i.goLive === "ready") return { pill: "passed", first: S.homeNow.checksPass(name), second: S.homeNow.checksPassLine };

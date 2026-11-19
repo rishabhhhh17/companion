@@ -341,6 +341,8 @@ export type Model = {
   // M95: the light tutor's signals (kinds, sources and days), for every project; none until Learn has asked.
   learned?: Learned | null;
   runnerUp: boolean;
+  /** Feel round 2: the engine has said hello at least once since this page started (Home says it is starting until then). */
+  helloSeen?: boolean;
   /** Return was pressed and the engine has not answered yet (the audit, item 27): the words sent, so Home shows them at once
    *  with Starting, and Flowflow thinks. Cleared once the engine starts the task, or refuses it, or anything else ends it. */
   sending?: { words: string } | null;
@@ -788,7 +790,7 @@ function reduceRest(m: Model, e: Ev): Model {
     // The shell's reason is already one plain sentence (runner.rs HELPER_DOWN and the others); it is shown as it is, and
     // cleared when the helper says hello again.
     case "app.runner_down": { const down = typeof e.reason === "string" && e.reason ? plainError(e.reason) : S.helperStopped; return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: down, downError: down }; }
-    case "runner.hello": return { ...withAgents({ ...m, runnerUp: true }, m.agents), error: m.error && m.error === m.downError ? null : m.error, downError: undefined };
+    case "runner.hello": return { ...withAgents({ ...m, runnerUp: true, helloSeen: true }, m.agents), error: m.error && m.error === m.downError ? null : m.error, downError: undefined };
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
     // The new engine keeps no conversation either: the last task can no longer be followed up or tried again (gone). A check
     // that was running is not left saying Running. A turn whose place still has the old code stays, with only Put my fix

@@ -36,6 +36,22 @@ export { firstName, NAME_SHOWN_MAX };
 /** M96: "hey rishabh", or "hey there" when no name was typed: lowercase, as the approved mock says it. */
 export const hoverGreeting = (typed: unknown): string => { const n = firstName(typed); return n ? S.m96.hey(n.toLocaleLowerCase()) : S.m96.heyThere; };
 
+/** Feel round 2 (19 Nov 2026): the row led with "hey there" even when there was news, so a finished review peeked as a
+ *  greeting and the person had to open Home to learn what happened. With news (the one short line, or a review's own
+ *  summary once it is in), the row says the news in its words; the greeting only when there is none. */
+export function hoverHeadline(m: Model, greet: string, line: HoverLine | null, now = Date.now()): { words: string; news: boolean; tone?: "ok" | "bad" } {
+  const said = m.review?.stage === "reviewed" ? m.review.result?.summary?.trim() ?? "" : "";
+  // Feel round 3 (19 Nov 2026): a review's news carries whether it passed, so the row leads with a green tick or a red
+  // cross and reads at a glance: mark, sentence, action.
+  const r = m.review?.result;
+  const tone = !r ? undefined : r.rating === "stop" || r.checks === "failed" ? "bad" as const : r.rating === "safe" ? "ok" as const : undefined;
+  // A tool that just finished: its review's own summary says what changed in a few words ("The button is blue now."), where
+  // the line ("Claude Code finished in ...: works") was cut by the row; the pill still says where to look.
+  if (said && finishedNow(m, now)) return { words: said, news: true, ...(tone ? { tone } : {}) };
+  if (line?.words) return { words: line.words, news: true };
+  return said ? { words: said, news: true, ...(tone ? { tone } : {}) } : { words: greet, news: false };
+}
+
 // ---------- the one short line ----------
 
 const projectOf = (m: Model): string => m.task?.project ?? m.folder ?? "";
@@ -156,6 +172,14 @@ export function hoverPill(a: HoverAction, m: Model): HoverPill {
 
 // ---------- the size ----------
 
-/** M96: one row under the notch, about 330 wide and 42 tall (island.rs PANEL_W_MIN to PANEL_W, PANEL_MIN to PANEL_MAX). */
+/** M96: one row under the notch, about 330 wide and 42 tall (island.rs PANEL_W_MIN to PANEL_W, PANEL_MIN to PANEL_MAX). Feel
+ *  round 3 (19 Nov 2026): a headline, a hint line and the pill row, 96 tall, as HeyClicky's notch panel has. */
 export const HOVER_W = 330;
-export const HOVER_H = 42;
+export const HOVER_H = 96;
+/** Feel round 3 (the founder's HeyClicky reference, 18 Nov 2026): the hover panel's quiet second line, under its headline:
+ *  the moment's own line when the headline is not already it, else the key for being stuck ("Press ⌃⌥⌘F when stuck"),
+ *  else nothing. */
+export function hoverHint(head: { words: string; news: boolean }, line: string | null, keyLine: string): string {
+  if (line && line !== head.words) return line;
+  return keyLine;
+}

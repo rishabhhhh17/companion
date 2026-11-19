@@ -4,16 +4,18 @@
 // field. The field is Home's one ask box (card.tsx hands its ref here while the chat shows), so Return asks exactly as Home
 // does, and voice words land in it as they do there. It never takes the keys by itself: card.tsx focuses it only when the
 // ask key opened Home (rule 9). Words in strings.ts, colours in tokens.css (black.css draws it).
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type Ref } from "react";
+import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent, type Ref } from "react";
 import { FlowMini } from "./flowflowMini.tsx";
 import { Icon } from "./icons.tsx";
 import type { Model } from "./model.ts";
-import { chatAsk, chatAskFull, chatBubbles, chatProject, chatRowProject, chatWhen, fitRowProject, type Bubble } from "./notchChat.ts";
+import { chatAskFull, chatBubbles, chatProject, chatRowProject, chatWhen, fitRowProject, type Bubble } from "./notchChat.ts";
 import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
 import { useSetting } from "./settingsStore.ts";
 import { useDragOut } from "./tuck.ts";
 import { characterName } from "./companion.ts";
+import { Dot } from "./ui/parts.tsx";
+import type { Colour } from "./meaning.ts";
 
 type Props = {
   m: Model; project: string; greet: string; now: number;
@@ -34,9 +36,14 @@ type Props = {
   onSettings: () => void; onExpand: () => void;
   /** The chat's own Close: folds it back into the notch, as Esc does. */
   onClose: () => void;
+  /** Feel round 3 (19 Nov 2026): the words just sent from the field, shown as the person's bubble at once (with Squibby's
+   *  working dots) until the engine's task with those words arrives. */
+  pending?: string | null;
+  /** The project's state after its name in the top row: a word or three and its dot, as Home's project chip has. */
+  state?: { words: string; dot: Colour } | null;
 };
 
-export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk, stop, onStop, onBubble, onMic, onSend, onKeyDown, onInput, onFocus, onSettings, onExpand, onClose }: Props) {
+export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk, stop, onStop, onBubble, onMic, onSend, onKeyDown, onInput, onFocus, onSettings, onExpand, onClose, pending = null, state = null }: Props) {
   const C = S.m96.chat;
   // M111: tucked into the notch, Flowflow's face can be dragged out onto the screen, and one small button brings it out.
   const tucked = useSetting("character.lives") === "notch";
@@ -46,10 +53,24 @@ export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk,
   // leads. Round 2: the handle itself stays for the whole drag (it holds the pointer, so the let go is never lost); only
   // the face drawn inside it hides (data-out, black.css).
   const who = characterName(useSetting("character.name"));
-  const bubbles = chatBubbles(m, project, { hint });
-  const when = chatWhen(m, project, now);
+  // Feel round 2 (19 Nov 2026): the recent thread, each day under its own time line (stamped from its own tasks).
+  const given = chatBubbles(m, project, { hint, now });
+  const bubbles = withPending(given, pending);
+  const empty = given.length === 1 && given[0]!.key === "empty" && !pending;
+  const when = bubbles.some((b) => b.when) ? null : chatWhen(m, project, now);
+  // The newest bubble of each run by one side has the small tail, so it is clear who said what.
+  const tail = (i: number) => bubbles[i + 1]?.who !== bubbles[i]!.who || !!bubbles[i + 1]?.when;
   // Which project an ask goes to: Return starts a task there (the M96 review).
-  const name = chatProject(project), shown = chatRowProject(project), ask = chatAsk(project), askFull = chatAskFull(project);
+  // Feel round 3: the top row names the project, so the field's hint is the short ask; its spoken name keeps the project.
+  const name = chatProject(project), shown = chatRowProject(project), askFull = chatAskFull(project);
+  // The field, for the suggestions (Home's ref is handed on as it was).
+  const field = useRef<HTMLTextAreaElement | null>(null);
+  const setBox = (el: HTMLTextAreaElement | null) => {
+    field.current = el;
+    if (typeof boxRef === "function") boxRef(el); else if (boxRef) (boxRef as { current: HTMLTextAreaElement | null }).current = el;
+  };
+  // The words go in the field and Send lights; the field never takes the keys by itself (rule 9).
+  const fill = (q: string) => { const el = field.current; if (!el) return; el.value = q; onInput(); };
   // Round 2: the name shortened to the room the top row has left at the text size in force, so the row stays one line.
   // A canvas measures a hair narrower than the page draws, so a name measured to the last point could still wrap.
   const FIT_SLACK = 3;
@@ -76,27 +97,46 @@ export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk,
           onPointerDown={out.onPointerDown} onPointerMove={out.onPointerMove} onPointerUp={out.onPointerUp} onPointerCancel={out.onPointerCancel} onLostPointerCapture={out.onLostPointerCapture}>
           <FlowMini className="nc-face" state={m.character} />
         </span>}
-        <span className="nc-hi" title={greet}>{greet}</span>
-        {name && <span className="nc-proj" ref={projRef} title={C.project(name)}><span aria-hidden="true">{fit ?? shown}</span><span className="sr">{name}</span></span>}
+        {/* Feel round 2: the project's name is the row's title; the hello only with no project (the greeting was said twice). */}
+        {!name && <span className="nc-hi" title={greet}>{greet}</span>}
+        {name && <span className="nc-title">
+          <span className="nc-line">{state && <Dot colour={state.dot} />}<span className="nc-proj" ref={projRef} title={C.project(name)}><span aria-hidden="true">{fit ?? shown}</span><span className="sr">{name}</span></span></span>
+          {state?.words && <span className="nc-state">{state.words}</span>}
+        </span>}
         {stop && <button type="button" className="nc-stop" aria-label={stop.label} title={stop.title} onClick={onStop}><Icon name="stop" size={12} />{C.stop}</button>}
         {tucked && <button type="button" className="nc-ico nc-out" aria-label={S.m111.bringOut(who)} title={S.m111.bringOut(who)} onClick={() => void invoke("untuck").catch(() => {})}><Icon name="bringOut" size={14} /></button>}
-        <button type="button" className="nc-ico" aria-label={C.settings} title={C.settings} onClick={onSettings}><Icon name="gear" size={14} /></button>
+        <button type="button" className="nc-ico nc-gear" aria-label={C.settings} title={C.settings} onClick={onSettings}><Icon name="gear" size={14} /></button>
         <button type="button" className="nc-ico" aria-label={C.expand} title={C.expand} onClick={onExpand}><Icon name="expand" size={13} /></button>
         <button type="button" className="nc-ico" aria-label={C.close} title={C.close} onClick={onClose}><Icon name="close" size={14} /></button>
       </div>
-      <div className="nc-news" ref={news} role="log" aria-label={C.history} data-few={bubbles.length <= 1 ? "" : undefined}>
+      <div className="nc-news" ref={news} role="log" aria-label={C.history} data-few={bubbles.length <= 1 ? "" : undefined} data-empty={empty ? "" : undefined}>
         {when && <p className="nc-when"><b>{when.day}</b> {when.time}</p>}
-        {bubbles.map((b) => b.go
-          ? <button key={b.key} type="button" className="nc-b nc-them nc-go" onClick={() => onBubble(b.go!)}>{b.words}</button>
-          : <p key={b.key} className={`nc-b ${b.who === "you" ? "nc-me" : "nc-them"}`}>{b.words}</p>)}
+        {bubbles.map((b, i) => <Fragment key={b.key}>
+          {b.when && <p className="nc-when"><b>{b.when.day}</b> {b.when.time}</p>}
+          {b.go
+            ? <button type="button" className="nc-b nc-them nc-go" data-tail={tail(i) ? "" : undefined} onClick={() => onBubble(b.go!)}>{b.words}</button>
+            : <p className={`nc-b ${b.who === "you" ? "nc-me" : "nc-them"}`} data-tail={tail(i) ? "" : undefined}>{b.words}{b.who === "squibby" && b.words === C.working && <span className="nc-dots" aria-hidden="true"><i /><i /><i /></span>}</p>}
+          {b.fix && <button type="button" className="nc-fix" title={C.fixTitle} onClick={() => onBubble("now")}>{C.fix}</button>}
+        </Fragment>)}
+        {/* Feel round 3: with nothing said yet, a few questions to start from; a press only puts the words in the field. */}
+        {empty && <div className="nc-suggest">{C.suggest.map((q) => <button key={q} type="button" className="nc-pill" title={C.suggestLabel} onClick={() => fill(q)}>{q}</button>)}</div>}
       </div>
       <div className="nc-bar">
         {talk.on && <button type="button" className="nc-mic" aria-label={talk.label} title={talk.title} onClick={onMic}><Icon name="mic" size={15} /></button>}
         <div className="nc-field">
-          <textarea ref={boxRef} rows={1} autoComplete="off" spellCheck={false} placeholder={ask} aria-label={askFull} onKeyDown={onKeyDown} onInput={onInput} onFocus={onFocus} />
+          <textarea ref={setBox} rows={1} autoComplete="off" spellCheck={false} placeholder={C.ask} aria-label={askFull} onKeyDown={onKeyDown} onInput={onInput} onFocus={onFocus} />
           <button type="button" className="nc-send" aria-label={C.send} title={C.send} disabled={working} onClick={onSend}><Icon name="send" size={14} /></button>
         </div>
       </div>
     </section>
   );
+}
+
+/** Feel round 3 (19 Nov 2026): the words just sent, as the person's bubble with Squibby's working one under it, until a
+ *  bubble of the person's with the same words arrives from the engine (then it is that one, in its place). */
+export function withPending(bubbles: Bubble[], pending: string | null): Bubble[] {
+  const words = pending?.trim() ?? "";
+  if (!words || bubbles.some((b) => b.who === "you" && b.words.trim() === words)) return bubbles;
+  const kept = bubbles.filter((b) => b.key !== "empty");
+  return [...kept, { key: "you:pending", who: "you", words }, { key: "sq:pending", who: "squibby", words: S.m96.chat.working }];
 }

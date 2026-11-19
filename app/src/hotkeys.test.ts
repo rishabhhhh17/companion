@@ -173,7 +173,9 @@ describe("every hint names the keys in use", () => {
   test("the Prompt help result names Esc, and the card hint names the Esc the card itself handles", () => {
     expect(S.phHotkeys).toContain("Esc"); expect(S.phHotkeysOff).toContain("Esc");
     expect(S.cardHint).toContain("Esc");
-    expect(read("./card.tsx")).toMatch(/e\.key === "Escape"[^\n]*close_card/);
+    // Changed on purpose (feel round 1, 18 Nov 2026): Esc starts the fold on the page at once, then tells the shell (closeHome).
+    expect(read("./card.tsx")).toMatch(/e\.key === "Escape"[^\n]*closeHome\(\)/);
+    expect(read("./card.tsx")).toContain('const closeHome = () => { homeStage.close(); void invoke("close_card"); };');
   });
   test("every page fills its key lines from the key map, never from a fixed line", () => {
     // The practice panel (practicePanel.tsx) is part of Home's card.

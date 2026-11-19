@@ -76,7 +76,14 @@ describe("which tab opens by itself", () => {
   });
   test("a lesson step and the practice open Learn", () => {
     expect(need(run(walkStep()))).toMatchObject({ tab: "learn" });
-    expect(need(run([ev({ type: "ui.practiceStarted", project: "/p", kind: "signup" })]))?.tab).toBe("learn");
+    // Feel round 3 (the founder, 17 Nov 2026: he liked the first screen as it was): a practice that is ready lands on Now's
+    // ready hero; once it runs, Learn. This expectation changed on purpose (it was Learn).
+    expect(need(run([ev({ type: "ui.practiceStarted", project: "/p", kind: "signup" })]))?.tab).toBe("now");
+  });
+  test("a ready practice never pulls the person off Learn, where its card is", () => {
+    const n = need(run([ev({ type: "ui.practiceStarted", project: "/p", kind: "signup" })]))!;
+    expect(homeReduce(homeReduce(homeStart(), { type: "pick", tab: "learn" }), { type: "need", need: n }).tab).toBe("learn");
+    expect(homeReduce(homeStart(), { type: "need", need: n }).tab).toBe("now");
   });
   test("a question outranks a lesson, and each new step is a new need", () => {
     expect(need(run([...walkStep(), approval()]))?.tab).toBe("now");
@@ -283,7 +290,9 @@ describe("a click elsewhere closes Home, unless something there needs the person
   });
   test("the card asks before it closes, and closes the way Esc does", () => {
     expect(card).toMatch(/listen\("home-click-away", [^\n]*closesOnClickAway\(/);
-    expect(card).toMatch(/home-click-away[^\n]*player\.current\.hush\(\);[^\n]*invoke\("close_card"\)/);
+    // Feel round 1: through closeHome, which starts the fold on the page, then calls close_card.
+    expect(card).toMatch(/home-click-away[^\n]*player\.current\.hush\(\);[^\n]*closeHome\(\)/);
+    expect(card).toContain('const closeHome = () => { homeStage.close(); void invoke("close_card"); };');
   });
 });
 
@@ -307,7 +316,7 @@ describe("Home steps aside for what it opens", () => {
     const page = read("./card.tsx");
     const fn = page.slice(page.indexOf("const stepAside = () =>"), page.indexOf("\n", page.indexOf("const stepAside = () =>")));
     expect(fn).toContain('stepsAside(nowModel.current, onboardingNow.current, setting("home.stepAside") === true)');
-    expect(fn).toContain('invoke("close_card")');
+    expect(fn).toContain("closeHome()");   // feel round 1: the page folds at once, then close_card
     expect(fn).not.toContain("home.closeOnClickAway");
   });
   test("only after the link, the email or Finder really opened, never on a failure", () => {

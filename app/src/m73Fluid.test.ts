@@ -40,7 +40,9 @@ describe("2. rows rise in, never from a smaller size, and the stagger stops at t
 
 describe("4. Home opening: the lead first, the list 40 ms after", () => {
   test("only the list's opacity waits; it leaves with the content at once", () => {
-    expect(shape).toContain(".home-stage[data-told] .home-frame .ui-mlist { opacity: var(--o-content); transition: opacity var(--dur-exit-menu) linear; }");
+    // Feel round 3 (19 Nov 2026), changed on purpose: the content leaves over the sheet's 180 ms while the clip folds it
+    // with the shape (a 100 ms fade left an empty black slab folding on its own).
+    expect(shape).toContain(".home-stage[data-told] .home-frame .ui-mlist { opacity: var(--o-content); transition: opacity var(--dur-exit-sheet) linear; }");
     expect(shape).toContain('.home-stage[data-told]:is([data-phase="opening"], [data-phase="open"]) .home-frame .ui-mlist { transition: opacity var(--dur-2) var(--ease-out) calc(var(--seq-notch-content-at) + var(--stagger-list)); }');
   });
 });

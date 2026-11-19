@@ -105,8 +105,10 @@ describe("Home draws them for every style and the tokens show them only in Instr
   test("the status line, the footer line and the ring come from homeHero.ts", () => {
     // M69 step 2: at rest the tag is homeRest.ts's (never Not checked yet next to a proven run); otherwise homeHero.ts's.
     // M71: the tag is the meaning's (meaning.ts), in its colour; a waiting practice says Practice ready, never needs you.
-    expect(card).toContain(": statusLineShown(heroStatus, statusFirst ? status.verdict.headline : heroShown.headline) && <Tag meaning={leadMeaning}");
-    expect(card).toContain("restWords.pill && <Tag meaning={PILL_MEANING[restWords.pill]} words={S.homeNow.pill[restWords.pill]} />");
+    // Feel round 1 (18 Nov 2026): not over what blocks (no key), whose headline is about something else.
+    expect(card).toContain(": !blocker && statusLineShown(heroStatus, statusFirst ? status.verdict.headline : heroShown.headline) && <Tag meaning={leadMeaning}");
+    // Feel round 2: a passed tag says when (restHero's tag), the others their plain word.
+    expect(card).toContain("restWords.pill && <Tag meaning={PILL_MEANING[restWords.pill]} words={restWords.tag ?? S.homeNow.pill[restWords.pill]} />");
     // M69 (one layout grammar, the YC benchmark spec 3): the footer line's words moved into the top bar's context line in
     // every look and both layouts (homeLayout.ts barContext), so no FootLine is drawn on Home any more.
     expect(card).not.toContain("<FootLine");

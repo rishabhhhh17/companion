@@ -22,8 +22,9 @@ describe("the notch springs", () => {
       expect(Math.abs(got.k - want.k), name).toBeLessThanOrEqual(1);
       expect(Math.abs(got.c - want.c), name).toBeLessThanOrEqual(0.1);
     }
-    expect(NOTCH).toEqual({ HOVER: { k: 273, c: 26.5 }, OPEN_W: { k: 305, c: 28.6 }, OPEN_H: { k: 224, c: 25.1 }, CLOSE: { k: 195, c: 27.9 }, WORK: { k: 439, c: 35.6 } });
-    expect(OPEN_H_DELAY_MS).toBe(60);
+    expect(NOTCH).toEqual({ HOVER: { k: 273, c: 26.5 }, OPEN_W: { k: 386, c: 36.1 }, OPEN_H: { k: 386, c: 36.1 }, CLOSE: { k: 685, c: 52.4 }, WORK: { k: 504, c: 35.9 } });
+    // Feel round 3 (19 Nov 2026), changed on purpose: one clock for width and height, so the content has one clip.
+    expect(OPEN_H_DELAY_MS).toBe(0);
   });
   test("island.rs holds the same numbers", () => {
     for (const [name, s] of Object.entries(NOTCH)) {
@@ -37,10 +38,10 @@ describe("the notch springs", () => {
     expect(peak(NOTCH.CLOSE)).toBeLessThanOrEqual(1 + 1e-9);
     expect(Math.max(...springPath(NOTCH.CLOSE))).toBeLessThanOrEqual(1 + 1e-9);
   });
-  test("opening settles with a small overshoot, under four percent: a gentle settle, never a bounce", () => {
-    // The plan hoped for 2 to 3 percent; damping 0.82 and 0.84 give about 1.1 and 0.8 percent. Measured, not rounded up.
-    for (const s of [NOTCH.OPEN_W, NOTCH.OPEN_H]) { const p = peak(s); expect(p).toBeGreaterThan(1.005); expect(p).toBeLessThan(1.04); }
-    expect(peak(NOTCH.OPEN_W)).toBeGreaterThan(1.01);
+  // Changed on purpose (feel round 1, 18 Nov 2026): the old one percent overshoot bobbed the bottom edge of a body hanging
+  // from the notch by about 4 points, so the opening is now tight (damping 0.92, about 0.05 percent).
+  test("opening settles with no visible overshoot, under 0.3 percent, and never stops short", () => {
+    for (const s of [NOTCH.OPEN_W, NOTCH.OPEN_H]) { const p = peak(s); expect(p).toBeGreaterThan(0.999); expect(p).toBeLessThan(1.003); }
   });
   test("every spring rests within 0.8 s", () => {
     for (const [name, s] of Object.entries(NOTCH)) {
@@ -84,13 +85,14 @@ describe("the island's spring is chosen once for each new target", () => {
     }
     return most;
   }
-  test("a grow keeps WORK to the end: its overshoot is WORK's own, about 0.6 percent, and never swapped for CLOSE's", () => {
+  test("a grow keeps WORK to the end: its overshoot is WORK's own, about 1.5 percent, and never swapped for CLOSE's", () => {
     const own = Math.max(...stepPathOf(NOTCH.WORK)) - 1;
     for (const [a, b] of [[185, 360], [185, 265], [32, 120]]) {
       expect(springFor(a, b, false)).toBe(ISLAND_SPRING);
       const o = grow(a, b, false);
       expect(o, `${a} to ${b}`).toBeLessThanOrEqual(own + 0.001);
-      expect(o).toBeLessThan(0.008);
+      // Feel round 3 (19 Nov 2026): WORK's damping went from 0.85 to 0.8 on purpose, for a light living settle.
+      expect(o).toBeLessThan(0.016);
     }
   });
   test("a smaller target tucks on CLOSE, the done pulse is HOVER, whatever the shape does after", () => {
@@ -118,7 +120,8 @@ describe("the hover panel's words leave before its shape tucks back", () => {
     expect(tuckHoldMs(true, false, true, true)).toBe(0);     // Reduce motion: at its target at once
   });
   test("the tuck, and so the window's wait (island.rs RETRACT_MS), takes that wait too", () => {
-    expect(TUCK_MS).toBe(460 + PANEL_EXIT_MS);
+    // Feel round 3 (19 Nov 2026), changed on purpose: CLOSE is 0.24 s now, so the tuck is shorter.
+    expect(TUCK_MS).toBe(370 + PANEL_EXIT_MS);
     let s = { x: 265, v: 0 };
     for (let t = 0; t < TUCK_MS - PANEL_EXIT_MS; t++) s = springStep(s, 185, 1 / 1000, false, TUCK_SPRING.k, TUCK_SPRING.c);
     expect(Math.abs(s.x - 185)).toBeLessThan(1);

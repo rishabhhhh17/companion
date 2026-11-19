@@ -115,6 +115,15 @@ pub fn tuck_zone(s: &Screen) -> Rect {
 }
 /// Is the pointer over the notch of the display it is on?
 pub fn over_tuck(s: &Screen, p: (f64, f64)) -> bool { island::contains(tuck_zone(s), p) }
+/// Feel round 1: where the notch is from the character's window, so the tuck shrinks into it and not straight up beside it
+/// (let go at one side of the tuck zone, a fixed move went up past the notch). From the window's top centre (the
+/// character's transform origin, tuck.css) to the middle of the island at rest. Points, y down; (0, 0) for a window that
+/// is not a real rect.
+pub fn tuck_aim(window: Rect, s: &Screen) -> (f64, f64) {
+    if !window.iter().all(|v| v.is_finite()) { return (0.0, 0.0); }
+    let i = island::island_frame(s, island::Mode::Rest);
+    ((i[0] + i[2] / 2.0) - (window[0] + window[2] / 2.0), (i[1] + i[3] / 2.0) - window[1])
+}
 
 /// Where Flowflow lives on a display now: tucked into the notch (only while the notch shows, `island_on`: with the notch
 /// turned off it comes back, so it never vanishes), free where it was let go, or on its edge.
@@ -1337,6 +1346,23 @@ mod m111_tests {
         assert!(!d.over_notch(), "after the let go the hint is off");
         let _ = over;
         (d, l)
+    }
+
+    #[test]
+    fn the_tuck_aims_at_the_middle_of_the_notch_from_the_windows_top_centre() {
+        for s in [notched(), plain(), second()] {
+            let i = island::island_frame(&s, island::Mode::Rest);
+            let (nx, ny) = (i[0] + i[2] / 2.0, i[1] + i[3] / 2.0);
+            // Let go off to the right of the notch and a little under it: the move goes left and up, to the notch itself.
+            let w = [nx + 40.0, ny + 30.0, 120.0, 140.0];
+            let (dx, dy) = tuck_aim(w, &s);
+            assert!((w[0] + w[2] / 2.0 + dx - nx).abs() < 1e-9 && (w[1] + dy - ny).abs() < 1e-9, "{} lands on the notch", s.id);
+            assert!(dx < 0.0 && dy < 0.0);
+            // Straight under it: only up.
+            let (dx, _) = tuck_aim([nx - 60.0, ny + 10.0, 120.0, 140.0], &s);
+            assert!(dx.abs() < 1e-9);
+        }
+        assert_eq!(tuck_aim([f64::NAN, 0.0, 1.0, 1.0], &notched()), (0.0, 0.0));
     }
 
     #[test]

@@ -33,15 +33,37 @@
 .home[data-side] .bar:has(> .bar-meta) > .bar-key { display: none; }
 .home .bar > .bar-meta { flex: 1 1 auto; min-width: 0; }
 
-/* The tall Home: the places on a row of their own under the chip, the gear and Close at the top right. */
-.home:not([data-side]):not([data-view="settings"]) .bar { flex-wrap: wrap; padding-inline-end: calc(var(--h-sm) * 2 + var(--space-2)); row-gap: var(--space-3); }
-.home:not([data-side]):not([data-view="settings"]) .bar > .places { flex: 1 0 100%; order: 2; gap: var(--space-1); margin: 0; }
+/* The tall Home (feel round 1, the founder, 18 Nov 2026: "take the X button to the side of the screens and just completely
+   use all the space"): one bar on every place, the same height and the same rows, so nothing moves when you switch. Its first
+   row is the project chip, then Settings and Close in the top right corner, Close's right edge on the cards' right edge.
+   Its second row is the places, sharing the whole width. It stays at the top while the page scrolls under it (on the
+   shape's own black, a hairline under it only once something has scrolled under it). The folder's path is the chip's
+   tooltip, not a second line. */
+.home:not([data-side]) .bar { flex-wrap: wrap; padding-inline-end: 0; row-gap: var(--space-3); }
+/* Its side margins reach out over .inner's side padding, so the bar's black runs edge to edge; wide Settings has no such
+   padding (look.css), so there it stays in its column. */
+.home:not([data-side]):not([data-layout="wide"][data-view="settings"]) .work > .bar { position: sticky; top: 0; z-index: 4; margin: calc(var(--space-3) * -1) calc(var(--space-6) * -1) 0; padding: var(--space-3) var(--space-6) var(--space-2); background: var(--notch); }
+.home:not([data-side]) .work > .bar::after { content: ""; position: absolute; inset: auto 0 0; height: var(--hair); background: var(--line); opacity: 0; transition: opacity var(--dur-hover) var(--ease-out); }
+.home:not([data-side])[data-scrolled] .work > .bar::after { opacity: 1; }
+/* Feel round 2 (19 Nov 2026): what scrolls under the bar fades into it over a few points instead of being cut by a hard edge.
+   A shadow in the shape's own black, only once something has scrolled under it. */
+.home:not([data-side])[data-scrolled] .work > .bar { box-shadow: 0 12px 10px -6px var(--notch); }
+.home:not([data-side]) .bar > .bar-meta { display: none; }
+.home:not([data-side]) .bar > .bar-end { display: flex; flex: none; align-items: center; gap: var(--space-1); margin-inline-start: auto; order: 1; }
+.home:not([data-side]):not([data-view="settings"]) .bar > .places { display: flex; flex: 1 0 100%; order: 2; gap: var(--space-1); margin: 0; }
+.home:not([data-side]):not([data-view="settings"]) .bar > .places > .ui-place { flex: 1 1 0; min-width: 0; justify-content: center; }
+.home:not([data-side]):not([data-view="settings"]) .bar > .places > .bar-stop { flex: none; }
 .home:not([data-side]):not([data-view="settings"]) .bar > .bar-key { margin-inline-end: 0; }
-.home:not([data-side]) .bar .bar-gear, .home:not([data-side]) .bar .close { position: absolute; top: 0; }
-.home:not([data-side]) .bar .close { inset-inline-end: 0; }
-.home:not([data-side]) .bar .bar-gear { inset-inline-end: calc(var(--h-sm) + var(--space-2)); }
-.home .bar .bar-gear, .home .bar .close { color: var(--fg-2); }
-.home .bar .bar-gear:hover, .home .bar .close:hover { color: var(--fg); }
+/* Feel round 2 (19 Nov 2026): the gear and Close are the controls people press most, and they only changed colour. Now each
+   has a 32 pt round hit area (the icon unchanged), a soft round fill under the pointer and the same press as every button.
+   The project chip answers the same way. Keyboard focus keeps its ring; a mouse press leaves no fill behind. */
+.home .bar :is(.bar-gear, .close) { width: 32px; min-width: 32px; min-height: 32px; border-radius: var(--r-round); background: transparent; color: var(--fg-2); cursor: pointer; transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
+.home .bar :is(.bar-gear, .close):hover:not(:disabled) { background: var(--surface-2); color: var(--fg); }
+.home .bar :is(.bar-gear, .close):active:not(:disabled) { background: var(--surface-3); transform: scale(var(--press)); transition-duration: var(--dur-press); }
+.home .bar-chip { cursor: pointer; transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
+.home .bar-chip:hover { background: var(--surface-3); }
+.home .bar-chip:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+.home .bar > .bar-end > .bar-stop { margin-inline-end: var(--space-1); }
 
 /* ---------- The lead ---------- */
 .home .hero.ui-lead.hero[data-mode] { margin: var(--space-4) 0; padding: 0; }
@@ -71,7 +93,7 @@
    the character smiles (the Visor's done pose). Reduce motion shows the tick already drawn. */
 
 /* ---------- The cards on Now (a result, the work in progress, the review): one card each, never a card in a card ---------- */
-.home .view .panel, .home .view .panel:not(.bare), .home .view .panel.job, .home .view .panel.practice, .home .view .panel.amber { border: 0; border-radius: var(--r-list); background: var(--surface-1); box-shadow: inset 0 0 0 var(--hair) var(--edge); }
+.home .view .panel, .home .view .panel:not(.bare), .home .view .panel.job, .home .view .panel.practice, .home .view .panel.amber { border: 0; border-radius: var(--r-list); background: var(--surface-1); box-shadow: inset 0 0 0 var(--hair) var(--edge), inset 0 var(--hair) 0 var(--sheen-line); }
 .home .view .panel.job::after { display: none; }
 /* The M66 landing keeps its moment as a hairline that comes and goes, never a glow. */
 .home .view .panel.receipt[data-landed]::after, .home .view .panel.practice[data-landed]::after { box-shadow: inset 0 0 0 var(--hair) var(--line-strong); }
@@ -91,12 +113,12 @@
 /* The tall Home is as tall as what it holds (never a big empty gap): the ask box follows the list, and stays pinned at
    the foot while a long page scrolls. */
 .home:not([data-side]):not([data-view="settings"]) .work:has(> .askwrap) { min-height: 0; }
-.home:not([data-side]):not([data-view="settings"]) .work > .askwrap { margin-top: var(--space-4); background: var(--surface-0); }
+.home:not([data-side]):not([data-view="settings"]) .work > .askwrap { margin-top: var(--space-2); background: var(--surface-0); }
 .home .askwrap { background: var(--surface-0); }
 /* Round 1 (a hard edged black band over the ask box on the first screen): in the wide Home the band under the ask box is
    its own soft edged ::after (wide.css), as in the gutter beside it, so the box itself draws no second, hard edged black. */
 .home[data-side] .work > .askwrap { background: transparent; }
-.home .askwrap .ask { padding: var(--space-3) var(--space-3) var(--space-2); border: 0; border-radius: var(--r-list); background: var(--surface-1); box-shadow: inset 0 0 0 var(--hair) var(--edge); }
+.home .askwrap .ask { padding: var(--space-3) var(--space-3) var(--space-2); border: 0; border-radius: var(--r-list); background: var(--surface-1); box-shadow: inset 0 0 0 var(--hair) var(--edge), inset 0 var(--hair) 0 var(--sheen-line); }
 .home .askwrap .ask:focus-within { box-shadow: inset 0 0 0 var(--hair) var(--line-strong); }
 .home .askwrap .ask > .ask-mark { display: none; }
 .home .askwrap .ask > textarea { padding: var(--space-1) var(--space-1) var(--space-2); color: var(--fg); font: var(--t-answer) / var(--lh-answer) var(--font); }
@@ -135,6 +157,9 @@
 .home .hist-lead .ui-lead-title { margin: 0; }
 .home .hist-search { display: flex; gap: var(--space-2); margin: 0; }
 .home .hist-search input[type="search"] { flex: 1; min-width: 0; min-height: var(--h-btn); border: 0; border-radius: var(--r-btn); background: var(--surface-1); color: var(--fg); }
+/* Feel round 2 (19 Nov 2026): the status picker beside the search is the field's height and shape, one row. */
+.home .hist-search .ui-menu-btn { min-height: var(--h-btn); border-radius: var(--r-btn); }
+.home .hist .hist-more { display: grid; gap: var(--space-2); margin-top: 0; }
 .home .hist .ui-mrow-title .hist-marks { display: inline-flex; gap: var(--space-1); margin-inline-start: var(--space-2); vertical-align: middle; }
 .home .hist .hist-mark { padding: 0 var(--space-2); border-radius: var(--r-pill); background: var(--surface-2); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
 .home .hist .hist-hint { display: none; }
@@ -177,8 +202,11 @@
 .home .ui-row:has(> .ui-row-control > :is(.ui-switch, .btn, .ui-menu)) > .ui-row-control { justify-content: flex-end; margin-inline-start: auto; }
 
 /* A primary or secondary button anywhere on Home is the lead's own: flat, no gloss, no edge. */
-.home .ui-lead-acts .btn, .home .learn-ask .btn, .home .hist-extra .btn, .home .mem-ask .btn { min-height: var(--h-btn); padding: 0 var(--space-4); border-radius: var(--r-btn); box-shadow: none; font: var(--w-strong) var(--t-answer) / var(--lh-answer) var(--font); }
+.home .ui-lead-acts .btn, .home .learn-ask .btn, .home .hist-extra .btn, .home .mem-ask .btn, .home .panel.practice .btn:not(.icon, .quiet) { min-height: var(--h-btn); padding: 0 var(--space-4); border-radius: var(--r-btn); box-shadow: none; font: var(--w-strong) var(--t-answer) / var(--lh-answer) var(--font); }
 .home .ui-lead-acts .btn.primary { border-color: transparent; background-image: none; font-weight: var(--w-bold); }
+/* Feel round 2 (19 Nov 2026): the practice card's main button is the same button as Now's (same weight, height and flat
+   edge), not a second kind with a gloss ring that read as a stuck focus ring. */
+.home .panel.practice .btn.primary { border-color: transparent; background-image: none; box-shadow: none; font-weight: var(--w-bold); }
 .home .ui-lead-acts .btn.secondary { border-color: transparent; background: var(--surface-2); }
 .home .ui-feature .ui-lead-acts .btn.secondary { background: color-mix(in srgb, var(--fg) 10%, transparent); }
 /* In the wide Home the side list names the open place, and the lead says what it holds, so the place's name in the bar is
@@ -258,7 +286,7 @@
 .today-title { margin: 0 0 var(--space-2); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); letter-spacing: var(--track-body); text-transform: none; }
 .today-list { position: relative; display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
 .today-row { display: grid; grid-template-columns: var(--today-time) auto minmax(0, 1fr); align-items: center; gap: var(--space-3); min-height: var(--h-list-row, 32px); padding: var(--space-1) 0; color: var(--fg); font: var(--w-regular) var(--t-label) / var(--lh-label) var(--font); }
-.today-time { color: var(--fg-2); font: var(--w-strong) var(--t-caption) / 1 var(--font); font-variant-numeric: tabular-nums; text-align: right; }
+.today-time { color: var(--fg-2); font: var(--w-strong) var(--t-caption) / 1 var(--font); font-variant-numeric: tabular-nums; text-align: start; }
 .today-words { min-width: 0; overflow-wrap: anywhere; }
 .today-row { animation: ui-fade-in var(--dur-2) var(--ease-out) both; }
 
@@ -284,15 +312,21 @@
 /* The project an ask goes to, quiet beside the hello; whichever of the two is last pushes the buttons to the right. Round 2:
    the hello never shrinks below its longest word, and the name takes only the room left, shortened to fit it
    (notchChat.ts fitRowProject; its full name is in its title and for VoiceOver), so the row stays one line. */
-.notch-chat .nc-proj { min-width: 0; flex: 1 1 0; overflow-wrap: anywhere; color: var(--chat-when); font: var(--t-caption) / var(--lh-caption) var(--font); }
+.notch-chat .nc-proj { min-width: 0; flex: 1 1 0; overflow-wrap: anywhere; color: var(--chat-when); font: var(--t-caption) / var(--lh-body) var(--font); }
 .notch-chat .nc-hi:not(:has(+ .nc-proj)), .notch-chat .nc-proj { margin-right: auto; }
-.notch-chat .nc-stop { flex: none; display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 11px 0 9px; border: 0; border-radius: 999px; color: var(--chat-fg); background: var(--pill-stop); box-shadow: 0 0 0 1px var(--pill-stop-line) inset; font: var(--w-strong) var(--t-caption) / 1 var(--font); transition: transform var(--dur-release) var(--ease-out); }
+/* Feel round 2: with no hello before it, the project's name is the row's title. */
+.notch-chat .nc-top > .nc-proj:first-child, .notch-chat .nc-top > .nc-face-hold + .nc-proj { color: var(--chat-fg); font: var(--w-strong) var(--t-body) / var(--lh-body) var(--font); letter-spacing: -.01em; }
+.notch-chat .nc-stop { flex: none; display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 11px 0 9px; border: 0; border-radius: 999px; color: var(--chat-fg); background: var(--pill-stop); box-shadow: 0 0 0 1px var(--pill-stop-line) inset; font: var(--w-strong) var(--t-caption) / 1 var(--font); transition: transform var(--dur-release) var(--ease-out), background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out); }
 .notch-chat .nc-stop:hover { background: var(--pill-stop-hover); }
 .notch-chat .nc-stop:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
-.notch-chat .nc-ico { flex: none; display: grid; place-items: center; width: 26px; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; background: var(--chat-icon-bg); color: var(--chat-icon-fg); transition: transform var(--dur-release) var(--ease-out); }
+.notch-chat .nc-ico { flex: none; display: grid; place-items: center; width: 26px; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; background: var(--chat-icon-bg); color: var(--chat-icon-fg); transition: transform var(--dur-release) var(--ease-out), background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out); }
 .notch-chat .nc-ico:hover { background: var(--chat-send); color: var(--chat-fg); }
 .notch-chat .nc-ico:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+.notch-chat .nc-news { padding-bottom: 8px; }
+.notch-chat .nc-news > .nc-when:not(:first-child) { margin-top: 8px; }
 .notch-chat .nc-news { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: calc(6rem / 14); overflow-y: auto; }
+/* Feel round 2: older bubbles slide softly under the top row as the thread scrolls, never cut by a hard edge. */
+.notch-chat .nc-news { -webkit-mask-image: linear-gradient(180deg, transparent 0, transparent 8px, var(--mask-solid) 28px); mask-image: linear-gradient(180deg, transparent 0, transparent 8px, var(--mask-solid) 28px); padding-top: 26px; }
 /* The newest at the foot, by the field; more than fits scrolls (never cut at the top). */
 .notch-chat .nc-news > :first-child { margin-top: auto; }
 /* One bubble (the invite, or one piece of news): centred in the chat, never pinned under an empty band. */
@@ -305,6 +339,19 @@
 /* A bubble that opens out to its place (the changes to review, Claude Code waiting, a failed check). */
 .notch-chat button.nc-go { border: 0; text-align: start; cursor: pointer; transition: background-color var(--dur-release) var(--ease-out); }
 .notch-chat button.nc-go:hover { background: var(--chat-them-hover); }
+/* Feel round 2: the newest bubble of each run by one side has a small tail toward its side, drawn in its own fill, so it is
+   clear who said what. A shape only (clip-path), no new colour. */
+.notch-chat .nc-b { position: relative; }
+.notch-chat .nc-b[data-tail]::after { content: ""; position: absolute; bottom: 0; width: 8px; aspect-ratio: 4 / 5; pointer-events: none; }
+.notch-chat .nc-me[data-tail]::after { right: -5px; background: var(--lav-2-soft); clip-path: path("M0 0 C0 5 3 8.6 8 10 L0 10 Z"); }
+.notch-chat .nc-them[data-tail]::after { left: -5px; background: inherit; clip-path: path("M8 0 C8 5 5 8.6 0 10 L8 10 Z"); }
+.notch-chat .nc-me[data-tail] { margin-inline-end: 5px; }
+.notch-chat .nc-them[data-tail] { margin-inline-start: 5px; }
+/* Under a reply that failed: one Fix it pill (it opens Home on Now, where Fix it is), in the approved blue of Home's Fix
+   it button (its main button's own fill and words). */
+.notch-chat .nc-fix { align-self: flex-start; display: inline-flex; align-items: center; min-height: 26px; margin: 0 0 0 5px; padding: 0 12px; border: 0; border-radius: 999px; background: var(--acc); color: var(--acc-ink); font: var(--w-strong) var(--t-caption) / 1 var(--font); cursor: pointer; transition: transform var(--dur-release) var(--ease-out), background-color var(--dur-hover) var(--ease-out); }
+.notch-chat .nc-fix:hover { background: var(--acc-hover); }
+.notch-chat .nc-fix:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
 .notch-chat .nc-me { align-self: flex-end; background: linear-gradient(180deg, var(--lav-1), var(--lav-2-soft)); color: var(--lav-ink); border-bottom-right-radius: 5px; }
 @keyframes nc-in { from { opacity: 0; transform: translateY(4px); } }
 @media (prefers-reduced-motion: reduce) { .notch-chat .nc-b { animation-name: nc-fade; } }
@@ -314,7 +361,8 @@
 .notch-chat .nc-mic:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
 .notch-chat .nc-field { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; min-height: 38px; box-sizing: border-box; padding: 5px 5px 5px 14px; border-radius: 19px; background: var(--chat-field); box-shadow: 0 0 0 1.5px var(--lav-line) inset, 0 0 12px var(--lav-glow-soft); }
 /* The field shows focus, as Home's own ask box does: a stronger lavender edge; the box's own ring is for forced colours. */
-.notch-chat .nc-field:focus-within { box-shadow: 0 0 0 2px var(--lav-1) inset, 0 0 16px var(--lav-glow); }
+/* Feel round 2: focus is one 1.5 px ring in the field's own lavender, the resting glow kept, no second glow. */
+.notch-chat .nc-field:focus-within { box-shadow: 0 0 0 1.5px var(--lav-1) inset, 0 0 12px var(--lav-glow-soft); }
 .notch-chat .nc-field textarea { flex: 1 1 auto; min-width: 0; max-height: calc(54rem / 14); padding: 0; margin: 0; border: 0; outline: 0; resize: none; overflow-y: auto; background: transparent; box-shadow: none; color: var(--chat-them-fg); caret-color: var(--chat-fg); font: var(--t-body) / var(--lh-body) var(--font); }
 .notch-chat .nc-field textarea:focus-visible { outline: var(--ring) solid transparent; }
 .notch-chat .nc-field textarea::placeholder { color: var(--chat-when); }
@@ -323,3 +371,156 @@
 .notch-chat button:focus-visible { outline: var(--ring) solid var(--focus); outline-offset: 2px; }
 /* M111: the face in the chat's top row, held so it can be dragged out of the notch while Flowflow is tucked. */
 .notch-chat .nc-face-hold { flex: none; display: grid; place-items: center; touch-action: none; }
+
+/* ---------- Feel round 1 (the founder, 18 Nov 2026: "this still looks very basic") ----------
+   Craft, not colour: every value here is an existing token or an alpha of one. */
+/* The lead uses the whole column when no character stands beside it (the founder: no Flowflow inside Home). */
+.home .hero.ui-lead:not(:has(> .ui-lead-char)) { grid-template-columns: minmax(0, 1fr); }
+/* The ask box's project token is one line, cut with an ellipsis, never more than 40 percent of the row. */
+.home .ask-row > .ask-token { flex: 0 1 auto; min-width: 0; max-width: 40%; }
+/* One line, then an ellipsis (its full name is its tooltip and what VoiceOver reads), cut by line count, never by a fixed
+   height or nowrap, so it still grows with bigger text. */
+.home .ask-token-name { display: -webkit-box; min-width: 0; overflow: clip; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow-wrap: anywhere; }
+/* The foot under the ask box: More ways to ask and the Fix it keys on one baseline, at one size and weight, and the row
+   keeps its height while a job works. The keys are small caps with a hairline edge. */
+.home .askwrap .ask-foot { align-items: baseline; min-height: calc(var(--lh-small) + var(--space-2) * 2); }
+.home .askwrap .ask-foot > details.more { margin: 0; }
+.home .askwrap .ask-foot > details.more > summary, .home .askwrap .ask-foot > .ask-key { margin: 0; padding: var(--space-2) 0; color: var(--fg-2); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font); }
+.home .askwrap .ask-foot > .ask-key { display: inline-flex; align-items: center; gap: var(--space-1); }
+.home .askwrap .ask-foot > .ask-key .ui-keys { display: inline-flex; gap: calc(var(--space-1) / 2); }
+.home .askwrap .ask-foot > .ask-key .ui-key { display: inline-grid; place-items: center; min-width: calc(var(--lh-small) + var(--space-1)); min-height: calc(var(--lh-small) + var(--space-1)); padding: 0 var(--space-1); box-sizing: border-box; border: var(--hair) solid var(--line); border-radius: var(--r-key); background: var(--surface-2); box-shadow: none; color: var(--fg); font: var(--w-strong) var(--t-caption) / 1 var(--font); }
+/* Focus rings only from the keyboard (feel round 1): until a key is used in Home (card.tsx sets data-keys on the root), a
+   control focused by a click or by Home itself shows no ring. Text fields keep their own focus look. */
+:root:not([data-keys]) .home :focus-visible:not(input, textarea, select, [contenteditable="true"]) { outline-color: transparent; }
+/* Memory while it looks up (feel round 1): quiet rows in the list's shape at every page's top gap; they breathe slowly,
+   and are still under Reduce motion or Less motion. */
+.home .mem-loading { display: grid; gap: var(--space-3); margin-top: var(--space-5); }
+.home .mem-skel-row { display: flex; align-items: center; gap: var(--space-3); min-height: var(--h-list-row); padding: 0 var(--space-4); }
+.home .mem-skel-row + .mem-skel-row { border-top: var(--hair) solid var(--line); }
+.home .mem-skel-row > span { display: grid; flex: 1; gap: var(--space-2); }
+.home .mem-skel-tile, .home .mem-skel-bar { display: block; border-radius: var(--r-tile-sm); background: var(--surface-2); animation: ui-dot-breathe calc(var(--loop-busy) * 1.2) var(--ease-loop) infinite alternate; }
+.home .mem-skel-tile { flex: none; width: var(--tile-row); height: var(--tile-row); }
+.home .mem-skel-bar { width: 46%; min-height: var(--space-2); }
+.home .mem-skel-bar.short { width: 28%; opacity: .6; }
+.home .mem-slow { color: var(--fg-2); }
+@media (prefers-reduced-motion: reduce) { .home :is(.mem-skel-tile, .mem-skel-bar) { animation: none; } }
+:root[data-less-motion] .home :is(.mem-skel-tile, .mem-skel-bar) { animation: none; }
+/* Learn (feel round 1): the card after the practice list keeps the list's own gap, and a card's last caption adds no room
+   under itself, so its padding is even on every side. */
+.home .learn + .panel { margin-top: var(--space-4); }
+.home .view .panel > .page-caption:last-child { margin-bottom: 0; }
+/* The wide Home's side list (feel round 1): its section titles start on the same edge as the rows' icons. */
+.home[data-side] .side .side-title { padding-inline: var(--space-1); }
+/* The small chat (feel round 1, 18 Nov 2026). Send says when it is ready: dim while the field is empty, and the chat's own
+   white with the notch's black arrow once words are in it (the lavender stays on the pill, the bubble, the mic and the
+   field only). One glow at a time: while the field has the keys, the mic's glow steps aside. The hello and the project
+   share one line height, so their words sit on one line. "Working on it." breathes three quiet dots until the result. */
+.notch-chat .nc-send { transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), opacity var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
+.notch-chat .nc-field:has(textarea:placeholder-shown) .nc-send:not(:disabled) { opacity: .5; }
+/* With words in the field, send is the approved blue of Home's main button, so the one thing that glows is the way on. */
+.notch-chat .nc-field:has(textarea:not(:placeholder-shown)) .nc-send:not(:disabled) { background: var(--acc); color: var(--acc-ink); }
+.notch-chat .nc-send:active:not(:disabled) { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+.notch-chat:has(.nc-field:focus-within) .nc-mic { box-shadow: none; }
+.notch-chat .nc-dots { display: inline-flex; gap: 3px; margin-inline-start: var(--space-1); vertical-align: middle; }
+.notch-chat .nc-dots > i { width: 4px; aspect-ratio: 1; border-radius: var(--r-round); background: currentColor; opacity: .35; animation: ui-dot-breathe var(--loop-busy) var(--ease-loop) infinite alternate; }
+.notch-chat .nc-dots > i:nth-child(2) { animation-delay: calc(var(--loop-busy) / 3); }
+.notch-chat .nc-dots > i:nth-child(3) { animation-delay: calc(var(--loop-busy) * 2 / 3); }
+@media (prefers-reduced-motion: reduce) { .notch-chat .nc-dots > i { animation: none; opacity: .6; } }
+:root[data-less-motion] .notch-chat .nc-dots > i { animation: none; opacity: .6; }
+/* The chat's top row (feel round 1: up to eight things to press): Settings and Bring out show while the row is pointed at
+   or has the keys; Stop, Open all of Home and Close always. They keep their place, so nothing moves when they show. */
+/* Feel round 2: Settings and Bring out are seen at rest, at the same quiet weight as Expand and Close (an invisible
+   button in the tab order was a trap). */
+
+/* Feel round 2 (19 Nov 2026): the room under the last line is the side padding (24), counted to the words of the foot row
+   (it has its own 8 points of padding), so the panel does not end on a band twice the sides. */
+.home:not([data-side]):not([data-view="settings"]):not([data-chat]) > .inner { padding-bottom: var(--space-3); }
+/* Feel round 2 (19 Nov 2026): every place starts its page the same 16 points under the row of places (Now's lead and
+   History's list did; Learn's practice card sat 0 under it and Memory's quiet rows 20). */
+.home .work > .view > .panel.practice:first-child { margin-top: var(--space-4); }
+.home .mem-loading { margin-top: var(--space-4); }
+/* Feel round 2: content that scrolls under the top bar fades into it over 12 points instead of being cut by a hard edge.
+   The panel's own black to clear, shown only once the page has scrolled. */
+.home .work > .bar::before { content: ""; position: absolute; inset: 100% 0 auto; height: var(--space-3); background: var(--notch); -webkit-mask-image: linear-gradient(var(--mask-solid), transparent); mask-image: linear-gradient(var(--mask-solid), transparent); pointer-events: none; opacity: 0; transition: opacity var(--dur-hover) var(--ease-out); }
+.home[data-scrolled] .work > .bar::before { opacity: 1; }
+
+/* ---------- Feel round 3 (19 Nov 2026) ----------
+   The founder, 18 Nov 2026: "this still looks very basic", next to HeyClicky's notch panel. Craft only, never a colour: every
+   value below is an existing token. */
+/* The top bar starts 16 points under the notch line, as far as the ask box sits from the panel's foot. */
+.home:not([data-side]):not([data-layout="wide"][data-view="settings"]) .work > .bar { padding-top: var(--space-4); }
+/* The places are one control: a full width track on the card surface with a hairline edge, the open place its own coloured
+   pill sliding inside it (PlacesGlide). Labels 13 at medium weight, the open one bold. */
+.home:not([data-side]):not([data-view="settings"]) .bar > .places { box-sizing: border-box; gap: 0; padding: var(--space-1); border-radius: var(--r-pill); background: var(--surface-1); box-shadow: inset 0 0 0 var(--hair) var(--edge); }
+.home:not([data-side]):not([data-view="settings"]) .bar > .places > .ui-place { min-height: 28px; font-weight: var(--w-strong); }
+.home:not([data-side]):not([data-view="settings"]) .bar > .places > .ui-place[aria-pressed="true"] { font-weight: var(--w-bold); }
+.home:not([data-side]):not([data-view="settings"]) .bar > .places > .ui-place:not([aria-pressed="true"]):hover { background: transparent; color: var(--fg); }
+/* One icon button everywhere (the small chat's look): a 32 point round button on the raised surface, a lighter fill under
+   the pointer, a press. */
+.home .bar :is(.bar-gear, .close) { background: var(--surface-1); box-shadow: inset 0 0 0 var(--hair) var(--edge); }
+/* One Stop: a filled dark pill with the square, in the bar and in the working card alike. */
+.home .bar .bar-stop, .home .hero .ui-lead-acts .btn.secondary.sm { min-height: 32px; padding: 0 var(--space-3); border-color: transparent; border-radius: var(--r-pill); background: var(--surface-2); box-shadow: none; font-weight: var(--w-bold); }
+.home .bar .bar-stop:hover:not(:disabled) { background: var(--surface-3); }
+/* Home's buttons are pills like every other control (the places, the chips, the project chip, the notch's pill): 36 tall,
+   16 points each side, both of a pair at the same weight, and a short press. */
+.home :is(.hero .hero-main, .ui-lead-acts, .learn-ask, .hist-extra, .mem-ask, .panel.practice) .btn:not(.icon, .sm) { min-height: var(--h-btn); padding: 0 var(--space-4); border-radius: var(--r-pill); font-weight: var(--w-bold); font-size: calc(14rem / 14); }
+.home :is(.hero .hero-main, .ui-lead-acts, .learn-ask, .hist-extra, .mem-ask, .panel.practice) .btn:not(.icon):active:not(:disabled) { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+/* The ask box follows the work with the same room in every state and layout: no hairline over it (it is a filled card
+   already); work that scrolls under it fades into the panel instead. */
+.home:not([data-side]):not([data-view="settings"])[data-more] .work > .askwrap::after { border-top: 0; }
+.home[data-side][data-more] .work > .askwrap::after { border-top: 0; -webkit-mask-image: linear-gradient(180deg, transparent 0, var(--mask-solid) var(--space-4)); mask-image: linear-gradient(180deg, transparent 0, var(--mask-solid) var(--space-4)); }
+/* A row's trailing action (Undo these changes, Open, Forget) is a small pill in its own colour on the quiet surface, so it
+   reads as a button and not as a web link; the soft colour under the pointer, as before. */
+.home .ui-mrow-act:not(:disabled) { min-height: 28px; margin-inline-end: 0; padding: 0 var(--space-3); border-radius: var(--r-pill); background: var(--surface-2); }
+.home .ui-mrow-act:not(:disabled):hover { background: var(--mc-soft); }
+/* History: when it ended is part of the row's one line, so every row's right side holds only its one action. */
+.home .ui-mrow-line .hist-time { font: inherit; color: inherit; }
+/* History: This week and Your numbers are one card with two rows (a hairline between them), not two look alike cards. While
+   one is open its page sits between them, so they part again. */
+.home .hist .hist-more { gap: 0; }
+.home .hist .hist-more:not(:has(.week-page)) > .hist-week-part:first-child:not(:last-child) .ui-mlist { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.home .hist .hist-more:not(:has(.week-page)) > .hist-week-part:last-child:not(:first-child) .ui-mlist { border-top-left-radius: 0; border-top-right-radius: 0; box-shadow: inset var(--hair) 0 0 var(--edge, var(--line)), inset calc(var(--hair) * -1) 0 0 var(--edge, var(--line)), inset 0 calc(var(--hair) * -1) 0 var(--edge, var(--line)); }
+.home .hist .hist-more:has(.week-page) { gap: var(--space-2); }
+
+/* Memory's slow look up (feel round 3): one small centred block, a quiet grey tile, the line, and Try again under it. */
+.home .mem-slow { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-6) 0; text-align: center; }
+.home .mem-slow-tile { --mc-tile: var(--surface-2); color: var(--fg-2); }
+.home .mem-slow-line { margin: 0 0 var(--space-1); color: var(--fg); font: var(--w-bold) var(--t-answer) / var(--lh-answer) var(--font); }
+.home .mem-slow .btn { min-height: 32px; padding: 0 var(--space-4); border-color: transparent; border-radius: var(--r-pill); background: var(--surface-2); font-weight: var(--w-bold); }
+.home .mem-skel { animation: hs-arrive var(--dur-2) var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) { .home .mem-skel { animation: none; } }
+/* The tall bar's quiet status (feel round 3): after the project chip, 12 points, muted, with the breathing dot while work
+   runs. It gives way first when the row is short of room. */
+.home:not([data-side]) .bar > .bar-status { display: inline-flex; flex: 0 1 auto; align-items: center; gap: var(--space-2); min-width: 0; margin: 0 0 0 var(--space-3); color: var(--fg-2); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font); order: 0; }
+.home .bar > .bar-status > .live { flex: none; width: 6px; min-height: 6px; aspect-ratio: 1; border-radius: var(--r-round); background: var(--mark-line); animation: ui-dot-breathe var(--loop-busy) var(--ease-loop) infinite alternate; }
+@media (prefers-reduced-motion: reduce) { .home .bar > .bar-status > .live { animation: none; } }
+/* The tall bar over a scrolled page (feel round 3): no hard hairline cutting a heading in half, a soft 16 point fade in the
+   panel's own black instead, and 12 points under the places so what scrolls under it is never cramped against them. */
+.home:not([data-side]):not([data-layout="wide"][data-view="settings"]) .work > .bar { padding-bottom: var(--space-3); }
+.home:not([data-side])[data-scrolled] .work > .bar::after { opacity: 0; }
+.home:not([data-side])[data-scrolled] .work > .bar { box-shadow: 0 16px 14px -4px var(--notch); }
+/* ---------- Feel round 3: the small chat ---------- */
+/* The top row's title is the project, as Home's chip says it (its dot, its name at 13 bold) with one quiet line under it:
+   the project's state (Working, Passed 40 minutes ago). */
+.notch-chat .nc-title { display: grid; flex: 1 1 0; min-width: 0; margin-right: auto; row-gap: 1px; }
+.notch-chat .nc-title > .nc-line { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.notch-chat .nc-title .nc-proj { flex: 1 1 0; min-width: 0; margin: 0; color: var(--chat-fg); font: var(--w-bold) var(--t-label) / var(--lh-label) var(--font); letter-spacing: -.01em; }
+.notch-chat .nc-title .ui-mdot { flex: none; }
+.notch-chat .nc-title > .nc-state { color: var(--chat-when); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font); }
+.notch-chat .nc-face-hold + .nc-title .ui-mdot { display: none; }
+/* With nothing said yet, the one line sits just above the field (as a chat's first message does), with a few questions
+   under it as lavender pills. */
+.notch-chat .nc-news[data-empty] { justify-content: flex-end; }
+.notch-chat .nc-news[data-empty] > :first-child { margin-top: auto; }
+.notch-chat .nc-suggest { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-1) 0 0 5px; }
+.notch-chat .nc-pill { display: inline-flex; align-items: center; min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: linear-gradient(180deg, var(--lav-1), var(--lav-2)); box-shadow: inset 0 var(--hair) 0 var(--lav-hair); color: var(--lav-ink); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); cursor: pointer; animation: nc-in var(--dur-notch-row) var(--ease-out) both; transition: transform var(--dur-release) var(--ease-out), opacity var(--dur-hover) var(--ease-out); }
+.notch-chat .nc-pill:nth-child(2) { animation-delay: var(--stagger-list); }
+.notch-chat .nc-pill:hover { opacity: .9; }
+.notch-chat .nc-pill:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+@media (prefers-reduced-motion: reduce) { .notch-chat .nc-pill { animation-name: nc-fade; } }
+/* The working card's top line is the time and Stop only (feel round 3): no separator dot before the time. */
+.home .job-top > .run-count.sr + .run-time::before { display: none; }
+/* The stuck key in the foot (feel round 3): lighter keycaps, no outline, so the line people see every time is quiet. */
+.home .askwrap .ask-foot > .ask-key .ui-key { border-color: transparent; background: var(--surface-1); color: var(--fg-2); }
+/* The small chat's top row (feel round 3): its two line title sits a few points lower, clear of the notch line. */
+.notch-chat .nc-top { padding-top: var(--space-1); }

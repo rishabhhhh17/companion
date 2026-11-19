@@ -113,10 +113,15 @@ describe("items 5 and 6: a practice answers where it was pressed, and says which
     expect(card).toContain("retry={m.task ? jobStep(m,");
   });
   test("the leftover busy line is not drawn under the practice that is itself the work in progress", () => {
-    expect(learn).toContain("{busy && !openId && <p className=\"page-caption\">{S.practiceBusy}</p>}");
+    // Changed on purpose (feel round 2, 19 Nov 2026): with a practice card on top, the card itself says it waits (in place of a
+    // greyed button); the caption is only for a list with no card.
+    expect(learn).toContain("{busy && !openId && !lead && <p className=\"page-caption\">{S.practiceBusy}</p>}");
+    expect(learn).toContain("busy && !openId ? S.practiceWaits");
   });
   test("item 16: the key practice's last step says what was checked (the review again), not that the checks pass", () => {
-    expect(learn).toContain("S.practiceKey.doneSay");
+    // Changed on purpose (the founder, 17 Nov 2026: no Flowflow symbol on Home): the peek bubble that said it is gone, so
+    // nothing over the card says the checks pass; the thread's own steps say what ran.
+    expect(learn).not.toContain("<Peek ");
     expect(S.practiceKey.doneSay).not.toContain("passes");
   });
 });

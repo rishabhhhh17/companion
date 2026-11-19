@@ -27,7 +27,10 @@ describe("the small chat in Home", () => {
     const home = document.querySelector("main.home")!;
     expect(home.hasAttribute("data-chat")).toBe(true);
     const chat = document.querySelector(".notch-chat")!;
-    expect(chat.querySelector(".nc-hi")?.textContent).toMatch(/^hey /);
+    // Changed on purpose (feel round 2, 19 Nov 2026): with a project open, its name is the top row's title and the hello
+    // steps aside (it was said twice); the hello leads only with no project.
+    expect(chat.querySelector(".nc-hi")).toBeNull();
+    expect(chat.querySelector(".nc-top .nc-proj")).toBeTruthy();
     // Two small round buttons with real drawings, never emoji or text glyphs.
     const icons = [...chat.querySelectorAll(".nc-ico")];
     // Changed on purpose (founder round 1, 17 Nov 2026: "when I open the chat, I cannot close it fully"): a third, Close.
@@ -37,8 +40,10 @@ describe("the small chat in Home", () => {
     expect([...chat.querySelectorAll(".nc-me")].map((b) => b.textContent)).toEqual(["fix the email check"]);
     expect([...chat.querySelectorAll(".nc-them")].map((b) => b.textContent)).toEqual([S.m96.chat.proven(2)]);
     expect(chat.querySelector(".nc-when b")?.textContent).toBe(S.m96.chat.today);
-    // Changed on purpose (the M96 review): the field names the project an ask goes to.
-    expect(field()?.getAttribute("placeholder")).toBe(S.m96.chat.askAbout("shop"));
+    // Changed on purpose (the M96 review): the field names the project an ask goes to. Changed on purpose again (feel
+    // round 3, 19 Nov 2026): the top row names it now, so the hint is the short ask and only the field's spoken name says it.
+    expect(field()?.getAttribute("placeholder")).toBe(S.m96.chat.ask);
+    expect(field()?.getAttribute("aria-label")).toBe(S.m96.chat.askAbout("shop"));
     expect(chat.querySelector(".nc-send svg")).toBeTruthy();
   });
 
@@ -103,7 +108,10 @@ describe("the small chat in Home", () => {
     // whole name, so the top row's text is the shown words plus the whole name for VoiceOver.
     expect(document.querySelector('.notch-chat .nc-proj > [aria-hidden="true"]')?.textContent).toBe(name);
     expect(document.querySelector(".notch-chat .nc-proj > .sr")?.textContent).toBe(name);
-    expect(field()?.getAttribute("placeholder")).toBe(S.m96.chat.askAbout(name));
+    // Feel round 3 (19 Nov 2026), changed on purpose: the top row names it, so the field's hint is the short ask and its
+    // spoken name says the project.
+    expect(field()?.getAttribute("placeholder")).toBe(S.m96.chat.ask);
+    expect(field()?.getAttribute("aria-label")).toBe(S.m96.chat.askAbout(name));
   });
 
   test("while a task works the chat has its own Stop, which sends the interrupt", async () => {

@@ -13,7 +13,7 @@
    the M93 hover: "I don't like how it looks, just see how HeyClicky does it", and "yeah" to the mock. Pointing grows ONE
    row out of the notch, about 330 wide and 42 tall: the face, a lowercase hello and one glowing pill. Same black as the
    notch, no gap, no border; the shape's corners are the island's (style.css --r-open, 20). Colours only from tokens.css. */
-.island-panel[data-layout="quick"], .island-panel[data-layout="job"] { width: 330px; height: 42px; padding: 0 10px 4px 14px; display: block; }
+.island-panel[data-layout="quick"], .island-panel[data-layout="job"] { width: 330px; height: 96px; padding: 6px 12px 12px; display: block; box-sizing: border-box; }
 /* The state of a question or a result, without a character (M70 step 4): a small amber dot for a question, a green tick
    for a proven fix, a red dot for a failure, a plain dot otherwise. The same marks the notch's row uses. */
 .island-panel .ip-dot { flex: none; display: grid; place-items: center; width: 12px; height: 12px; border-radius: 50%; background: var(--notch-dot); color: var(--notch); }
@@ -35,14 +35,21 @@
 .island-panel button[class^="nb-"] { all: unset; box-sizing: border-box; cursor: default; }
 .island-panel button[class^="nb-"]:focus-visible { outline: 2px solid var(--notch-ink); outline-offset: 2px; }
 /* The face and the lowercase hello: one button that opens the small chat. */
-.island-panel button.nb-hi { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1 1 auto; border-radius: var(--r-control); }
+.island-panel button.nb-hi { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1 1 auto; border-radius: var(--r-control); transition: opacity var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
+/* Feel round 1: the hello opens the chat, so it answers the pointer: a quiet lift of its words, and a press. */
+.island-panel button.nb-hi:hover .nb-greet { color: var(--notch-ink); }
+.island-panel button.nb-hi:active { transform: scale(var(--press-row)); transition-duration: var(--dur-press); }
 .island-panel .ip-face { flex: none; display: block; width: var(--peek-face); height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
 .island-panel .ip-face.ff-mini { height: var(--peek-face); }
 .island-panel .nb-face, .island-panel .nb-face.ff-mini { width: 24px; height: 24px; }
-.island-panel .nb-greet { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--chat-fg); font: 500 13.5px / 1.2 var(--font); letter-spacing: -.01em; }
+.island-panel .nb-greet { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--chat-fg); font: 500 13.5px / 1.2 var(--font); letter-spacing: -.01em; transition: color var(--dur-hover) var(--ease-out); }
 /* The one pill: light lavender blue, navy words, an inner white hairline and a soft blue glow (the approved mock). */
-.island-panel button.nb-pill { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 28px; max-width: 200px; padding: 0 13px; border-radius: 999px; overflow: hidden; color: var(--lav-ink); font: 500 12.5px / 1 var(--font); white-space: nowrap; text-overflow: ellipsis; background: linear-gradient(180deg, var(--lav-1) 0%, var(--lav-2) 100%); box-shadow: 0 0 0 1px var(--lav-hair) inset, 0 0 14px var(--lav-glow); transition: transform var(--dur-release) var(--ease-out); }
-.island-panel button.nb-pill:hover { filter: brightness(var(--pill-hover)); }
+.island-panel button.nb-pill { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 28px; max-width: 200px; padding: 0 13px; border-radius: 999px; overflow: hidden; color: var(--lav-ink); font: 500 12.5px / 1 var(--font); white-space: nowrap; text-overflow: ellipsis; background: linear-gradient(180deg, var(--lav-1) 0%, var(--lav-2) 100%); box-shadow: 0 0 0 1px var(--lav-hair) inset, 0 0 14px var(--lav-glow); transition: transform var(--dur-release) var(--ease-out), background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out); }
+/* Feel round 1: under the pointer the pill goes one step deeper (--pill-hover) by a veil of its own navy ink that fades in,
+   so the hover eases on opacity instead of snapping a filter that repaints. Stop keeps its own quiet fill. */
+.island-panel button.nb-pill { position: relative; isolation: isolate; }
+.island-panel button.nb-pill::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--lav-ink); opacity: 0; pointer-events: none; transition: opacity var(--dur-hover) var(--ease-out); }
+.island-panel button.nb-pill:not([data-act="stop"]):hover::after { opacity: calc(1 - var(--pill-hover)); }
 .island-panel button.nb-pill:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
 /* Stop, the safety action, reads unlike every other pill: a quiet dark pill with a hairline, no lavender and no glow. */
 .island-panel button.nb-pill[data-act="stop"] { color: var(--chat-fg); background: var(--pill-stop); box-shadow: 0 0 0 1px var(--pill-stop-line) inset; }
@@ -72,3 +79,40 @@
 .island-panel button.nb-hi[data-out] .nb-face, .notch-chat .nc-face-hold[data-out] .nc-face { visibility: hidden; }
 .island-panel button.nb-hi[data-out], .notch-chat .nc-face-hold[data-out] { cursor: grabbing; }
 .island:is([data-take], [data-said]) .island-panel { visibility: hidden; opacity: 0; }
+
+/* Feel round 2 (19 Nov 2026): the arc turns on a faint full ring, so it never reads as a cut "(" glyph; and the left wing
+   holds a still dot for the state, so the two wings balance. Both in the notch's own ink, no new colour. */
+.island-wing .mark[data-mark="state"] { width: auto; height: auto; border-radius: 0; background: none; box-shadow: none; display: flex; align-items: center; animation: island-pop var(--dur-2) var(--ease-out) both; }
+.island-wing .mark[data-mark="state"] { gap: 2px; height: 12px; }
+.island-wing .mark[data-mark="state"] i { width: 2.5px; height: 100%; border-radius: 2px; background: var(--notch-ink); transform-origin: 50% 100%; transform: scaleY(.55); }
+.island-wing .mark[data-mark="state"] i:nth-child(2) { transform: scaleY(.9); }
+.island-wing .mark[data-mark="state"] i:nth-child(3) { transform: scaleY(.7); }
+.island-wing .mark[data-mark="state"][data-state="needsYou"] i { background: var(--amber); }
+.island-wing .mark[data-mark="state"][data-state="done"] i { background: var(--notch-ok); }
+.island-wing .mark[data-mark="state"][data-state="error"] i { background: var(--notch-bad); }
+.island-wing .mark[data-mark="state"]:is([data-state="working"], [data-state="thinking"], [data-state="checking"]) i { animation: island-meter var(--loop-busy) var(--ease-loop) infinite alternate; }
+.island-wing .mark[data-mark="state"]:is([data-state="working"], [data-state="thinking"], [data-state="checking"]) i:nth-child(2) { animation-delay: calc(var(--loop-busy) / -3); }
+.island-wing .mark[data-mark="state"]:is([data-state="working"], [data-state="thinking"], [data-state="checking"]) i:nth-child(3) { animation-delay: calc(var(--loop-busy) * -2 / 3); }
+@keyframes island-meter { from { transform: scaleY(.35); } to { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .island-wing .mark[data-mark="state"] i { animation: none !important; } }
+:root[data-less-motion] .island-wing .mark[data-mark="state"] i { animation: none !important; }
+.island-wing .mark[data-mark="arc"] svg .arc-track { stroke-dasharray: none; opacity: .28; }
+
+/* ---------- Feel round 3 (the founder's HeyClicky reference, 18 Nov 2026) ----------
+   Pointing grows a small panel, not a strip: the headline centred (15, bold), one quiet hint line under it, and a row with
+   the lavender pill on the left and a small round Open Home on the right. 12 points in from the sides. Same words, same
+   colours. */
+.island-panel[data-layout] > .nb-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto 1fr; align-items: center; row-gap: 2px; column-gap: var(--space-2); height: 100%; }
+.island-panel[data-layout] button.nb-hi { grid-column: 1 / -1; justify-content: center; justify-self: center; max-width: 100%; }
+.island-panel[data-layout] .nb-greet { font: 600 15px / 20px var(--font); letter-spacing: -.012em; color: var(--notch-ink); text-align: center; }
+.island-panel[data-layout] .nb-greet:not([data-news]) { color: var(--notch-ink); }
+.island-panel[data-layout] .nb-hint { grid-column: 1 / -1; margin: 0; overflow: hidden; color: var(--notch-fg-2); font: 400 12px / 16px var(--font); text-align: center; white-space: nowrap; text-overflow: ellipsis; }
+.island-panel[data-layout] button.nb-pill { grid-column: 1; grid-row: 3; justify-self: start; align-self: end; margin-left: 0; }
+.island-panel[data-layout] button.nb-open { grid-column: 2; grid-row: 3; align-self: end; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--chat-icon-bg); color: var(--chat-icon-fg); cursor: default; transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
+.island-panel[data-layout] button.nb-open:hover { background: var(--chat-send); color: var(--chat-fg); }
+.island-panel[data-layout] button.nb-open:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+/* A review's news leads with its mark (feel round 3): a small green tick when it passed, a red cross when not, as the
+   notch's own row marks are. */
+.island-panel .nb-tone { flex: none; display: grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; color: var(--notch); background: var(--notch-ok); }
+.island-panel .nb-tone[data-tone="bad"] { background: var(--notch-bad); }
+.island-panel .nb-tone .ic { stroke-width: 2.75; }

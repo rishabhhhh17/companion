@@ -274,7 +274,7 @@ pub fn island_frame(d: &Display, mode: Mode) -> Rect { frame_of(d, mode, PANEL_M
 pub const PANEL_EXIT_MS: u64 = 80;
 /// How long the window waits before it gets smaller, while the shape tucks back: the same as islandSpring.ts TUCK_MS (the
 /// panel's words leaving, then CLOSE from the wings to the notch, within a point by then; island.test.ts pins the two equal).
-pub const RETRACT_MS: u64 = 540;
+pub const RETRACT_MS: u64 = 450;
 /// The new frame fits inside the old one around the same middle and top: the island is getting smaller where it is.
 pub fn shrinks_in_place(from: Rect, to: Rect) -> bool {
     let mid = |r: Rect| r[0] + r[2] / 2.0;
@@ -319,21 +319,21 @@ impl Spring {
 /// The hover nudge, a press, the done pulse: response 0.38 s, damping 0.80.
 #[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
 pub const NOTCH_HOVER: Spring = Spring { k: 273.0, c: 26.5 };
-/// The width when Home opens: 0.36 s, 0.82.
+/// The width when Home opens: 0.32 s, 0.92 (feel round 1: no visible overshoot).
 #[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
-pub const NOTCH_OPEN_W: Spring = Spring { k: 305.0, c: 28.6 };
-/// The height when Home opens, OPEN_H_DELAY_MS after the width: 0.42 s, 0.84.
+pub const NOTCH_OPEN_W: Spring = Spring { k: 386.0, c: 36.1 };
+/// The height when Home opens, OPEN_H_DELAY_MS after the width: 0.32 s, 0.92.
 #[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
-pub const NOTCH_OPEN_H: Spring = Spring { k: 224.0, c: 25.1 };
-/// Every close and tuck back, never past its target: 0.45 s, 1.0.
+pub const NOTCH_OPEN_H: Spring = Spring { k: 386.0, c: 36.1 };
+/// Every close and tuck back, never past its target: 0.30 s, 1.0.
 #[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
-pub const NOTCH_CLOSE: Spring = Spring { k: 195.0, c: 27.9 };
+pub const NOTCH_CLOSE: Spring = Spring { k: 685.0, c: 52.4 };
 /// The busy strip and its caption line: 0.30 s, 0.85.
 #[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
-pub const NOTCH_WORK: Spring = Spring { k: 439.0, c: 35.6 };
+pub const NOTCH_WORK: Spring = Spring { k: 504.0, c: 35.9 };
 /// The height starts this long after the width, so the notch reads as stretching sideways first, then dropping.
 #[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
-pub const OPEN_H_DELAY_MS: u64 = 60;
+pub const OPEN_H_DELAY_MS: u64 = 0;
 
 /// Room kept around the open shape inside Home's window, so the overshoot and the shoulders are never clipped.
 pub const HEADROOM: f64 = 24.0;
@@ -471,8 +471,9 @@ pub fn shape_rects_from(p: &HomePanel, open: bool, h: f64, from_w: Option<f64>) 
 }
 /// How long after the opening starts the panel's band stays in Home's hit test: the opening (the height's delay and its
 /// spring, --seq-notch-height-at and --dur-notch-open-h), then the close curve's middle as the band eases back to the
-/// notch and its wings (homeShape.css data-from). Pinned against tokens.css.
-pub const FROM_BAND_MS: u64 = 780;
+/// notch and its wings (homeShape.css data-from). Pinned against tokens.css (feel round 1: the quicker springs, 780 to 480;
+/// feel round 3: one clock for width and height and a quicker CLOSE, 410).
+pub const FROM_BAND_MS: u64 = 410;
 /// The panel's band width now, from what the shell kept at the opening (`(width, until)`, epoch ms) and the time `t`.
 pub fn from_band(kept: Option<(f64, u64)>, t: u64) -> Option<f64> { kept.filter(|k| t < k.1).map(|k| k.0) }
 
@@ -750,8 +751,19 @@ impl Hover {
     pub fn exit(&mut self, t: u64) { self.dismissed = false; if self.inside { self.inside = false; self.since = t; } }
     /// M66: what pointing opened was put away (Esc, a click elsewhere, Close) while the pointer is still on the island: it
     /// does not open again until the pointer has left once.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn dismiss(&mut self) { if self.inside { self.dismissed = true; self.shown = false; self.hid = None; } }
+    /// Feel round 1 (the founder, 17 Nov 2026: "when I open the chat, I cannot close it fully"): the hover after Home closed.
+    /// Fresh, with the waits in force; but if the pointer was still on the island when Home closed, put away (`dismiss`), so
+    /// resting there does not open Home again a moment after it folded (island.pointOpens); it opens again only once the
+    /// pointer has left and come back. Main.rs reset_hover.
+    pub fn after_close(times: HoverTimes, pointer_on: bool, t: u64) -> Hover {
+        let mut h = Hover::new();
+        h.set_times(times);
+        if pointer_on { h.enter(t); h.dismiss(); }
+        h
+    }
+    /// The pointer is on the island, put away or not (for after_close).
+    pub fn pointer_on(&self) -> bool { self.inside }
     /// The pointer is on the island now (for the hover nudge, which answers at once).
     pub fn inside(&self) -> bool { self.inside && !self.dismissed }
     fn need(&self) -> u64 {
@@ -1296,6 +1308,28 @@ mod tests {
         assert!(d.at(500 + HOVER_IN_MS));
     }
     #[test]
+    fn home_closed_under_the_pointer_does_not_open_again_until_the_pointer_leaves() {
+        // Closed (the chat's X, Esc) while the pointer rests on the notch: resting on, nothing opens again.
+        let mut h = Hover::after_close(HoverTimes::USUAL, true, 1000);
+        assert!(h.pointer_on() && !h.inside(), "on the island, but put away");
+        assert!(!h.at(1000 + HOVER_IN_MS + 10) && !h.at(9000), "no reopen while it rests there");
+        assert_eq!(h.wait_ms(9000), None, "nothing to look at again until the pointer moves");
+        // It leaves and comes back: the usual rest, then it opens.
+        h.exit(9100); h.enter(9200);
+        assert!(!h.at(9201));
+        assert!(h.at(9200 + HOVER_IN_MS));
+        // Closed with the pointer elsewhere: a fresh hover, as before.
+        let mut f = Hover::after_close(HoverTimes::USUAL, false, 1000);
+        assert!(!f.pointer_on() && !f.inside());
+        f.enter(2000);
+        assert!(f.at(2000 + HOVER_IN_MS));
+        // The waits from Settings are kept.
+        let slow = HoverTimes { in_ms: 900, out_ms: 300, peek: true };
+        let mut s = Hover::after_close(slow, false, 0);
+        s.enter(100);
+        assert!(!s.at(100 + HOVER_IN_MS) && s.at(1000));
+    }
+    #[test]
     fn crossing_the_notch_along_the_menu_bar_even_slowly_does_not_open_it() {
         // From the menus on the left to the icons on the right: 185 points at an unhurried 700 points a second is 264 ms. (M66
         // shortened the wait to 300 ms; a very slow pass, under about 620 points a second, can now open it: island.openDelay.)
@@ -1571,9 +1605,9 @@ mod tests {
             // From the line under the pointer back to the wings: smaller, so it waits too.
             assert_eq!(retract_ms(frame_of(&d, Mode::WingsPeek, PANEL_MAX), frame_of(&d, Mode::Alert, PANEL_MIN), false), Some(RETRACT_MS));
         }
-        // M66 step 5: the CLOSE spring's tuck (0.45 s, no bounce), after the hover panel's words have left (80 ms).
+        // M66 step 5: the CLOSE spring's tuck (feel round 3: 0.24 s response, no bounce), after the hover panel's words have left (80 ms).
         assert!((150..=600).contains(&RETRACT_MS), "the CLOSE spring's tuck, after the panel's words");
-        assert_eq!(RETRACT_MS, 460 + PANEL_EXIT_MS);
+        assert_eq!(RETRACT_MS, 370 + PANEL_EXIT_MS);
     }
     #[test]
     fn a_proven_fix_widens_the_wings_a_little_then_they_tuck_back_in_place() {
@@ -1620,16 +1654,18 @@ mod tests {
     fn panel(d: &Display) -> HomePanel { home_panel(Some(d), &[HomeSize::WIDE, with_settings(HomeSize::WIDE, true)], HomeSize::WIDE, None).unwrap() }
     #[test]
     fn the_notch_springs_match_their_response_and_damping_and_closing_never_passes_its_target() {
-        for (s, r, z) in [(NOTCH_HOVER, 0.38, 0.80), (NOTCH_OPEN_W, 0.36, 0.82), (NOTCH_OPEN_H, 0.42, 0.84), (NOTCH_CLOSE, 0.45, 1.0), (NOTCH_WORK, 0.30, 0.85)] {
+        for (s, r, z) in [(NOTCH_HOVER, 0.38, 0.80), (NOTCH_OPEN_W, 0.32, 0.92), (NOTCH_OPEN_H, 0.32, 0.92), (NOTCH_CLOSE, 0.24, 1.0), (NOTCH_WORK, 0.28, 0.80)] {
             let want = Spring::of(r, z);
             assert!((s.k - want.k).abs() <= 1.0 && (s.c - want.c).abs() <= 0.1, "{s:?} vs {want:?}");
         }
         // Step each spring from 0 to 1 for two seconds.
         let peak = |s: Spring| { let (mut x, mut v, mut p) = (0.0f64, 0.0f64, 0.0f64); for _ in 0..8000 { v += (-s.k * (x - 1.0) - s.c * v) / 4000.0; x += v / 4000.0; p = p.max(x); } p };
         assert!(peak(NOTCH_CLOSE) <= 1.0 + 1e-9, "closing never overshoots");
-        for s in [NOTCH_OPEN_W, NOTCH_OPEN_H] { let p = peak(s); assert!(p > 1.005 && p < 1.04, "a gentle settle: {p}"); }
-        assert!(NOTCH_CLOSE.damping() > 0.99 && NOTCH_OPEN_W.damping() < 0.9);
-        assert_eq!(OPEN_H_DELAY_MS, 60);
+        // Feel round 1 (18 Nov 2026): the opening's one percent overshoot bobbed the body's bottom edge, so it settles with
+        // under 0.3 percent now (was 0.5 to 4 percent).
+        for s in [NOTCH_OPEN_W, NOTCH_OPEN_H] { let p = peak(s); assert!(p < 1.003, "no visible overshoot: {p}"); }
+        assert!(NOTCH_CLOSE.damping() > 0.99 && NOTCH_OPEN_W.damping() < 0.95);
+        assert_eq!(OPEN_H_DELAY_MS, 0);   // feel round 3: one clock for width and height
     }
     #[test]
     fn homes_window_hangs_from_the_top_of_the_display_centred_on_the_notch_with_room_for_every_state() {

@@ -400,6 +400,9 @@ details.raw > summary { list-style: none; display: inline-flex; align-items: cen
 details.raw > summary::-webkit-details-marker { display: none; }
 details.raw > summary .ic { transition: transform var(--dur-1) var(--ease-out); }
 details.raw[open] > summary .ic { transform: rotate(90deg); }
+/* Feel round 2 (19 Nov 2026): the practice's house rule note is a quiet meta line, the small text size, its chevron at the
+   same optical size, starting on the text's own left edge. */
+.panel.practice details.pr-rules > summary { margin-inline-start: 0; padding: 0; font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font); }
 /* Item 31: a failed task is stamped Not fixed yet in History, in the failure's red. In the side list each badge's dot is a
    small drawing in its colour (a turning ring, a light, a tick, !), so no state is told by colour alone. */
 .stamp[data-stamp="notFixed"] { color: var(--bad); }

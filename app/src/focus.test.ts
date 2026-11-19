@@ -7,12 +7,12 @@ import { BACK_MS } from "./a11y.ts";
 import { openStep } from "./confirm.tsx";
 import { focusBack, focusIfLost, refocus, takeIfLost, type Focusable, type Page, type Seen } from "./focus.ts";
 
-type Fake = Focusable & { focused: number; attrs: Map<string, string>; tabIndex: number; isConnected: boolean; disabled: boolean };
+type Fake = Focusable & { focused: number; opts: (FocusOptions | undefined)[]; attrs: Map<string, string>; tabIndex: number; isConnected: boolean; disabled: boolean };
 function fake(tagName = "BUTTON", o: { isConnected?: boolean; disabled?: boolean; tabIndex?: number; attrs?: Record<string, string> } = {}): Fake {
   const attrs = new Map(Object.entries(o.attrs ?? {}));
   const el: Fake = {
-    tagName, isConnected: o.isConnected ?? true, disabled: o.disabled ?? false, tabIndex: o.tabIndex ?? 0, focused: 0, attrs,
-    focus() { el.focused++; },
+    tagName, isConnected: o.isConnected ?? true, disabled: o.disabled ?? false, tabIndex: o.tabIndex ?? 0, focused: 0, opts: [], attrs,
+    focus(o?: FocusOptions) { el.focused++; el.opts.push(o); },
     hasAttribute: (n: string) => attrs.has(n),
     setAttribute: (n: string, v: string) => { attrs.set(n, v); },
   };
@@ -152,6 +152,11 @@ describe("refocus: when the control with the keyboard goes away", () => {
       expect(refocus(seen, tabOf, page({ ids: { opener } }))).toBe(spot);
       expect(opener.focused).toBe(0);
     }
+  });
+  test("a part of Home put back in focus never scrolls the page (feel round 1: a check that started hid its own card)", () => {
+    const { spot, seen, tabOf } = setup();
+    expect(refocus(seen, tabOf, page())).toBe(spot);
+    expect(spot.opts).toEqual([{ preventScroll: true }]);
   });
   test("a part of Home that already takes the keyboard keeps its own place in the Tab order", () => {
     const { spot, seen, tabOf } = setup({ spot: fake("DIV", { attrs: { tabindex: "0" } }) });
