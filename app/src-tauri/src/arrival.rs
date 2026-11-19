@@ -7,6 +7,13 @@
 /// Home. A lesson id is a short plain id.
 pub fn arrival(v: &serde_json::Value) -> Option<serde_json::Value> {
     let o = v.as_object()?;
+    // M113 review: a press on a line of the live feed: Home shows the review of that session's work, or says when it comes.
+    // Only the session's key (12 lower case hex, a hash: never a path or a name) passes with it.
+    if o.len() == 2 && o.get("do").and_then(|d| d.as_str()) == Some("feed") {
+        let key = o.get("key")?.as_str()?;
+        let ok = key.len() == 12 && key.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c));
+        return ok.then(|| serde_json::json!({ "do": "feed", "key": key }));
+    }
     if o.len() != 1 { return None; }
     if let Some(l) = o.get("lesson") {
         let id = l.as_str()?;
@@ -65,6 +72,12 @@ mod tests {
         assert_eq!(arrival(&json!({ "place": "ask" })), Some(json!({ "place": "ask" })));
         assert_eq!(arrival(&json!({ "do": "review" })), Some(json!({ "do": "review" })));
         assert_eq!(arrival(&json!({ "do": "review", "place": "ask" })), None);
+        // M113 review: a press on a line of the live feed carries only its session's key (12 hex), never a path.
+        assert_eq!(arrival(&json!({ "do": "feed", "key": "3f9a0c21b7d4" })), Some(json!({ "do": "feed", "key": "3f9a0c21b7d4" })));
+        for bad in [json!({ "do": "feed" }), json!({ "do": "feed", "key": "3F9A0C21B7D4" }), json!({ "do": "feed", "key": "3f9a0c21b7d" }), json!({ "do": "feed", "key": "/Users/me" }),
+            json!({ "do": "feed", "key": 3 }), json!({ "do": "feed", "key": "3f9a0c21b7d4", "place": "ask" }), json!({ "do": "review", "key": "3f9a0c21b7d4" })] {
+            assert_eq!(arrival(&bad), None, "{bad}");
+        }
         for bad in [json!({ "do": "delete" }), json!({ "set": "" }), json!({ "set": "../x" }), json!({ "set": "Account.claude" }), json!({ "set": "a..b" }), json!({ "set": "a b" }), json!({ "set": 3 }), json!({ "set": "x".repeat(61) })] {
             assert_eq!(arrival(&bad), None, "{bad}");
         }

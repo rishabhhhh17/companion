@@ -40,6 +40,11 @@
 // finished. A marker with no tool on it (a line written before M105) still works: it is credited to the one tool whose done
 // line is on, else to no tool. Codex also gets a waiting hook on PermissionRequest ("runs when Codex is about to ask for
 // approval"): it touches <token>.codex.wait, prints nothing, exits 0 and never answers the approval. Neither reads its input.
+// M113 (the live feed): a feed hook for the tools with an after edit event (FEED_TOOLS in livefeed.ts): Claude Code's and
+// Codex's PostToolUse on their edit tools, Cursor's afterFileEdit, the VS Code agent's PostToolUse and Gemini CLI's
+// AfterTool on write_file and replace. It hands the tool's note to the guard folder as <token>.<pid>.<tool>.feed, never
+// waits and always exits 0: the edit has already happened, so nothing can be blocked. With Squibby closed it writes nothing.
+// The engine takes only the file's path and counts the lines, and removes the note as it reads it (guard.ts, livefeed.ts).
 // Nothing here runs git or writes the person's git (rule 10). Every other line of the file is kept as it was, a file that is
 // not plain JSON is refused and left alone, and Remove takes out only Squibby's own entry (found by its marker path).
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmdirSync, rmSync, statSync, watch as fsWatch } from "node:fs";
@@ -52,10 +57,10 @@ export const DONE_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity"
 export type DoneTool = (typeof DONE_TOOLS)[number];
 /** M77: the kinds of hook. done: the Stop hook (both tools). guard and waiting: Claude Code only. M78: start, Claude Code
  *  only: the start block (memory/startblock.ts) printed as a session starts. */
-export const HOOK_KINDS = ["done", "guard", "waiting", "start"] as const;
+export const HOOK_KINDS = ["done", "guard", "waiting", "start", "feed"] as const;
 export type HookKind = (typeof HOOK_KINDS)[number];
 /** The event each kind sits under in the tool's hooks file. */
-export const HOOK_EVENT: Readonly<Record<HookKind, string>> = { done: "Stop", guard: "PreToolUse", waiting: "Notification", start: "SessionStart" };
+export const HOOK_EVENT: Readonly<Record<HookKind, string>> = { done: "Stop", guard: "PreToolUse", waiting: "Notification", start: "SessionStart", feed: "PostToolUse" };
 /** M105: Codex's waiting hook sits under PermissionRequest (learn.chatgpt.com/docs/hooks, seen 15 Nov 2026). */
 export const CODEX_WAITING_EVENT = "PermissionRequest";
 /** The matcher of each kind (Stop has none). */
@@ -64,13 +69,20 @@ export const CODEX_WAITING_EVENT = "PermissionRequest";
 /** M103: the guard also sees Claude Code's Read tool, so a read of a saved login file can be asked about first. Only the
  *  file's path is looked at, never its contents (Read's input holds no contents). */
 export const HOOK_MATCHER: Readonly<Partial<Record<HookKind, string>>> = { guard: "Bash|Read", waiting: "permission_prompt|idle_prompt", start: "startup|clear|compact" };
+/** M113: the feed hook's matcher in each tool that takes one: only the edit tools (Cursor's afterFileEdit is only edits, and
+ *  the VS Code agent's PostToolUse has no matcher, so the engine reads only its edit tools). Codex's apply_patch is its edit
+ *  tool ([verify] that Codex hands it to PostToolUse on a real Mac). */
+export const FEED_MATCHER: Readonly<Partial<Record<DoneTool, string>>> = { claude: "Edit|Write|MultiEdit|NotebookEdit", codex: "apply_patch|Edit|Write", gemini: "write_file|replace" };
+/** M113: how long a tool gives the feed hook, in seconds (it never waits, so it ends in a moment). */
+export const FEED_TIMEOUT_S = 5;
 /** The hooks each tool may have. M80: the other tools have the done signal and the guard (their waiting and start contracts
  *  differ or are missing, so those stay Claude Code's). */
-export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting", "start"], codex: ["done", "guard", "waiting"], cursor: ["done", "guard"], copilot: ["done", "guard"], antigravity: ["done", "guard"], gemini: ["done", "guard"], windsurf: ["done", "guard"] };
+/** M113: the feed for the tools with an after edit event; Antigravity and Windsurf are covered by the folder watcher. */
+export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting", "start", "feed"], codex: ["done", "guard", "waiting", "feed"], cursor: ["done", "guard", "feed"], copilot: ["done", "guard", "feed"], antigravity: ["done", "guard"], gemini: ["done", "guard", "feed"], windsurf: ["done", "guard"] };
 /** M80: the event a hook sits under in each tool. Cursor names its own; the rest use Claude Code's names. */
 export const eventOf = (tool: DoneTool, hook: HookKind): string =>
-  tool === "cursor" ? (hook === "guard" ? "beforeShellExecution" : "stop")
-  : tool === "gemini" ? (hook === "guard" ? "BeforeTool" : "AfterAgent")
+  tool === "cursor" ? (hook === "guard" ? "beforeShellExecution" : hook === "feed" ? "afterFileEdit" : "stop")
+  : tool === "gemini" ? (hook === "guard" ? "BeforeTool" : hook === "feed" ? "AfterTool" : "AfterAgent")
   : tool === "codex" && hook === "waiting" ? CODEX_WAITING_EVENT
   : HOOK_EVENT[hook];
 /** M80: Antigravity's file holds named hooks at the top level; Squibby's are named with the internal name (never the product
@@ -175,6 +187,19 @@ export const guardCommand = (guardDir: string, token: string, tool: DoneTool = "
 /** M77: the waiting hook's command. Its input (the notification's JSON) goes to <guardDir>/<token>.<pid>.note. */
 export const waitingCommand = (guardDir: string, token: string): string =>
   `${guardOpening(guardDir)} n="$d/${token}.$$.note"; cat >"$n.tmp" 2>/dev/null && mv "$n.tmp" "$n" 2>/dev/null || rm -f "$n.tmp"; exit 0`;
+/** M113: the feed hook's command. Its input (the tool's note after an edit) goes to <guardDir>/<token>.<pid>.<tool>.feed
+ *  through a temporary name; then it exits 0 at once. It never waits, never prints and never answers: the edit is done.
+ *  With Squibby closed (no live pid) it writes nothing and exits 0. */
+export const feedCommand = (guardDir: string, token: string, tool: DoneTool): string =>
+  `${guardOpening(guardDir)} r="$d/${token}.$$.${tool}.feed"; cat >"$r.tmp" 2>/dev/null && mv "$r.tmp" "$r" 2>/dev/null || rm -f "$r.tmp"; exit 0`;
+/** M113: the feed entry in each tool's own shape. */
+export const feedEntryFor = (tool: DoneTool, guardDir: string, token: string): Json => {
+  const command = feedCommand(guardDir, token, tool);
+  if (tool === "cursor") return { command, timeout: FEED_TIMEOUT_S };
+  if (tool === "copilot") return { type: "command", command, timeoutSec: FEED_TIMEOUT_S };
+  if (tool === "gemini") return { matcher: FEED_MATCHER.gemini, hooks: [{ name: "companion-feed", type: "command", command, timeout: FEED_TIMEOUT_S * 1000 }] };
+  return { matcher: FEED_MATCHER[tool] ?? FEED_MATCHER.claude, hooks: [{ type: "command", command, timeout: FEED_TIMEOUT_S }] };
+};
 /** M77: the entry added under PreToolUse (guard) or Notification (waiting). */
 /** M78: the start hook's command: it prints the project's start block, a file Squibby wrote earlier, and always ends with 0.
  *  It reads nothing else and needs no running engine, so the block reaches Claude while Squibby is closed too. Claude Code
@@ -297,6 +322,7 @@ export class DoneSignals {
     // M105: Codex's waiting hook only touches its own marker; Claude Code's hands over its short notice, as before.
     if (kind === "waiting") return tool === "claude" ? waitingEntry(this.guardDir, t) : waitTouchEntry(join(this.dir, markerName(t, tool, true)));
     if (kind === "start") return startEntry(this.startDir, t);
+    if (kind === "feed") return feedEntryFor(tool, this.guardDir, t);
     return doneEntryFor(tool, join(this.dir, markerName(t, tool)));
   }
   /** Whether an entry under an event is Squibby's own of this kind for this project. */

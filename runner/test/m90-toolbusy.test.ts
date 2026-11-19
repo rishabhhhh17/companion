@@ -84,7 +84,8 @@ describe("hook.busy", () => {
     const main = require("node:fs").readFileSync(new URL("../src/main.ts", import.meta.url), "utf8") as string;
     expect(main).toContain("busy: (p) => toolBusy.seen(p),");
     // M105 (changed on purpose): the done signal names the tool that finished, and Codex's waiting signal goes to the guard.
-    expect(main).toContain("const doneSignals = new DoneSignals(settings.data, { onDone: (p, tool) => { guard.activity(p); toolBusy.done(p); review.doneSignal(p, tool); }, onWaiting: (p, tool) => guard.toolWaiting(p, tool) });");
-    expect(main).toContain(`interrupts.register("guard", { stop: () => { guard.stopWaits(); toolBusy.stop(); }, close: () => guard.stop() });`);
+    // M113 (changed on purpose): the done signal also ends the live feed's session, and Stop everything empties the feed.
+    expect(main).toContain("const doneSignals = new DoneSignals(settings.data, { onDone: (p, tool) => { guard.activity(p); toolBusy.done(p); liveFeed.done(p, tool); review.doneSignal(p, tool); }, onWaiting: (p, tool) => guard.toolWaiting(p, tool) });");
+    expect(main).toContain(`interrupts.register("guard", { stop: () => { guard.stopWaits(); toolBusy.stop(); liveFeed.stop(); }, close: () => guard.stop() });`);
   });
 });

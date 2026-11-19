@@ -89,7 +89,8 @@ describe("the guard and waiting hooks Squibby adds, only after a yes", () => {
     expect(JSON.parse(s.plan(p, "codex", "waiting").adds).hooks.PermissionRequest).toHaveLength(1);
     expect(existsSync(join(p, ".codex"))).toBe(false);
     // The Settings rows: the two done signals, then Claude Code's guard and waiting, and (M78) its start block.
-    expect(s.state(p).map((x) => `${x.tool}:${x.hook}`)).toEqual(["claude:done", "claude:guard", "claude:waiting", "claude:start", "codex:done", "codex:guard", "codex:waiting", "cursor:done", "cursor:guard", "copilot:done", "copilot:guard", "antigravity:done", "antigravity:guard", "gemini:done", "gemini:guard", "windsurf:done", "windsurf:guard"]);
+    // M113 (changed on purpose): each tool with an after edit event has its live feed row too.
+    expect(s.state(p).map((x) => `${x.tool}:${x.hook}`)).toEqual(["claude:done", "claude:guard", "claude:waiting", "claude:start", "claude:feed", "codex:done", "codex:guard", "codex:waiting", "codex:feed", "cursor:done", "cursor:guard", "cursor:feed", "copilot:done", "copilot:guard", "copilot:feed", "antigravity:done", "antigravity:guard", "gemini:done", "gemini:guard", "gemini:feed", "windsurf:done", "windsurf:guard"]);
   });
   test("adding keeps every other hook (the person's own PreToolUse too), adding twice adds once, and Remove takes out only Squibby's", () => {
     const data = tmp("data"), p = gitProject();

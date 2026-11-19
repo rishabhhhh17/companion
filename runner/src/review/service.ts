@@ -103,6 +103,8 @@ export type ReviewDeps = {
   busy?: (project: string) => boolean;
   watch?: WatchFn;
   graceMs?: number;
+  /** M113: each path the watcher counts in the project watched, for the live feed (livefeed.ts folder). */
+  seen?: (project: string, rel: string) => void;
   /** For tests: the quiet time in milliseconds, instead of review.quietSeconds. */
   quietMs?: () => number;
   /** M75: the settle after the other tool's done signal (DONE_SETTLE_MS as usual). */
@@ -412,7 +414,7 @@ export class ReviewService {
     let store: CheckpointStore;
     try { store = this.deps.store(p); } catch { return; }   // a folder too broad to keep a copy of: nothing is watched
     const gen = ++this.gen;
-    const b = new ChangeBatcher({ project: p, quietMs: () => this.quietMs(), onReady: (paths, capped) => this.ready_(gen, paths, capped), busy: () => this.deps.busy?.(p) === true, watch: this.deps.watch, graceMs: this.deps.graceMs, ignore: () => this.ownIgnore() });
+    const b = new ChangeBatcher({ project: p, quietMs: () => this.quietMs(), onReady: (paths, capped) => this.ready_(gen, paths, capped), busy: () => this.deps.busy?.(p) === true, watch: this.deps.watch, graceMs: this.deps.graceMs, ignore: () => this.ownIgnore(), ...(this.deps.seen ? { onPath: (rel: string) => this.deps.seen!(p, rel) } : {}) });
     if (!b.start()) return;
     for (let i = 0; i < this.ownOf(p); i++) b.holdOwn();
     this.batcher = b; this.watching = p;

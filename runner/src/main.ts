@@ -50,6 +50,7 @@ import { setOwnSecretPatterns } from "./secretfiles.ts";
 import { isKeyPractice, practiceKeyStep } from "./practicekey.ts";
 import { DoneSignals, type DonePlan } from "./donesignal.ts";
 import { ToolBusy } from "./toolbusy.ts";
+import { HOOKLESS_TOOLS, LiveFeed } from "./livefeed.ts";
 import { HookGuard, SAVED_LABEL, waitingMinutesOf } from "./guard.ts";
 import { SessionStartNotes } from "./memory/sessionstart.ts";
 
@@ -111,8 +112,12 @@ function ownWork(project: string | undefined, start: () => Promise<unknown>, kin
 // every project (review/silence.ts). A line the tool being reviewed writes into the project's memory file silences nothing.
 const silences = new SilenceLedger(join(settings.data, "review-silenced.json"));
 const projectLines = (p: string): string[] => { try { return new MemoryStore({ project: p, profileDir: settings.data }).list("project").entries.map((e) => e.text); } catch { return []; } };
+// M113: the live feed in the notch (livefeed.ts): the tool's feed notes and guard requests, and the review watcher's paths for
+// a tool with no hooks. In memory only; said as feed.update.
+// M113 review: the folder fills in only for a project with a tool that has no feed hook connected (its done or guard line on).
+const liveFeed = new LiveFeed({ emit: (e) => say(e), hookless: (p) => HOOKLESS_TOOLS.some((t) => (["done", "guard"] as const).some((h) => doneSignals.plan(p, t, h).on)) });
 const review = new ReviewService({
-  emit: (e) => say(e), setting: (k, p) => runnerSettings.get(k, p), store: (p) => runner.checkpointsFor(p),
+  emit: (e) => say(e), seen: (p, rel) => liveFeed.folder(p, rel), setting: (k, p) => runnerSettings.get(k, p), store: (p) => runner.checkpointsFor(p),
   cheap: lanes && !settings.assistStub ? lanes.fast : null, strong: strongLane,
   spend: { room: (p) => runner.roomFor(p), book: (p, usd) => runner.bookSpend(p, usd) },
   check: (p, sig, o) => runner.checkForReview(p, sig, o), busy: (p) => runner.busyIn(p), sandboxed: nestedSandbox,
@@ -146,7 +151,7 @@ const review = new ReviewService({
 // M90: the person's own tool working (its guard hook ran), said for Flowflow's peek out of the notch; its done hook ends it.
 const toolBusy = new ToolBusy({ emit: (e) => say(e) });
 // M105: the tool that finished credits the batch it moves on; Codex's waiting signal is said as hook.waiting with its tool.
-const doneSignals = new DoneSignals(settings.data, { onDone: (p, tool) => { guard.activity(p); toolBusy.done(p); review.doneSignal(p, tool); }, onWaiting: (p, tool) => guard.toolWaiting(p, tool) });
+const doneSignals = new DoneSignals(settings.data, { onDone: (p, tool) => { guard.activity(p); toolBusy.done(p); liveFeed.done(p, tool); review.doneSignal(p, tool); }, onWaiting: (p, tool) => guard.toolWaiting(p, tool) });
 doneSignals.start();
 // M78: the start block Claude Code's SessionStart hook prints, and the project's notes search index. Both are copies of the
 // notes files, written only while the person has the start hook set up; copies left from a hook that is gone are removed.
@@ -168,6 +173,9 @@ const guard = new HookGuard(doneSignals.guardFolder, {
   logins: () => runnerSettings.get("safety.savedLogins"),
   waitingMinutes: () => waitingMinutesOf(runnerSettings.get("notch.waitingMinutes")),
   busy: (p) => toolBusy.seen(p),
+  // M113: what the tool edits and runs, for the live feed.
+  feed: (p, tool, text) => liveFeed.edit(p, tool, text),
+  ran: (p, tool, text) => liveFeed.ran(p, tool, text),
 });
 guard.start();
 const doneState = (project: string, tools: DonePlan[], problem?: string) =>
@@ -196,7 +204,7 @@ const interrupts = new Interrupts();
   interrupts.register("watches", { stop: () => watches.stopAll(), groups: g.watches, close: () => watches.stop() });
   interrupts.register("review", { stop: () => review.stopAll(), close: () => review.stop() });
   interrupts.register("assist", { stop: () => assist?.cancelAll(), groups: g.assist });
-  interrupts.register("guard", { stop: () => { guard.stopWaits(); toolBusy.stop(); }, close: () => guard.stop() });
+  interrupts.register("guard", { stop: () => { guard.stopWaits(); toolBusy.stop(); liveFeed.stop(); }, close: () => guard.stop() });
   // The hooks are the person's own Claude Code's: Stop everything ends nothing of theirs, and the engine closing stops
   // listening to them (the start files stay for the next session, M78).
   interrupts.register("doneSignals", { stop: () => undefined, close: () => doneSignals.stop() });

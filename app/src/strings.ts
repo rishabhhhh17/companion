@@ -15,6 +15,8 @@ const whenWords = (iso: string | undefined): string => {
 
 /** The product's name ("Squibby"), and with 's. Other page files import these rather than typing the word. */
 export const PRODUCT: string = names.product;
+/** M113: counts in the live feed, grouped by thousands. */
+const FEED_NUM = new Intl.NumberFormat("en-US");
 export const PRODUCT_S: string = names.productPossessive;
 /** M103: the saved logins setting's label, and the review's line on each guard's yes card that says where to change it. */
 const SAVED_LOGINS_LABEL = "Saved logins";
@@ -663,6 +665,8 @@ export const S = {
     "updates.quiet": "An update found installs after 5 quiet minutes, never during a job, a call or while the light is on.",
     "runway.mark": "Now in Home shows how much of the Claude limit is used, when Claude says.",
     "runway.warnAt": "Before a big job, a warning when the Claude limit is this close, with Save for after the reset.",
+    // M113
+    "notch.liveFeed": "Pointing at the notch lists the files your AI tool edits and the commands it runs, while it works.",
     "talk.accuracy": "Best understands more words. It is a one time download of 574 MB, kept on this Mac.",
   } as Record<string, string>,
   // Short words for a choice drawn side by side (a Segmented control never wraps: the spec, 2.3). The full words stay in a
@@ -760,7 +764,7 @@ export const S = {
     google: { title: "Google connections", also: ["google", "sign in", "gmail", "email", "calendar", "drive", "connect"] },
     preview: { title: "Preview the character", also: ["preview", "resting", "working", "done", "character"] },
     doneSignal: { title: "When your AI tool says it is done", also: ["done", "finished", "signal", "Claude Code", "Codex", "Cursor", "VS Code", "Copilot", "Antigravity", "Gemini", "Windsurf", "Devin", "Xcode", "settings.local.json", "review", "quiet time", "faster", "sooner", "snapshot", "saved copy", "destructive", "reset", "delete", "waiting", "notch", "session", "start", "notes", "memory", "house rules", "decisions"] },
-    aiTools: { title: "Your AI tools", also: ["connect", "disconnect", "ai tools", "Claude Code", "Codex", "Cursor", "VS Code", "Copilot", "Antigravity", "Gemini", "Windsurf", "Devin", "done", "saved copy", "installed", "found"] },
+    aiTools: { title: "Your AI tools", also: ["connect", "disconnect", "ai tools", "Claude Code", "Codex", "Cursor", "VS Code", "Copilot", "Antigravity", "Gemini", "Windsurf", "Devin", "done", "saved copy", "installed", "found", "live", "show edits live", "edits"] },
     reviewKeep: { title: "How long reviews stay in History", also: ["review", "history", "keep", "days", "privacy", "retention", "delete"] },
     usedOften: { title: "Ways you use most", also: ["reset", "order", "most used", "more ways to ask", "forget", "learned", "habit"] },
   },
@@ -2612,6 +2616,8 @@ export const S = {
     "island.hello": { label: "Say hello in the notch", help: "Off unless you turn it on. On, a short hello shows when you start the app, wake your Mac or come back after more than an hour. The notch widens for about 3 seconds with one line, such as Hey Sam, and one fact if there is one. Only on a Mac with a notch, at most once an hour, and never with a sound. Never while a call app such as Zoom is in front. It checks only which app is in front, so turn on Hide from screen sharing to keep it out of a share.", also: ["hello", "greeting", "hi", "notch", "welcome", "wake", "start", "name"] },
     "you.name": { label: "Your name", help: "When you point at the notch it greets you with the first word, such as Hey Sam. The hello in the notch uses it too. Only what you type here is used, and it stays on this Mac. Empty, it says Hey there.", also: ["your name", "name", "call me", "hello", "greeting", "profile", "me", "you"], placeholder: "Your name" },
     "you.buildsWith": { label: "The AI you build with", help: "Your answer to the first run's question. It only picks which tip you see first. It is kept on this Mac and never sent anywhere. Not set forgets it.", also: ["lovable", "bolt", "replit", "cursor", "claude code", "ai tool", "builder", "tip", "first run"], options: { unset: "Not set", lovable: "Lovable", bolt: "Bolt", replit: "Replit", cursor: "Cursor", claudeCode: "Claude Code", other: "Something else" } },
+    // M113: the live feed in the notch.
+    "notch.liveFeed": { label: "Show what your AI tools are doing", help: `While a connected AI tool works, pointing at the notch lists the files it edited and the commands it ran, newest first. Each file shows how many lines were added and taken away. A press on a line opens the review in Home. Only file names, counts and short commands are shown, and nothing is kept once the tool is done. For a tool you connected before, press Show edits live on its row in Settings, Fixing, Your AI tools.`, also: ["live", "feed", "ticker", "edits", "diff", "lines", "commands", "notch", "activity", "Claude Code", "Codex", "Cursor", "Gemini"] },
     "island.showStep": { label: "Show the step on the notch", help: "Only with Show wings at rest on. While a job works, the notch shows its step, such as Fixing, and a thin line of the four steps. Off, it shows only its marks. Home's work card always shows the step.", also: ["progress", "step", "notch", "working", "live", "line"] },
     "island.showWork": { label: "Drop work from the notch as it moves on", help: "When a fix is proven, or fails, its card drops from the notch for a few seconds, then tucks back. Off, the notch only shows its marks.", also: ["Show results under the notch", "live", "progress", "cards", "jobs", "activity", "notch"] },
     "island.openForQuestions": { label: "Open for questions", help: "When the AI needs your OK, the notch opens by itself so you can answer there. Things that cannot be undone, and changes to your project's Git history, still open Home so you can look first. Off, the notch only shows a mark.", also: ["Open the notch for questions", "approve", "allow", "ask", "question", "notch", "pop up"] },
@@ -3899,8 +3905,11 @@ export const S = {
       // M105: Codex can say it waits too.
       waiting: (tool: string) => `Say in the notch when ${tool} waits for you`,
       start: () => "Give Claude Code your notes as each session starts",
-    } as Record<"done" | "guard" | "waiting" | "start", (tool: string) => string>,
-    connectWhat: (tool: string) => `Each line only tells ${PRODUCT} that ${tool} is done, or about to run a destructive command or read saved logins. Nothing is blocked unless you choose that in Settings, and nothing ${tool} says is kept.`,
+      // M113: the live feed.
+      feed: (tool: string) => `Show ${tool}'s edits live in the notch`,
+    } as Record<"done" | "guard" | "waiting" | "start" | "feed", (tool: string) => string>,
+    // M113: with the live feed, the line also tells which file it just edited and how many lines changed.
+    connectWhat: (tool: string, feed = false) => `Each line only tells ${PRODUCT} that ${tool} is done, ${feed ? "about to run a destructive command or read saved logins, or which file it just edited and how many lines changed" : "or about to run a destructive command or read saved logins"}. Nothing is blocked unless you choose that in Settings, and nothing ${tool} says is kept.`,
     yes: "Connect",
     no: "Not now",
     connectedSaid: (tool: string) => `Connected. ${tool} now tells ${PRODUCT} when it is done here.`,
@@ -4364,5 +4373,49 @@ export const S = {
     askWhat: (tool: string) => `When ${tool} is about to ask for your approval, it touches an empty file in ${PRODUCT_S} own folder. Nothing is read from ${tool} and its question never travels. ${PRODUCT} never answers for you: you approve in ${tool} as before.`,
     // Remove's line for the waiting row.
     removed: (tool: string) => `${tool} will no longer say in the notch when it waits.`,
+  },
+  // M113: the live feed in the notch (notchFeed.ts). One block per session: the tool and the project, then the files it edited
+  // with the lines added and taken away, and the commands it ran, newest first.
+  m113: {
+    label: "What your AI tools are doing",
+    head: (tool: string, project: string) => (project ? `${tool} in ${project}` : tool),
+    // A tool with no hooks: the files seen changing in the folder, with no tool named.
+    folderHead: (project: string) => (project ? `Changes in ${project}` : "Changes"),
+    // M113 review: a block seen only in the folder says Seen, never Working: it may be the person's own saves.
+    state: { working: "Working", done: "Finished", seen: "Seen" } as Record<"working" | "done" | "seen", string>,
+    // What VoiceOver says for a line, and its tooltip.
+    // Only the counts that are known and more than none are said; both none is said as no lines changed.
+    // A count grouped by thousands ("12,345"), drawn and said.
+    num: (n: number) => FEED_NUM.format(n),
+    editSay: (path: string, added: number | null, removed: number | null, n: number) =>
+      `Edited ${path}${added === 0 && removed === 0 ? ", no lines changed" : ""}${added ? `, ${added === 1 ? "1 line" : `${FEED_NUM.format(added)} lines`} added` : ""}${removed ? `, ${removed === 1 ? "1 line" : `${FEED_NUM.format(removed)} lines`} taken away` : ""}${n > 1 ? `, ${FEED_NUM.format(n)} times` : ""}`,
+    seenSay: (path: string, n: number) => `Changed ${path}, seen in the folder${n > 1 ? `, ${FEED_NUM.format(n)} times` : ""}`,
+    ranSay: (command: string, n: number) => `Ran ${command}${n > 1 ? `, ${FEED_NUM.format(n)} times` : ""}`,
+    times: (n: number) => `${FEED_NUM.format(n)}×`,
+    seen: "seen",
+    open: "Opens the review in Home",
+    // A press while the tool still works (no review of this work yet), or on a line from another project.
+    later: (tool: string) => `${tool || "Your AI tool"} is still working. The review of these changes shows here when it finishes.`,
+    // M113 review: with one button that opens that project (openProject), then the same press again.
+    elsewhere: (project: string) => `These changes are in ${project}.`,
+    openProject: (project: string) => `Open ${project}`,
+    // M113 review: the tool finished and its review is not in yet (the review's settle time after the done signal).
+    settling: (tool: string) => `${tool || "Your AI tool"} finished. Its review starts in a moment.`,
+    // M113 review: said in the notch, under the line pressed, while the tool still works.
+    laterHere: (tool: string) => `The review shows when ${tool || "your AI tool"} finishes.`,
+    // M113 review: the work's session went (its Finished minute, or the idle timeout) before Home opened.
+    gone: (reviewsOn: boolean) => (reviewsOn ? "That work has finished. Its review is on Now or in History." : "That work has finished."),
+    // Settings, the feed row of each tool, and its card before the yes.
+    rowTitle: (tool: string) => `${tool}: show its edits live in the notch`,
+    rowLine: (tool: string) => `As ${tool} edits a file, pointing at the notch shows the file's name and how many lines it added and took away. Only the name and the counts are kept, in memory, while it works.`,
+    askTitle: (tool: string) => `Show ${tool}'s edits live in the notch?`,
+    askWhat: (tool: string) => `After each edit, ${tool} hands its own note about the edit to ${PRODUCT_S} own folder and goes on at once. ${PRODUCT} reads only the file's name and counts the lines, then removes the note. The edit's words are never kept, shown or sent anywhere. Nothing is blocked. If ${PRODUCT} is closed, nothing is written.`,
+    removed: (tool: string) => `${tool}'s edits will no longer show live in the notch.`,
+    // Your AI tools: the connected tool's line, when its live feed is on.
+    liveOn: "Its edits show live in the notch.",
+    // M113 review: on a connected tool's row whose live feed is off (a tool connected before M113): opens the feed's own card.
+    showLive: "Show edits live",
+    showLiveLabel: (tool: string) => `Show ${tool}'s edits live in the notch`,
+    liveSaid: (tool: string) => `${tool}'s edits will show live in the notch.`,
   },
 } as const;

@@ -28,7 +28,9 @@ pub const INDEX: &str = "done-signals.json";
 /// The events Squibby's hooks sit under (donesignal.ts HOOK_EVENT): the done signal, the guard and the waiting hook (M77),
 /// and the start block (M78). M105: Codex's waiting signal under PermissionRequest (a touch of the done folder, like the
 /// done signal, so it is found the same way).
-pub const EVENTS: &[&str] = &["Stop", "PreToolUse", "Notification", "SessionStart", "stop", "beforeShellExecution", "BeforeTool", "AfterAgent", "PermissionRequest"];
+/// M113: the live feed hook under PostToolUse (Claude Code, Codex, the VS Code agent), afterFileEdit (Cursor) and AfterTool
+/// (Gemini CLI); it opens with the guard folder, like the guard, so it is found the same way.
+pub const EVENTS: &[&str] = &["Stop", "PreToolUse", "Notification", "SessionStart", "stop", "beforeShellExecution", "BeforeTool", "AfterAgent", "PermissionRequest", "PostToolUse", "afterFileEdit", "AfterTool"];
 
 // ---------- a small JSON reader and writer that keeps the order of keys ----------
 // The app's serde_json sorts the keys of an object, which would reorder the person's file. This keeps them as written.
@@ -419,6 +421,28 @@ mod tests {
         assert!(!t.project.join(".codex").exists());
         let ts = include_str!("../../../runner/src/donesignal.ts");
         assert!(ts.contains("CODEX_WAITING_EVENT = \"PermissionRequest\"") && ts.contains("`/usr/bin/touch -- ${shQuote(marker)} 2>/dev/null; exit 0`"), "the runner writes the same event and the same touch");
+    }
+    #[test]
+    fn m113_the_live_feed_lines_go_in_every_tool_and_the_persons_own_after_edit_hooks_stay() {
+        let t = t("m113");
+        let feed = |tool: &str| format!("d='{}/guard'; p=$(cat \"$d/pid\" 2>/dev/null) && kill -0 \"$p\" 2>/dev/null || {{ exit 0; }}; r=\"$d/0123456789abcdef01234567.$$.{tool}.feed\"; cat >\"$r.tmp\" 2>/dev/null && mv \"$r.tmp\" \"$r\" 2>/dev/null || rm -f \"$r.tmp\"; exit 0", t.data.display());
+        let q = |s: String| serde_json::to_string(&s).unwrap();
+        create_dir_all(t.project.join(".claude")).unwrap();
+        create_dir_all(t.project.join(".cursor")).unwrap();
+        create_dir_all(t.project.join(".gemini")).unwrap();
+        fwrite(t.project.join(".claude/settings.local.json"), format!("{{ \"hooks\": {{ \"PostToolUse\": [ {{ \"matcher\": \"Edit\", \"hooks\": [ {{ \"type\": \"command\", \"command\": \"./fmt.sh\" }} ] }}, {{ \"matcher\": \"Edit|Write|MultiEdit|NotebookEdit\", \"hooks\": [ {{ \"type\": \"command\", \"command\": {}, \"timeout\": 5 }} ] }} ] }} }}", q(feed("claude")))).unwrap();
+        fwrite(t.project.join(".cursor/hooks.json"), format!("{{ \"version\": 1, \"hooks\": {{ \"afterFileEdit\": [ {{ \"command\": \"./mine.sh\" }}, {{ \"command\": {}, \"timeout\": 5 }} ] }} }}", q(feed("cursor")))).unwrap();
+        fwrite(t.project.join(".gemini/settings.json"), format!("{{ \"hooks\": {{ \"AfterTool\": [ {{ \"matcher\": \"write_file|replace\", \"hooks\": [ {{ \"name\": \"companion-feed\", \"type\": \"command\", \"command\": {}, \"timeout\": 5000 }} ] }} ] }} }}", q(feed("gemini")))).unwrap();
+        index_with(&t, &["gemini"], &[]);
+        assert_eq!(remove(&t.project, &t.data), vec![".claude/settings.local.json", ".cursor/hooks.json", ".gemini/settings.json"]);
+        let claude: serde_json::Value = serde_json::from_str(&fs::read_to_string(t.project.join(".claude/settings.local.json")).unwrap()).unwrap();
+        assert_eq!(claude, serde_json::json!({ "hooks": { "PostToolUse": [ { "matcher": "Edit", "hooks": [ { "type": "command", "command": "./fmt.sh" } ] } ] } }), "the person's own formatter stays");
+        let cursor: serde_json::Value = serde_json::from_str(&fs::read_to_string(t.project.join(".cursor/hooks.json")).unwrap()).unwrap();
+        assert_eq!(cursor, serde_json::json!({ "version": 1, "hooks": { "afterFileEdit": [ { "command": "./mine.sh" } ] } }));
+        assert!(!t.project.join(".gemini/settings.json").exists(), "a file Squibby made that holds nothing else goes");
+        let ts = include_str!("../../../runner/src/donesignal.ts");
+        assert!(ts.contains("feed: \"PostToolUse\"") && ts.contains("hook === \"feed\" ? \"afterFileEdit\"") && ts.contains("hook === \"feed\" ? \"AfterTool\""), "the runner writes the same events");
+        assert!(ts.contains("r=\"$d/${token}.$$.${tool}.feed\"; cat >\"$r.tmp\" 2>/dev/null && mv \"$r.tmp\" \"$r\" 2>/dev/null || rm -f \"$r.tmp\"; exit 0"), "the runner writes the same command");
     }
     #[test]
     fn this_file_never_runs_git_and_the_runners_rule_is_the_same() {

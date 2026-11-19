@@ -524,3 +524,25 @@
 .home .askwrap .ask-foot > .ask-key .ui-key { border-color: transparent; background: var(--surface-1); color: var(--fg-2); }
 /* The small chat's top row (feel round 3): its two line title sits a few points lower, clear of the notch line. */
 .notch-chat .nc-top { padding-top: var(--space-1); }
+/* M113, the live feed at the top of the small chat (notchFeed.tsx): the same rows as under the notch, in Home's own type
+   scale (it follows the text size and wraps, never cut). No colour of its own: the chat's and the notch's tokens. */
+.notch-chat .lf { flex: none; display: grid; gap: var(--space-1); min-width: 0; margin: 0 -6px; }
+.notch-chat .lf-block { display: grid; min-width: 0; }
+.notch-chat .lf-head { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--space-2); padding: 0 6px; color: var(--notch-fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
+.notch-chat .lf-who { min-width: 0; overflow-wrap: anywhere; }
+.notch-chat .lf-state { margin-left: auto; color: var(--chat-when); }
+.notch-chat .lf-block[data-state="done"] .lf-state { color: var(--notch-ok); }
+.notch-chat .lf-rows { list-style: none; margin: 0; padding: 0; display: grid; }
+.notch-chat .lf-rows > li { min-width: 0; animation: nc-in var(--dur-notch-row) var(--ease-out) both; }
+@media (prefers-reduced-motion: reduce) { .notch-chat .lf-rows > li { animation-name: nc-fade; } }
+.notch-chat button.lf-row { display: flex; align-items: baseline; gap: var(--space-2); width: 100%; min-height: calc(20rem / 14); min-width: 0; margin: 0; padding: calc(1rem / 14) 6px; border: 0; border-radius: 6px; background: transparent; color: var(--notch-fg); font: var(--t-small) / var(--lh-small) var(--font); text-align: left; transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
+.notch-chat button.lf-row:hover { background: var(--chat-icon-bg); }
+.notch-chat button.lf-row:active { transform: scale(var(--press-row)); transition-duration: var(--dur-press); }
+.notch-chat .lf-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.notch-chat .lf-dir { color: var(--chat-when); }
+.notch-chat .lf-row[data-kind="run"] .lf-file { font-family: var(--font-code); }
+.notch-chat .lf-meta { flex: none; display: flex; gap: 6px; font: var(--w-strong) var(--t-caption) / var(--lh-small) var(--font-code); font-variant-numeric: tabular-nums; }
+.notch-chat .lf-add { color: var(--notch-ok); }
+.notch-chat .lf-del { color: var(--notch-bad); }
+.notch-chat :is(.lf-seen, .lf-times) { color: var(--chat-when); font-family: var(--font); font-weight: 400; }
+.notch-chat .lf-said { margin: 0; padding: 0 6px; color: var(--notch-fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); overflow-wrap: anywhere; animation: nc-fade var(--dur-notch-row) var(--ease-out) both; }

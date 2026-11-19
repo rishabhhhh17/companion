@@ -56,6 +56,9 @@ export type BatcherOptions = {
   ignore?: () => readonly RegExp[];
   graceMs?: number;
   watch?: WatchFn;
+  /** M113: each path counted in a batch (never the engine's own work, an ignored path or a folder), for the live feed of a
+   *  tool with no hooks (livefeed.ts folder). Only the path from the folder down. */
+  onPath?: (rel: string) => void;
 };
 
 export class ChangeBatcher {
@@ -140,6 +143,7 @@ export class ChangeBatcher {
       if (this.paths.size >= (this.o.maxPaths ?? MAX_PATHS)) this.capped = true;
       else this.paths.add(rel);
     }
+    try { this.o.onPath?.(rel); } catch { /* the live feed is a nicety */ }
     this.arm();
   }
   private arm(): void {

@@ -39,6 +39,7 @@ import { failCopy, failedStep, proofSentence, proofTicks, replayRows, runList } 
 import { FailLead, ProofTicks, Replay, RunRows } from "./runListView.tsx";
 import { RecheckList } from "./recheckList.tsx";
 import { stillOf } from "./fixRecheck.ts";
+import { feedPress, feedProjectName } from "./notchFeed.ts";
 import { ASKED_NOTICE_MS, arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
 import { jobStep, needMainWords, goLiveAnswer, reviewHeroSays, askRoute, blockerOf, blockLineFor, blockMainFor, fixOffered, MAIN_TOOL, heroCompact, homeFixRoute, jobLive, timeLine, clockOnly, HELLO_GRACE_MS, reviewLead, aboutWorthACard, needMainFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
 import { notePress, orderWays, readCounts, type Counts, type Way } from "./usedOften.ts";
@@ -782,6 +783,9 @@ export function Card() {
   // The buttons that open a step or a box, so the keyboard goes back to them when it closes.
   const linkId = useId(), undoId = useId(), bisectUndoId = useId(), askId = useId(), checksId = useId();
   const [project, setProject] = useState("");
+  // M113 review: a feed line of another project: its notice with Open <project>, and the press to read again once it is open.
+  const [feedAway, setFeedAway] = useState<{ project: string; key: string } | null>(null);
+  const feedAfterOpen = useRef<{ project: string; key: string } | null>(null);
   // What opening a lesson step's page said, if it could not open it (links.ts); a new step starts with none.
   const [lessonNote, setLessonNote] = useState("");
   useEffect(() => { setLessonNote(""); }, [m.walk?.id, m.walk?.index, m.walk?.variant]);
@@ -1995,11 +1999,34 @@ export function Card() {
   // (main.rs island_go), and it takes the keys only when the person clicks into it (rule 9).
   const showAsk = () => { setTimeout(() => box.current?.scrollIntoView({ block: "nearest" }), 0); };
   const showReview = () => { setTimeout(() => document.getElementById(REVIEW_ID)?.scrollIntoView({ block: "start" }), 0); };
+  // M113 review: the project the feed line was in is open now (after Open <project>): the same press is read again there.
+  useEffect(() => {
+    const want = feedAfterOpen.current;
+    if (!want || want.project !== project) return;
+    feedAfterOpen.current = null;
+    onArrival.current({ do: "feed", key: want.key });
+  }, [project]);
   onArrival.current = (t: HomeArrival) => {
     if ("place" in t) { if (t.place === "ask") { pickTab("now"); showAsk(); return; } }
     // From the panel under the notch: the two things Squibby is for.
     if ("do" in t) {
       if (t.do === "review") { pickTab("now"); if (nowModel.current.review) showReview(); return; }
+      // M113 review: a line of the live feed. This work's review when it is in; else a plain line saying when it comes, or
+      // which project the changes are in (notchFeed.ts feedPress), never an older review as if it were this one.
+      if (t.do === "feed") {
+        pickTab("now");
+        setFeedAway(null);
+        const cur = nowModel.current, s = cur.feed?.find((x) => x.key === t.key), on = reviewMode !== "off";
+        // M113 review: the work's session went before Home opened: a plain line, never whatever review is there.
+        if (!s) { dispatch({ type: "app.notice", message: S.m113.gone(on) }); return; }
+        const go = feedPress(s, project, cur.review, on), tool = s.tool ? S.doneSignal.tool[s.tool] : "";
+        if (go === "review") showReview();
+        else if (go === "later") dispatch({ type: "app.notice", message: S.m113.later(tool) });
+        else if (go === "settling") dispatch({ type: "app.notice", message: S.m113.settling(tool) });
+        // M113 review: one button opens that project (the person's own tap), then the same press is read again there.
+        else if (go === "elsewhere") setFeedAway({ project: s.project, key: s.key });
+        return;
+      }
       // The notch's Undo this fix: the receipt's own question, on Now (it is never undone without the person's yes there).
       if (t.do === "undo") { pickTab("now"); if (m.receipt && undoCan(m, project)) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); return; }
       // M72 (item 15): over a failed check the panel's button says Fix it, and does what Home's Fix it does.
@@ -2917,6 +2944,7 @@ export function Card() {
         talk={{ on: groups.on("talk") && !!keys.using.talk, title: talkKeysLine(keys), label: keys.using.talk ? S.m96.chat.micKeys(chordLabel(keys.using.talk)) : S.m96.chat.mic }}
         stop={stopCan(m) ? { label: `${S.m96.chat.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`, title: keyHint("stop", S.look.stopKeys, keys) } : null} onStop={() => void stopNow()}
         onBubble={(go) => { openOut(); if (go === "review") onArrival.current({ do: "review" }); else pickTab("now"); }}
+        onFeed={(key) => { openOut(); onArrival.current({ do: "feed", key }); }}
         onMic={() => { if (keys.using.talk) setMicSaid(S.look.micHint(chordLabel(keys.using.talk))); }}
         onSend={submit} onInput={() => { fitBox(); setAskHint(null); setVague(null); }} onFocus={() => warmSoon()}
         onKeyDown={(e) => {
@@ -3220,6 +3248,10 @@ export function Card() {
               {home.tab !== "did" && <button className="btn" type="button" onClick={() => { setAskedFocus(loginNotice.command); pickTab("did"); }}>{S.guard.login.seeInHistory}</button>}</div>
           </div>
         : <div className="notice" role="status">{m.notice}</div>)}
+      {feedAway && feedAway.project !== project && <div className="notice feed-away" role="status" data-kind="feed-elsewhere">
+        <span>{S.m113.elsewhere(feedProjectName(feedAway.project))}</span>
+        <Button size="sm" onClick={() => { feedAfterOpen.current = feedAway; openFolder(feedAway.project); }}>{S.m113.openProject(feedProjectName(feedAway.project))}</Button>
+      </div>}
       {/* M77: the person's own Claude Code waits for them (the waiting hook): the same line as the notch, with Claude Code's own
           short notice under it, never the question. */}
       {/* M105: Codex waiting says so in its name, with where to answer; no words of its question travel. */}

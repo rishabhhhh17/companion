@@ -171,6 +171,8 @@ describe("the shipped list of settings", () => {
       "runway.mark": true, "runway.warnAt": "80", "updates.quiet": true, "talk.accuracy": "standard",
       // M98 (F29): the developer key row is hidden unless this is turned on (off).
       "developer.tools": false,
+      // M113: the live feed in the notch (on; it only shows names, counts and short commands, and keeps nothing).
+      "notch.liveFeed": true,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -180,6 +182,10 @@ describe("the shipped list of settings", () => {
     expect(validate(defOf("spend.pauseAt")!, "10").ok).toBe(false);
     expect(defOf("check.privatePages")).toMatchObject({ section: "checks", kind: "switch", default: true, scope: "project", applies: ["runner"] });
     expect(defOf("ask.choices")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });
+  });
+  test("M113: the live feed switch is the pages' own, on", () => {
+    expect(defOf("notch.liveFeed")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(validate(defOf("notch.liveFeed")!, "yes").ok).toBe(false);
   });
   test("M98: the developer tools switch is the pages' own, off", () => {
     expect(defOf("developer.tools")).toMatchObject({ section: "display", kind: "switch", default: false, scope: "app", applies: ["pages"], store: "settings", live: true });

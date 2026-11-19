@@ -3,9 +3,9 @@
 // Connect opens one card that shows every file and every line for that tool; only its yes sends the adds (aiTools.ts).
 import { useEffect, useState } from "react";
 import { ConfirmStep } from "./confirm.tsx";
-import { anyConnected, connectAsk, connectCommands, connection, connectProblem, disconnectCommands, findTools, foundFrom, toolName, type Found, type ToolId } from "./aiTools.ts";
-import { showDoneSignal } from "./commands.ts";
-import { doneStateFrom, type DoneState } from "./doneSignal.ts";
+import { anyConnected, connectAsk, connectCommands, connection, connectProblem, connectRows, disconnectCommands, feedOffRow, findTools, foundFrom, toolName, type Found, type ToolId } from "./aiTools.ts";
+import { addDoneSignal, showDoneSignal } from "./commands.ts";
+import { doneAsk, doneStateFrom, type DoneState } from "./doneSignal.ts";
 import { S } from "./strings.ts";
 import { invoke, listen } from "./tauri.ts";
 import { Button, Disclosure, Row } from "./ui/parts.tsx";
@@ -41,13 +41,18 @@ export function AiToolsScreen({ project }: { project: string }) {
   const found = useFoundTools();
   const st = useDoneState(project);
   const [asking, setAsking] = useState<ToolId | null>(null);
+  // M113 review: the live feed's own card, for a tool connected before M113 (its feed row is off).
+  const [askingFeed, setAskingFeed] = useState<ToolId | null>(null);
   const [said, setSaid] = useState("");
   const [notHereOpen, setNotHereOpen] = useState(false);
   if (found === null) return <Row label={S.m82.title} description={S.m82.looking} />;
   if (found === "failed") return <Row label={S.m82.title} description={S.m82.couldNotLook} />;
   const { here, notHere } = findTools(found);
   const ask = asking ? connectAsk(st, asking) : null;
-  const connect = (t: ToolId) => { setSaid(""); setAsking(t); };
+  const connect = (t: ToolId) => { setSaid(""); setAskingFeed(null); setAsking(t); };
+  const feedRow = askingFeed ? feedOffRow(st, askingFeed) : null;
+  const feedCard = feedRow ? doneAsk(feedRow) : null;
+  const feedYes = (t: ToolId) => { setAskingFeed(null); setSaid(S.m113.liveSaid(toolName(t))); void send(addDoneSignal(project, t, "feed")).catch(() => {}); };
   const yes = (t: ToolId) => {
     // Everything for the tool goes after this one yes, in order; nothing was written before it.
     const cmds = connectCommands(project, st, t);
@@ -61,9 +66,13 @@ export function AiToolsScreen({ project }: { project: string }) {
     {here.length === 0 && <Row indent label={S.m82.noneFound} />}
     {here.map((t) => {
       const c = connection(st, t), problem = connectProblem(st, t);
-      return <Row key={t} indent label={toolName(t)} description={problem ?? (c === "on" ? `${S.m82.connected}. ${t === "claude" ? S.m82.toolLineClaude : S.m82.toolLine}` : c === "partly" ? `${S.m82.partly}. ${t === "claude" ? S.m82.toolLineClaude : S.m82.toolLine}` : t === "claude" ? S.m82.toolLineClaude : S.m82.toolLine)}
+      // M113: a connected tool whose live feed is on says so too.
+      const live = connectRows(st, t).some((r) => r.hook === "feed" && r.on) ? ` ${S.m113.liveOn}` : "";
+      return <Row key={t} indent label={toolName(t)} description={problem ?? (c === "on" ? `${S.m82.connected}. ${t === "claude" ? S.m82.toolLineClaude : S.m82.toolLine}${live}` : c === "partly" ? `${S.m82.partly}. ${t === "claude" ? S.m82.toolLineClaude : S.m82.toolLine}` : t === "claude" ? S.m82.toolLineClaude : S.m82.toolLine)}
         control={!project || problem || !st ? null
-          : c === "on" ? <Button size="sm" kind="quiet" label={S.m82.disconnectLabel(toolName(t))} onClick={() => disconnect(t)}>{S.m82.disconnect}</Button>
+          : c === "on" ? <>
+            {feedOffRow(st, t) && <Button size="sm" kind="secondary" id={`ai-feed-${t}`} label={S.m113.showLiveLabel(toolName(t))} onClick={() => { setSaid(""); setAsking(null); setAskingFeed(t); }}>{S.m113.showLive}</Button>}
+            <Button size="sm" kind="quiet" label={S.m82.disconnectLabel(toolName(t))} onClick={() => disconnect(t)}>{S.m82.disconnect}</Button></>
           : <Button size="sm" id={`ai-connect-${t}`} label={S.m82.connectLabel(toolName(t))} onClick={() => connect(t)}>{S.m82.connect}</Button>} />;
     })}
     {asking && ask && (
@@ -75,6 +84,15 @@ export function AiToolsScreen({ project }: { project: string }) {
         </div>))}
         {ask.notes.map((n) => <p key={n}>{n}</p>)}
         <div className="set-buttons"><Button kind="primary" onClick={() => yes(asking)}>{S.m82.yes}</Button><Button cancel onClick={() => setAsking(null)}>{S.m82.no}</Button></div>
+      </ConfirmStep>
+    )}
+    {askingFeed && feedCard && (
+      <ConfirmStep className="set-confirm done-ask ai-connect-ask" label={feedCard.title} back={`ai-feed-${askingFeed}`} onCancel={() => setAskingFeed(null)}>
+        <p><b>{feedCard.title}</b></p>
+        <p>{feedCard.where}</p>
+        <div className="ask-what" role="group" aria-label={S.approval.what}><code>{feedCard.what}</code></div>
+        {feedCard.notes.map((n) => <p key={n}>{n}</p>)}
+        <div className="set-buttons"><Button kind="primary" onClick={() => feedYes(askingFeed)}>{feedCard.yes}</Button><Button cancel onClick={() => setAskingFeed(null)}>{S.doneSignal.no}</Button></div>
       </ConfirmStep>
     )}
     {notHere.length > 0 && (

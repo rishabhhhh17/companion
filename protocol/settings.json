@@ -181,6 +181,7 @@
     { "key": "notch.peekHideAfter", "section": "home", "kind": "choice", "default": "2", "options": ["1", "2", "5", "10"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "notch.waitingMinutes", "section": "home", "kind": "choice", "default": "15", "options": ["5", "15", "60"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "runway.mark", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "notch.liveFeed", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "runway.warnAt", "section": "spending", "kind": "choice", "default": "80", "options": ["off", "70", "80", "90"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "history.thisWeek", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "numbers.yours", "section": "numbers", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },

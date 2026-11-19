@@ -26,6 +26,7 @@ import { whyLiveReduce, type WhyLive } from "./whyLive.ts";
 import { runwayFrom, savedFrom, type Runway } from "./runway.ts";
 import type { SavedJobView } from "../../protocol/index.ts";
 import { DONE_SIGNAL_TOOLS, LOGIN_OUTCOMES, type DoneSignalTool, type LoginOutcome } from "../../protocol/index.ts";
+import { feedFrom, type FeedSession } from "./notchFeed.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
@@ -328,6 +329,9 @@ export type Model = {
    *  and when it last said so (the event's own time, so a replayed one is the past): Flowflow peeks out of the notch
    *  watching (peekOut.ts). That project's done hook ends only its own entry; Stop everything ends them all. */
   toolBusy?: Record<string, number> | null;
+  /** M113: the live feed (feed.update, notchFeed.ts): what the person's own AI tools are editing and running, by session.
+   *  In memory only; Stop everything drops it, and the next event fills it again. */
+  feed?: FeedSession[] | null;
   /** M77: a saved copy was just taken before a destructive command (guard.saved): the notch's line for a few seconds. */
   guardSaved?: { project: string; at: number } | null;
   /** M85 review: the person's own AI tool was just told to ask them first (guard.asked), in any project: the notch's line
@@ -806,7 +810,7 @@ function reduceRest(m: Model, e: Ev): Model {
       return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), away: {}, driveAway: null, workIn: {}, task, receipt: m.receipt ? { ...m.receipt, gone: true } : null, bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice && ["lesson", "proving"].includes(m.practice.stage) ? { ...m.practice, stage: "found" as const, checksFailed: undefined } : m.practice, point: null, where: null, teach: turn, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null, followUp: "idle" }, {}), notice, error: null };
     }
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
-    case "app.stop_everything": return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, costPause: null, signIn: null, toast: null, followUp: "idle", task: m.task }, {}), notice: "Stopped everything.", error: null, stopped: (m.stopped ?? 0) + 1, toolBusy: null };
+    case "app.stop_everything": return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, costPause: null, signIn: null, toast: null, followUp: "idle", task: m.task }, {}), notice: "Stopped everything.", error: null, stopped: (m.stopped ?? 0) + 1, toolBusy: null, feed: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       // Only this line is the connection's to set or clear: a notice about something else (the engine restarting, say) stays,
@@ -1006,6 +1010,8 @@ function reduceRest(m: Model, e: Ev): Model {
     }
     // A notice that goes by itself: cleared only if it is still the one shown.
     case "ui.noticeExpired": return typeof e.notice === "string" && m.notice === e.notice ? { ...m, notice: null } : m;
+    // M113: the live feed, only when the protocol allows it (names, counts and short commands); anything else leaves it.
+    case "feed.update": { const f = feedFrom(e.sessions); return f === null ? m : { ...m, feed: f.length ? f : null }; }
     // M90: a connected tool is working (busy) or done (not busy) in a project.
     case "hook.busy": {
       if (typeof e.project !== "string") return m;

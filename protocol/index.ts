@@ -182,7 +182,8 @@ export type DoneSignalTool = (typeof DONE_SIGNAL_TOOLS)[number];
 /** M77 (the safety net): which hook. done: the Stop hook (M75). guard: Claude Code's PreToolUse hook on Bash, so Squibby can
  *  take a snapshot before a destructive command (runner/src/guard.ts). waiting: Claude Code's Notification hook, so the
  *  notch can say Claude is waiting for the person. Absent means done. */
-export const HOOK_KINDS = ["done", "guard", "waiting", "start"] as const;
+/** M113: feed, the live feed hook after an edit (runner/src/donesignal.ts). */
+export const HOOK_KINDS = ["done", "guard", "waiting", "start", "feed"] as const;
 export type HookKind = (typeof HOOK_KINDS)[number];
 export type DoneSignalShow = Envelope & { type: "donesignal.show"; project: string };
 export type DoneSignalAdd = Envelope & { type: "donesignal.add"; project: string; tool: DoneSignalTool; confirm: true; hook?: HookKind };
@@ -628,6 +629,16 @@ export type HookWaiting = Envelope & { type: "hook.waiting"; project: string; wa
 /** M90: the person's own AI tool is working in a project (its guard hook saw it run a command), or is done (its done hook).
  *  Said at most once every few seconds per project; only the project, never the command. Flowflow peeks out watching. */
 export type HookBusy = Envelope & { type: "hook.busy"; project: string; busy: boolean };
+/** M113: the live feed in the notch (runner/src/livefeed.ts). At most 3 sessions, each with at most 4 lines: a file the tool
+ *  edited (its path from the project down, or only its name outside it, with the lines added and taken away when known) or
+ *  a command it ran (the short redacted form, as History keeps it). `n`: how many times in a row. `via`: told by the tool's
+ *  hook, or seen in the folder (no counts). Never the edit's text, never the tool's own session id (`key` is a short hash). */
+export type FeedEditLine = { kind: "edit"; path: string; added?: number; removed?: number; n: number };
+export type FeedRunLine = { kind: "run"; command: string; n: number };
+export type FeedSession = { key: string; project: string; tool?: DoneSignalTool; via: "hook" | "folder"; state: "working" | "done"; items: (FeedEditLine | FeedRunLine)[] };
+export type FeedUpdate = Envelope & { type: "feed.update"; sessions: FeedSession[] };
+export const FEED_SESSIONS_MAX = 3;
+export const FEED_LINES_MAX = 4;
 /** M75: a task has used far more than a usual task here, and waits for the person. No amount (F29, M69). */
 export type CostPause = Envelope & { type: "cost.pause"; agent: string; project: string };
 export type CostResolved = Envelope & { type: "cost.resolved"; agent: string; choice: (typeof COST_CHOICES)[number] };
@@ -789,7 +800,7 @@ export type ReviewReplay = {
   checks: { label: string; status: "passed" | "failed" | "skipped"; exit?: number }[]; shot?: string;
 };
 export type ReviewUntold = { beyond: string[]; beyondMore: number; todos: number; checks: ReviewChecks };
-export type Event = GuardSaved | GuardAsked | HookWaiting | HookBusy | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewUndoPlanEvent | ReviewUndone | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved | TutorLearned;
+export type Event = GuardSaved | GuardAsked | HookWaiting | HookBusy | FeedUpdate | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewUndoPlanEvent | ReviewUndone | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved | TutorLearned;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -938,6 +949,27 @@ const savedRowsOk: Check = (m) => {
       && typeof o.checkpoint === "string" && /^cp_/.test(o.checkpoint as string) && typeof o.command === "string" && Array.from(o.command as string).length <= 80 && typeof o.undone === "boolean";
   });
   return ok ? null : '"saved" must be a list of saved copies: id, at, checkpoint, a short command and undone';
+};
+// M113: the live feed: at most FEED_SESSIONS_MAX sessions of at most FEED_LINES_MAX lines, each with only the keys it may
+// carry. A path is never absolute and never climbs out (".."), and is at most 80 characters; a command is at most 80.
+const countOk = (v: unknown) => v === undefined || (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 1_000_000);
+const onlyKeys = (o: Record<string, unknown>, keys: readonly string[]) => Object.keys(o).every((k) => keys.includes(k));
+const feedLineOk = (x: unknown): boolean => {
+  const o = x as Record<string, unknown> | null;
+  if (!o || typeof o !== "object" || Array.isArray(o) || !(typeof o.n === "number" && Number.isInteger(o.n) && o.n >= 1)) return false;
+  if (o.kind === "edit") return onlyKeys(o, ["kind", "path", "added", "removed", "n"]) && typeof o.path === "string" && o.path.length > 0 && Array.from(o.path).length <= 80 && !o.path.startsWith("/") && !o.path.split("/").includes("..") && countOk(o.added) && countOk(o.removed);
+  if (o.kind === "run") return onlyKeys(o, ["kind", "command", "n"]) && typeof o.command === "string" && o.command.length > 0 && Array.from(o.command).length <= 80;
+  return false;
+};
+const feedOk = (v: unknown): string | null => {
+  const ok = Array.isArray(v) && v.length <= FEED_SESSIONS_MAX && v.every((x) => {
+    const o = x as Record<string, unknown> | null;
+    return !!o && typeof o === "object" && onlyKeys(o, ["key", "project", "tool", "via", "state", "items"]) && typeof o.key === "string" && /^[0-9a-f]{12}$/.test(o.key)
+      && typeof o.project === "string" && o.project.length > 0 && (o.tool === undefined || (DONE_SIGNAL_TOOLS as readonly unknown[]).includes(o.tool))
+      && (o.via === "hook" || o.via === "folder") && (o.state === "working" || o.state === "done")
+      && Array.isArray(o.items) && o.items.length <= FEED_LINES_MAX && o.items.every(feedLineOk);
+  });
+  return ok ? null : '"sessions" must be at most 3 sessions of at most 4 lines: a file with its line counts, or a short command';
 };
 // M103: kind "login" always comes with what happened, and what happened only with it.
 const loginOk = (o: Record<string, unknown>): boolean =>
@@ -1281,6 +1313,8 @@ const EVENTS: Record<string, Check[]> = {
   "guard.saved": [str("project"), str("checkpoint"), (m) => (typeof m.command === "string" && m.command.length > 0 && Array.from(m.command).length <= 80 ? null : '"command" must be a short text, at most 80 characters')],
   "guard.asked": [str("project"), (m) => (typeof m.command === "string" && m.command.length > 0 && Array.from(m.command).length <= 80 ? null : '"command" must be a short text, at most 80 characters'), (m) => (typeof m.reason === "string" && m.reason.length > 0 && Array.from(m.reason).length <= 300 ? null : '"reason" must be text, at most 300 characters'), (m) => (loginOk(m as Record<string, unknown>) ? null : '"kind" login must come with "outcome": asked, ran or blocked, and "tool" must be one of the AI tools')],
   "hook.busy": [str("project"), bool("busy")],
+  // M113: names, counts and short commands only (feedOk).
+  "feed.update": [(m) => feedOk(m.sessions)],
   "hook.waiting": [str("project"), bool("waiting"), opt("message", (m) => (typeof m.message === "string" && Array.from(m.message).length <= 120 ? null : '"message" must be text, at most 120 characters')), opt("tool", oneOf("tool", [...DONE_SIGNAL_TOOLS])),
     // M105: another tool's waiting signal carries no words.
     (m) => (m.tool !== undefined && m.tool !== "claude" && m.message !== undefined ? 'another tool\'s waiting signal has no "message"' : null)],

@@ -27,9 +27,11 @@ describe("every tool's own file, event and shape", () => {
     expect(HOOK_FILE.cursor).toBe(".cursor/hooks.json");
     expect(HOOK_FILE.copilot).toBe(".github/hooks/companion.json");
     expect(HOOK_FILE.antigravity).toBe(".agents/hooks.json");
-    for (const t of ["cursor", "copilot", "antigravity", "gemini", "windsurf"] as const) expect([...TOOL_HOOKS[t]]).toEqual(["done", "guard"]);
+    // M113 (changed on purpose): the tools with an after edit event also have the live feed.
+    for (const t of ["cursor", "copilot", "gemini"] as const) expect([...TOOL_HOOKS[t]]).toEqual(["done", "guard", "feed"]);
+    for (const t of ["antigravity", "windsurf"] as const) expect([...TOOL_HOOKS[t]]).toEqual(["done", "guard"]);
     // M105 (changed on purpose): Codex also has a waiting signal, on its PermissionRequest hook.
-    expect([...TOOL_HOOKS.codex]).toEqual(["done", "guard", "waiting"]);
+    expect([...TOOL_HOOKS.codex]).toEqual(["done", "guard", "waiting", "feed"]);
     expect(eventOf("cursor", "guard")).toBe("beforeShellExecution");
     expect(eventOf("cursor", "done")).toBe("stop");
     expect(eventOf("codex", "guard")).toBe("PreToolUse");

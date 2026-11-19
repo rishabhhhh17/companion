@@ -2202,6 +2202,33 @@ mod tests {
         assert_eq!(kinds, ["added", "deleted", "modified"]);
     }
     #[test]
+    fn m113_the_live_feed_reaches_the_pages_as_names_counts_and_short_commands_and_is_never_replayed() {
+        // M113 (runner/src/livefeed.ts): feed.update is news for the pages only, passed on as it is, never kept to replay to a
+        // page that loads later and never written to the log. It carries a path from the project down (or a file's name),
+        // line counts and a short command; never the edit's text or the tool's own session id.
+        let lines: Vec<serde_json::Value> = include_str!("../../../protocol/fixtures/events.jsonl").lines().filter(|l| !l.trim().is_empty())
+            .map(|l| serde_json::from_str::<serde_json::Value>(l).expect("a fixture is JSON")).filter(|v| v["type"] == "feed.update").collect();
+        assert_eq!(lines.len(), 3);
+        for v in &lines {
+            let mut sticky = std::collections::BTreeMap::new();
+            assert!(!crate::runner::remember(&mut sticky, v), "never replayed");
+            let mut seen = std::collections::BTreeMap::new();
+            assert!(crate::runner::approval_line(v, &mut seen).is_none(), "never a log line");
+            let sessions = v["sessions"].as_array().expect("a list");
+            assert!(sessions.len() <= 3);
+            for s in sessions {
+                let keys: Vec<&str> = s.as_object().unwrap().keys().map(String::as_str).collect();
+                assert!(keys.iter().all(|k| ["key", "project", "tool", "via", "state", "items"].contains(k)), "{s}");
+                assert!(s["key"].as_str().is_some_and(|k| k.len() == 12 && k.chars().all(|c| c.is_ascii_hexdigit())), "{s}");
+                for it in s["items"].as_array().unwrap() {
+                    let keys: Vec<&str> = it.as_object().unwrap().keys().map(String::as_str).collect();
+                    assert!(keys.iter().all(|k| ["kind", "path", "added", "removed", "command", "n"].contains(k)), "{it}");
+                    if let Some(p) = it["path"].as_str() { assert!(!p.starts_with('/') && !p.split('/').any(|x| x == ".."), "{it}"); }
+                }
+            }
+        }
+    }
+    #[test]
     fn settings_in_the_tall_home_stays_on_a_13_inch_screen() {
         // M66 fix 14: Settings asks for its one height (settingsFit.ts SETTINGS_H). On a 13 inch MacBook Air with a notch
         // (1470 by 956, the Dock below) and an older 13 inch (1440 by 900, no notch), and at the smallest scaled 13 inch

@@ -2,6 +2,17 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## See what your AI tool is doing, live in the notch: 19 Nov 2026
+
+- **A live list under the notch.** While Claude Code, Codex, Cursor, the VS Code agent or Gemini CLI works, pointing at the notch shows the file it just edited with how many lines it added and took away (`app.tsx  +12 −3`), and the command it ran (`npm test`), newest first.
+- **Several tools at once.** Each session gets its own short block, named by the tool and the project, with Working or Finished. A file edited again moves to the top with its counts added up, so the list stays short.
+- **One press to see the change.** A press on a line opens the review of that work in Home, with its Undo. While the tool is still working, you stay in the notch and a short line under it says the review shows when the tool finishes. Just after it finishes, the line says the review starts in a moment. A line from another project comes with one Open button for that project. It never opens an older review by mistake. The same list sits at the top of the small chat.
+- **Easy to read at a glance.** Big counts are grouped (`+12,345`), a long folder gives way before the file's name, a long name keeps its ending (`SignupFormWithAVery….tsx`), and the keyboard ring shows on a line in the notch.
+- **Antigravity and Windsurf show up too.** When one of them is connected to the project, the files seen changing in the folder are listed, marked "Seen", without counts. Your own saves, with no such tool connected, never show, and a tool that reports its own edits is never listed twice.
+- **One press for tools you connected before.** In Your AI tools, a connected tool whose edits are not live yet has a Show edits live button.
+- **Nothing is kept.** Only file names, line counts and short commands are shown, secrets are taken out of commands, and the list lives in memory only. Stop everything empties it.
+- **Your choice.** Each tool's live feed is added only after you say yes to the exact lines (Connect, or its own row in Settings). Settings, More options, Show what your AI tools are doing turns the whole list off.
+
 ## Home that feels finished: 19 Nov 2026
 
 - **Opening reveals, closing folds.** Home's content is cut by the panel's own edge as it grows, never by a second, narrower box, so no word is cut at both sides. Closing folds the content away with the panel instead of leaving an empty black slab, and it is done in about a third of a second.

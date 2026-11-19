@@ -44,8 +44,9 @@ describe("finding the tools", () => {
 
 describe("Connect and Disconnect", () => {
   test("Claude Code connects its done signal, saved copy and waiting signal; the others their done signal and saved copy", () => {
-    expect([...CONNECT_HOOKS.claude]).toEqual(["done", "guard", "waiting"]);
-    expect([...CONNECT_HOOKS.cursor]).toEqual(["done", "guard"]);
+    // Changed on purpose (M113, 19 Nov 2026): Connect also offers the live feed where the tool has an after edit event.
+    expect([...CONNECT_HOOKS.claude]).toEqual(["done", "guard", "waiting", "feed"]);
+    expect([...CONNECT_HOOKS.cursor]).toEqual(["done", "guard", "feed"]);
   });
   test("one card shows every file and line still to add, and nothing is sent until its yes", () => {
     const st = state([row("claude", "done", false), row("claude", "guard", true), row("claude", "waiting", false), row("claude", "start", false)]);

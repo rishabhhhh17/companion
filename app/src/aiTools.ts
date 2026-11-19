@@ -17,8 +17,10 @@ export const LIST: readonly ListTool[] = (list as { tools: ListTool[] }).tools;
 /** The hooks Connect adds for each tool, in the order they are added. The start block stays its own row in Settings. */
 /** M105: Codex's waiting signal (its PermissionRequest hook) is added by Connect too, but a Codex connected before it existed
  *  still counts as connected (OPTIONAL_HOOKS): its row in Settings offers it. */
+/** M113: and the live feed, for the tools with an after edit event; a tool connected before it still counts as connected
+ *  (OPTIONAL_HOOKS), and its row in Settings offers it. */
 export const CONNECT_HOOKS: Readonly<Record<ToolId, readonly HookKind[]>> = {
-  claude: ["done", "guard", "waiting"], codex: ["done", "guard", "waiting"], cursor: ["done", "guard"], copilot: ["done", "guard"], antigravity: ["done", "guard"], gemini: ["done", "guard"], windsurf: ["done", "guard"],
+  claude: ["done", "guard", "waiting", "feed"], codex: ["done", "guard", "waiting", "feed"], cursor: ["done", "guard", "feed"], copilot: ["done", "guard", "feed"], antigravity: ["done", "guard"], gemini: ["done", "guard", "feed"], windsurf: ["done", "guard"],
 };
 
 /** The tool's name as people know it. */
@@ -47,7 +49,7 @@ export function findTools(found: Found): { here: ToolId[]; notHere: ToolId[] } {
 /** The rows of one tool that Connect owns, from the engine's state. */
 export const connectRows = (st: DoneState | null, tool: ToolId): DoneRow[] => (st?.tools ?? []).filter((r) => r.tool === tool && CONNECT_HOOKS[tool].includes(r.hook));
 
-export const OPTIONAL_HOOKS: Readonly<Partial<Record<ToolId, readonly HookKind[]>>> = { codex: ["waiting"] };
+export const OPTIONAL_HOOKS: Readonly<Partial<Record<ToolId, readonly HookKind[]>>> = { claude: ["feed"], codex: ["waiting", "feed"], cursor: ["feed"], copilot: ["feed"], gemini: ["feed"] };
 /** A tool is connected when every hook Connect adds is on (an optional one aside, M105); partly when some are. */
 export function connection(st: DoneState | null, tool: ToolId): "on" | "partly" | "off" {
   const rows = connectRows(st, tool);
@@ -56,6 +58,12 @@ export function connection(st: DoneState | null, tool: ToolId): "on" | "partly" 
   const needed = CONNECT_HOOKS[tool].filter((h) => !optional.includes(h));
   const neededOn = rows.filter((r) => r.on && needed.includes(r.hook)).length;
   return rows.length > 0 && neededOn === needed.length ? "on" : on > 0 ? "partly" : "off";
+}
+/** M113 review: a connected tool whose live feed is off (it was connected before M113): its feed row, for the tool's own
+ *  Show edits live button in Your AI tools; null when it is on, not offered, or the tool is not fully connected. */
+export function feedOffRow(st: DoneState | null, tool: ToolId): DoneRow | null {
+  if (connection(st, tool) !== "on" || connectProblem(st, tool)) return null;
+  return connectRows(st, tool).find((r) => r.hook === "feed" && !r.on && !r.problem) ?? null;
 }
 /** Whether any tool is connected (the Now row shows only while none is). */
 export const anyConnected = (st: DoneState | null): boolean => DONE_TOOLS.some((t) => connection(st, t) === "on");
@@ -74,15 +82,17 @@ export function connectAsk(st: DoneState | null, tool: ToolId): ConnectAsk | nul
   return {
     title: S.m82.connectTitle(name),
     parts: CONNECT_HOOKS[tool].flatMap((h) => { const r = rows.find((x) => x.hook === h); return r ? [{ hook: h, label: S.m82.partLabel[h](name), where: S.doneSignal.askWhere(r.file, r.creates), what: r.adds }] : []; }),
-    notes: [S.m82.connectWhat(name), S.doneSignal.askGit, ...(toolNote ? [toolNote] : [])],
+    notes: [S.m82.connectWhat(name, rows.some((r) => r.hook === "feed")), S.doneSignal.askGit, ...(toolNote ? [toolNote] : [])],
   };
 }
 
 /** What the one yes sends: an add for each of the tool's hooks that is not on yet, in order. Nothing for a refused file. */
 export function connectCommands(project: string, st: DoneState | null, tool: ToolId): Command[] {
   if (!project || connectProblem(st, tool)) return [];
-  const on = new Set(connectRows(st, tool).filter((r) => r.on).map((r) => r.hook));
-  return CONNECT_HOOKS[tool].filter((h) => !on.has(h)).map((h) => addDoneSignal(project, tool, h));
+  // M113: only the hooks the card showed (a row the engine listed that is not on yet), so an engine that does not know a hook
+  // (the feed, before M113) is never sent it, and the yes never writes more than the card said.
+  const off = new Set(connectRows(st, tool).filter((r) => !r.on).map((r) => r.hook));
+  return CONNECT_HOOKS[tool].filter((h) => off.has(h)).map((h) => addDoneSignal(project, tool, h));
 }
 /** What Disconnect sends: a remove for each of the tool's hooks Connect owns that is on. Nothing for a refused file. */
 export function disconnectCommands(project: string, st: DoneState | null, tool: ToolId): Command[] {

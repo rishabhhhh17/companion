@@ -118,12 +118,16 @@ export function need(m: Model): Need | null {
  *  "account.claude"). Anything else is ignored and Home just opens. */
 /** M70: the notch's small panel adds two: Ask (`place: "ask"`, the ask box on Now, shown but never focused: rule 9) and
  *  Review changes (`do: "review"`, the review card on Now; it reviews nothing by itself). */
-export type HomeArrival = { lesson: string } | { place: "learn" | "settings" | "ask" } | { do: "find" | "shipCheck" | "undo" | "review" } | { set: string };
+/** M113 review: a press on a line of the live feed (`do: "feed"` with the session's key, 12 hex): the review of that work,
+ *  or a plain line saying when it comes (notchFeed.ts feedPress). */
+export type HomeArrival = { lesson: string } | { place: "learn" | "settings" | "ask" } | { do: "find" | "shipCheck" | "undo" | "review" } | { do: "feed"; key: string } | { set: string };
+const FEED_KEY = /^[0-9a-f]{12}$/;
 /** A Settings place as a deep link names it: lower case words joined by dots ("account.claude"). */
 export const SETTINGS_PLACE = /^[a-z][a-zA-Z]*(\.[a-z][a-zA-Z]*)*$/;
 export function arrivalFrom(opened: unknown): HomeArrival | null {
-  const t = (opened as { then?: unknown } | null)?.then as { lesson?: unknown; place?: unknown; do?: unknown; set?: unknown } | null | undefined;
+  const t = (opened as { then?: unknown } | null)?.then as { lesson?: unknown; place?: unknown; do?: unknown; set?: unknown; key?: unknown } | null | undefined;
   if (!t || typeof t !== "object") return null;
+  if (t.do === "feed") return typeof t.key === "string" && FEED_KEY.test(t.key) ? { do: "feed", key: t.key } : null;
   if (t.do === "find" || t.do === "shipCheck" || t.do === "undo" || t.do === "review") return { do: t.do };
   if (typeof t.set === "string" && t.set.length <= 60 && SETTINGS_PLACE.test(t.set)) return { set: t.set };
   if (typeof t.lesson === "string" && t.lesson) return { lesson: t.lesson };

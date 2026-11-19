@@ -13,9 +13,12 @@
 // paths only, never the file) is said as guard.asked with kind "login" and kept in History. A tool that can ask asks the
 // person first; one that cannot goes on, unless the person chose Block in Settings (safety.savedLogins), the one case where
 // Squibby stops a command in the person's own tool, and only because they asked it to.
+// M113 (the live feed): a feed note (<token>.<pid>.<tool>.feed, from the feed hook after an edit) is handed to the feed and
+// removed as it is read; it is never answered (nothing waits for it). A note bigger than FEED_NOTE_MAX is never read whole:
+// only its start, for the tool's name and the file's path. Each guard request is handed to the feed too, as a run.
 // Nothing here runs git or writes the person's git (rule 10): the snapshot is Squibby's own shadow copy, and Undo restores
 // from it.
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, watch as fsWatch, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, watch as fsWatch, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { databaseProgram, databaseScript, databaseSetting, databaseTool } from "./dbsafety.ts";
 import { liveCommand } from "./livesystems.ts";
@@ -38,7 +41,25 @@ const WAITING_TYPES = new Set(["permission_prompt", "idle_prompt"]);
 /** A request file: <token>.<pid>, with .note for a waiting note, or (M85) .ask from a hook that can ask the person first.
  *  The M103 review: a guard hook names its AI tool too (<token>.<pid>.<tool>.ask), so a note can say which tool it was;
  *  a hook written before that has none. Only the seven known tools' names are read. Nothing else in the folder is touched. */
-const REQUEST = new RegExp(`^([0-9a-f]{24})\\.(\\d{1,10})(?:\\.(${DONE_TOOLS.join("|")}))?(\\.note|\\.ask|\\.block)?$`);
+const REQUEST = new RegExp(`^([0-9a-f]{24})\\.(\\d{1,10})(?:\\.(${DONE_TOOLS.join("|")}))?(\\.note|\\.ask|\\.block|\\.feed)?$`);
+/** M113: a feed note bigger than this is read only at its start (livefeed.ts FEED_NOTE_MAX, the same number). */
+export const FEED_NOTE_MAX = 4 * 1024 * 1024;
+const FEED_HEAD = 64 * 1024;
+/** M113: the start of a huge feed note, as a small note that names only the tool and the file (livefeed.ts reads it as the
+ *  file's name with no counts). Nothing of the edit's text is in it. */
+export function feedHead(head: string): string | null {
+  const tool = /"(?:tool_name|toolName)"\s*:\s*"([^"\\]{1,80})"/.exec(head)?.[1];
+  const path = /"(?:file_path|filePath|absolute_path|notebook_path)"\s*:\s*"((?:[^"\\]|\\.){1,2000})"/.exec(head)?.[1];
+  if (!tool || !path) return null;
+  let p: unknown;
+  try { p = JSON.parse(`"${path}"`); } catch { return null; }
+  return typeof p === "string" ? JSON.stringify({ tool_name: tool, tool_input: { file_path: p }, truncated: true }) : null;
+}
+/** M113 review: a feed note's .tmp left this long (the hook's `cat` died, or its rename was never seen) is removed. */
+export const FEED_TMP_STALE_MS = 5000;
+/** M113 review: how often the folder is looked over for feed notes whose watch event never came (FSEvents can drop one). */
+export const FEED_RESCAN_MS = 2000;
+const FEED_NOTE = /\.feed$/, FEED_TMP = /\.feed\.tmp$/;
 /** M85: the History row's name for a command the person's own tool was asked to ask about first. */
 export const ASKED_LABEL = "Asked first: ";
 /** M85: the most a reason the hook carries may be, in characters. */
@@ -147,8 +168,14 @@ export type GuardDeps = {
   busy?: (project: string) => void;
   /** How long a "waiting" mark stays with no further event, in minutes (read each time). */
   waitingMinutes?: () => number;
+  /** M113: a feed note from the tool's feed hook (livefeed.ts reads only its path and line counts). */
+  feed?: (project: string, tool: DoneTool | null, text: string) => void;
+  /** M113: a guard request, for the feed's run line (livefeed.ts reads only the short redacted command). */
+  ran?: (project: string, tool: DoneTool | null, text: string) => void;
   snapshotWaitMs?: number;
   watch?: typeof fsWatch;
+  /** For tests: FEED_RESCAN_MS. */
+  rescanMs?: number;
   now?: () => number;
 };
 
@@ -161,6 +188,9 @@ export class HookGuard {
   private waitingNow = new Set<string>();
   /** Guard requests waiting for their snapshot: Stop everything lets each command go at once (the snapshot still finishes). */
   private releases = new Set<() => void>();
+  /** M113 review: the look over the folder for feed notes no watch event named. */
+  private rescanTimer: ReturnType<typeof setInterval> | null = null;
+  private rescanning = false;
   constructor(private dir: string, private o: GuardDeps) {
     this.dir = resolve(dir);
     this.pid = join(this.dir, GUARD_PID);
@@ -175,13 +205,33 @@ export class HookGuard {
       w.on?.("error", () => { /* the folder went away */ });
       this.w = { close: () => w.close() };
     } catch { return false; }
+    // M113 review: a feed note holds the tool's input (a Write's whole file), so none may wait for a watch event that never
+    // comes: the folder is looked over now and then while the guard runs, and after each note taken.
+    this.rescanTimer = setInterval(() => this.rescanFeed(), this.o.rescanMs ?? FEED_RESCAN_MS);
+    this.rescanTimer.unref?.();
     return true;
+  }
+  /** M113 review: every feed note in the folder is read and removed at once; a feed .tmp older than FEED_TMP_STALE_MS is
+   *  removed unread. Nothing else in the folder is touched. */
+  private rescanFeed(): void {
+    if (this.rescanning || !this.w) return;
+    this.rescanning = true;
+    try {
+      const now = (this.o.now ?? Date.now)();
+      for (const n of this.names()) {
+        if (FEED_NOTE.test(n)) { void this.take(n); continue; }
+        if (!FEED_TMP.test(n) || !REQUEST.test(n.replace(/\.tmp$/, ""))) continue;
+        const f = join(this.dir, n);
+        try { if (now - statSync(f).mtimeMs > FEED_TMP_STALE_MS) rmSync(f, { force: true }); } catch { /* gone */ }
+      }
+    } finally { this.rescanning = false; }
   }
   /** Stops: the pid file goes first, so a hook that fires after this exits at once. Waiting marks are cleared. */
   stop(): void {
     try { rmSync(this.pid, { force: true }); } catch { /* gone */ }
     try { this.w?.close(); } catch { /* closed */ }
     this.w = null;
+    if (this.rescanTimer) { clearInterval(this.rescanTimer); this.rescanTimer = null; }
     for (const t of this.waitingTimers.values()) clearTimeout(t);
     this.waitingTimers.clear();
     this.waitingNow.clear();
@@ -207,12 +257,27 @@ export class HookGuard {
     const file = join(this.dir, name);
     if (!existsSync(file)) return;
     let text: string;
-    try { text = readFileSync(file, "utf8"); } catch { return; }
+    if (m[4] === ".feed") {
+      // M113: a huge note is read only at its start.
+      try { text = statSync(file).size > FEED_NOTE_MAX ? feedHead(readHead(file, FEED_HEAD)) ?? "" : readFileSync(file, "utf8"); } catch { text = ""; }
+    } else {
+      try { text = readFileSync(file, "utf8"); } catch { return; }
+    }
     try { rmSync(file, { force: true }); } catch { /* gone */ }
     const token = m[1];
     const project = this.o.projectOf(token);
     const tool = m[3] as DoneTool | undefined, kind = m[4];
     if (kind === ".note") { if (project) this.note(project, text); return; }
+    if (kind === ".feed") {
+      // Never answered: the feed hook does not wait. The tool is working, so its waiting mark ends.
+      if (!project || !text) return;
+      this.activity(project);
+      try { this.o.busy?.(project); } catch { /* a nicety */ }
+      try { this.o.feed?.(project, tool ?? null, text); } catch { /* the feed is a nicety */ }
+      // M113 review: any other note whose watch event was coalesced into this one goes now too.
+      this.rescanFeed();
+      return;
+    }
     // The answer file: empty lets the command go; M85: for a hook that can ask, a reason (a JSON string) has its tool ask.
     // It is written exactly once, whatever goes wrong.
     let written = false;
@@ -224,6 +289,7 @@ export class HookGuard {
     if (!project) { done(""); return; }
     this.activity(project);
     try { this.o.busy?.(project); } catch { /* the peek is a nicety; the answer always goes */ }
+    try { this.o.ran?.(project, tool ?? null, text); } catch { /* the feed is a nicety; the answer always goes */ }
     const p = this.answer(project, text, kind === ".ask", kind === ".block", done, tool).catch(() => undefined).finally(() => done("")).finally(() => this.inFlight.delete(name));
     this.inFlight.set(name, p);
     await p;
@@ -343,6 +409,12 @@ export class HookGuard {
     if (!this.waitingNow.delete(project)) return;
     this.o.emit({ type: "hook.waiting", project, waiting: false });
   }
+}
+
+/** M113: the first `max` bytes of a file, as text. */
+function readHead(file: string, max: number): string {
+  const fd = openSync(file, "r");
+  try { const buf = Buffer.alloc(max); const n = readSync(fd, buf, 0, max, 0); return buf.subarray(0, n).toString("utf8"); } finally { closeSync(fd); }
 }
 
 /** M80: the shell tools whose calls the guard reads, by the name each AI tool gives them: Claude Code and Codex (Bash), the

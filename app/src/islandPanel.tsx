@@ -29,6 +29,8 @@ import { Button } from "./ui/parts.tsx";
 import { Icon } from "./icons.tsx";
 import { useDragOut } from "./tuck.ts";
 import { characterName } from "./companion.ts";
+import { NotchFeed, feedGo } from "./notchFeed.tsx";
+import { feedBlocks } from "./notchFeed.ts";
 
 /** `brief` (M26): the panel opened by itself (a question, or a result that matters), so it shows only that; the pointer
  *  opens the whole panel. `unseen` (M46): results finished while Home was closed, said on the hover panel's top line only
@@ -166,8 +168,12 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   // (answered while the pointer rests) falls back to the row, never an empty panel.
   const hasLive = view.kind === "questions" || view.kind === "result";
   const briefNow = !!brief && hasLive;
+  // M113: the live feed under the row, while the panel shows the row alone (never over a question or a result, so the panel
+  // stays inside the notch's room). The panel's height then follows its words (notch.css data-feed).
+  const feedOn = useSetting("notch.liveFeed") !== false;
+  const feed = feedOn && !briefNow && !hello && full && !hasLive && feedBlocks(m.feed).length > 0;
   return (
-    <div className="island-panel" ref={ref} data-layout={!briefNow && !hello && full ? layout : undefined} data-shown={shown ? "yes" : undefined} data-size={compact ? "compact" : undefined} data-brief={briefNow ? "yes" : undefined} data-armed={ready() ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
+    <div className="island-panel" ref={ref} data-layout={!briefNow && !hello && full ? layout : undefined} data-feed={feed ? "" : undefined} data-shown={shown ? "yes" : undefined} data-size={compact ? "compact" : undefined} data-brief={briefNow ? "yes" : undefined} data-armed={ready() ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
       {hello ? <div className="ip-hello" role="status" aria-label={hello.say}>
         {/* Round 2: the face only while Flowflow lives in the notch, as on the hover row; on an edge the line alone. */}
         {tucked && <FlowMini className="ip-agent" state="idle" still={!shown} />}
@@ -197,6 +203,8 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
       </div>
       {/* Round 2: a question or a result in the panel stays pressable here too, under the row. */}
       {hasLive && live}
+      {/* M113: what the person's own AI tools are doing, newest first; a press opens the review in Home. */}
+      {feed && <NotchFeed m={m} project={project} where="notch" tabIndex={tab} onOpen={(key) => { if (ready()) void invoke("island_go", { then: feedGo(key) }).catch(() => {}); }} />}
       </>}
     </div>
   );

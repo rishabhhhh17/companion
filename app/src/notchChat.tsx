@@ -16,6 +16,7 @@ import { useDragOut } from "./tuck.ts";
 import { characterName } from "./companion.ts";
 import { Dot } from "./ui/parts.tsx";
 import type { Colour } from "./meaning.ts";
+import { NotchFeed } from "./notchFeed.tsx";
 
 type Props = {
   m: Model; project: string; greet: string; now: number;
@@ -32,6 +33,8 @@ type Props = {
   onStop: () => void;
   /** A press on a bubble that points somewhere: opens out to that place. */
   onBubble: (go: NonNullable<Bubble["go"]>) => void;
+  /** M113: a press on a line of the live feed (its session's key). */
+  onFeed: (key: string) => void;
   onMic: () => void; onSend: () => void; onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void; onInput: () => void; onFocus: () => void;
   onSettings: () => void; onExpand: () => void;
   /** The chat's own Close: folds it back into the notch, as Esc does. */
@@ -43,7 +46,7 @@ type Props = {
   state?: { words: string; dot: Colour } | null;
 };
 
-export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk, stop, onStop, onBubble, onMic, onSend, onKeyDown, onInput, onFocus, onSettings, onExpand, onClose, pending = null, state = null }: Props) {
+export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk, stop, onStop, onBubble, onFeed, onMic, onSend, onKeyDown, onInput, onFocus, onSettings, onExpand, onClose, pending = null, state = null }: Props) {
   const C = S.m96.chat;
   // M111: tucked into the notch, Flowflow's face can be dragged out onto the screen, and one small button brings it out.
   const tucked = useSetting("character.lives") === "notch";
@@ -109,6 +112,8 @@ export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk,
         <button type="button" className="nc-ico" aria-label={C.expand} title={C.expand} onClick={onExpand}><Icon name="expand" size={13} /></button>
         <button type="button" className="nc-ico" aria-label={C.close} title={C.close} onClick={onClose}><Icon name="close" size={14} /></button>
       </div>
+      {/* M113: what the person's own AI tools are doing, above the thread; a press opens this work's review, or says when it comes. */}
+      <NotchFeed m={m} project={project} where="chat" onOpen={onFeed} />
       <div className="nc-news" ref={news} role="log" aria-label={C.history} data-few={bubbles.length <= 1 ? "" : undefined} data-empty={empty ? "" : undefined}>
         {when && <p className="nc-when"><b>{when.day}</b> {when.time}</p>}
         {bubbles.map((b, i) => <Fragment key={b.key}>
