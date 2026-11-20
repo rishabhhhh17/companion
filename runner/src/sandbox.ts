@@ -20,7 +20,7 @@ const SENSITIVE = [
   ".config/gcloud", ".config/gh", ".config/op", ".terraform.d/credentials.tfrc.json",
   // The deploy tools Squibby drives keep their logins here, and so do Stripe, Cargo and Postgres.
   "Library/Application Support/com.vercel.cli", ".local/share/com.vercel.cli", "Library/Preferences/netlify", ".config/netlify",
-  ".config/.wrangler", ".wrangler", ".config/configstore", ".supabase", ".config/stripe", ".cargo/credentials.toml", ".cargo/credentials", ".pgpass",
+  ".config/.wrangler", ".wrangler", ".config/configstore", ".supabase", ".config/stripe", ".cargo/credentials.toml", ".cargo/credentials", ".gem/credentials", ".pgpass",
   // The shell's start up files, which often export API keys. Checks and Claude's commands run /bin/sh -c, which does not read them.
   ".zshrc", ".zprofile", ".zshenv", ".bash_profile", ".bashrc", ".profile",
   ".claude", ".claude.json", ".zsh_history", ".bash_history", ".python_history", ".node_repl_history",
@@ -35,7 +35,7 @@ const SENSITIVE = [
 // (its mirrors.json and registries.json redirect later package fetches), and the Gradle and Maven wrapper folders (the build
 // tools a check later runs outside this sandbox without asking; a check fetches those itself).
 const CACHES = [
-  ".npm", ".cache", "Library/Caches", ".bun/install", ".local/share/pnpm", "Library/pnpm", ".yarn", ".cargo/registry", ".cargo/git", ".gem", ".pnpm-store",
+  ".npm", ".cache", "Library/Caches", ".bun/install", ".local/share/pnpm", "Library/pnpm", ".yarn", ".cargo/registry", ".cargo/git", ".gem/ruby", ".gem/specs", ".pnpm-store",
   ".cargo/.package-cache", ".cargo/.package-cache-mutate", ".cargo/.global-cache",   // cargo's lock and usage files, which it writes beside the registry
   "go/pkg/mod", ".m2/repository", ".gradle/caches", ".gradle/native", ".gradle/daemon", "Library/Developer/Xcode/DerivedData",
 ];

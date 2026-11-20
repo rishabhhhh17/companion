@@ -234,6 +234,9 @@ pub fn look_for<T>(p: &dyn Platform, find: impl Fn(&[OcrBox]) -> Option<T>) -> R
     let result = (|| {
         // Stop, a newer run or Companion hidden since the light came on: no picture.
         if !p.still_wanted() { return Err(Refusal::Stopped); }
+        // Hunt 20 Nov: a password box that took focus while the light came on is checked again right before the picture,
+        // as start_on does.
+        if p.secure_input_on() { return Err(Refusal::SecureInput); }
         // The display the mouse is on first; if the place is not there, the other displays, one after another, all under
         // the same light. Each picture is dropped as soon as its text has been read.
         let mut cap = p.capture().map_err(Refusal::CaptureFailed)?;
@@ -381,8 +384,8 @@ mod tests {
     /// unusual text; the careful reader finds them.
     /// `settles`: the page asked to wait for the page to settle; `settled`: how that wait ends. `secure_after`: a password box
     /// takes focus during the wait. `unwanted`: Stop everything or a newer question came after the light went on.
-    struct Fake { granted: bool, secure: std::cell::Cell<bool>, log: RefCell<Vec<String>>, text: Vec<OcrBox>, ax: Option<R>, fail_capture: bool, others: Vec<(R, Vec<OcrBox>)>, fail_other: bool, tried: RefCell<Vec<R>>, wins: (Vec<Win>, i32), fast_misses: Vec<&'static str>, settles: bool, settled: Settle, secure_after: bool, unwanted: bool }
-    impl Fake { fn new() -> Fake { Fake { granted: true, secure: std::cell::Cell::new(false), log: RefCell::new(vec![]), text: vec![], ax: None, fail_capture: false, others: vec![], fail_other: false, tried: RefCell::new(vec![]), wins: (vec![], 0), fast_misses: vec![], settles: false, settled: Settle::Still, secure_after: false, unwanted: false } } fn said(&self) -> Vec<String> { self.log.borrow().clone() } }
+    struct Fake { granted: bool, secure: std::cell::Cell<bool>, log: RefCell<Vec<String>>, text: Vec<OcrBox>, ax: Option<R>, fail_capture: bool, others: Vec<(R, Vec<OcrBox>)>, fail_other: bool, tried: RefCell<Vec<R>>, wins: (Vec<Win>, i32), fast_misses: Vec<&'static str>, settles: bool, settled: Settle, secure_after: bool, unwanted: bool, secure_on_light: bool }
+    impl Fake { fn new() -> Fake { Fake { granted: true, secure: std::cell::Cell::new(false), log: RefCell::new(vec![]), text: vec![], ax: None, fail_capture: false, others: vec![], fail_other: false, tried: RefCell::new(vec![]), wins: (vec![], 0), fast_misses: vec![], settles: false, settled: Settle::Still, secure_after: false, unwanted: false, secure_on_light: false } } fn said(&self) -> Vec<String> { self.log.borrow().clone() } }
     impl Platform for Fake {
         fn settle(&self) -> Settle {
             if !self.settles { return Settle::NotAsked; }
@@ -396,7 +399,7 @@ mod tests {
         }
         fn screen_recording_granted(&self) -> bool { self.log.borrow_mut().push("permission".into()); self.granted }
         fn secure_input_on(&self) -> bool { self.secure.get() }
-        fn indicator(&self, on: bool) { self.log.borrow_mut().push(format!("light {}", if on { "on" } else { "off" })); }
+        fn indicator(&self, on: bool) { self.log.borrow_mut().push(format!("light {}", if on { "on" } else { "off" })); if on && self.secure_on_light { self.secure.set(true); } }
         fn capture(&self) -> Result<Captured, String> {
             self.log.borrow_mut().push("capture".into());
             if self.fail_capture { return Err("no display".into()); }
@@ -981,6 +984,15 @@ mod tests {
             assert!(!s.iter().any(|x| x == "capture" || x.starts_with("send") || x.starts_with("ask")), "{s:?}");
             assert_eq!(s.last().map(String::as_str), Some("light off"));
         }
+    }
+    #[test]
+    fn point_at_the_problem_checks_for_a_password_box_again_after_the_light() {
+        // Hunt 20 Nov 2026: a sign in page that focuses a password field while the light comes on is never captured.
+        let mut f = Fake::new(); f.secure_on_light = true;
+        assert_eq!(look_for(&f, |b| b.first().map(|x| x.rect)).err(), Some(Refusal::SecureInput));
+        let s = f.said();
+        assert!(!s.iter().any(|x| x.starts_with("capture")), "{s:?}");
+        assert_eq!(s.last().map(String::as_str), Some("light off"));
     }
     #[test]
     fn point_at_the_problem_takes_no_picture_once_it_is_no_longer_wanted() {

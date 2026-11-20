@@ -257,7 +257,8 @@ export function islandWings(m: Model, marked = false): Wings | null {
   if (v === "listening") return { state: v, mark: MARK[v]! };
   if (looksAtScreen(m)) return { state: "checking", mark: "look" };
   if (v === "checking") return { state: v, mark: MARK[v]! };
-  if (waiting(m) || (marked && need(m))) return { state: "needsYou", mark: "amber" };
+  // Hunt 20 Nov: an AI tool's own ask (M114) waits for the person too, even while Squibby itself is idle.
+  if (waiting(m) || (m.toolAsks?.length ?? 0) > 0 || (marked && need(m))) return { state: "needsYou", mark: "amber" };
   // A finished task's own result (M45): the tick only for a proven fix, red only when it went wrong, otherwise the bare
   // notch (stopped, undone, not checked or partly checked). Show me's own done keeps its tick. Only the task's own agent's
   // done or error is its result: another agent's error keeps the red mark below.

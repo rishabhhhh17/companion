@@ -8,6 +8,8 @@ import { DESCRIBE_SYSTEM, FAST_SYSTEM, buildDescribeMessages, buildVisionMessage
 import { outOfReach, reachMessage, stoppedMessage } from "./reach.ts";
 import { clip, redact } from "./redact.ts";
 import { PRODUCT_S } from "./names.ts";
+import { spentOf, withCost } from "./spent.ts";
+export { spentOf };
 
 /** Where a request goes and what it carries: Anthropic with the person's own key, or Companion's usage server with the person's
  *  Companion sign in token (managed usage). */
@@ -78,8 +80,12 @@ async function send(d: DirectDeps, model: string, body: Record<string, unknown>,
     try { const j: any = await res.json(); type = String(j?.error?.type ?? ""); message = String(j?.error?.message ?? ""); } catch { /* no body */ }
     throw failure(res.status, type, message, auth.key);
   }
+  // From here the API has taken the request: whatever ends it now, it was paid for (at least the input).
+  const sentBytes = (() => { try { return JSON.stringify(body).length; } catch { return 0; } })();
+  const costSoFar = (u: Usage) => estimateUsd(model, { ...u, input_tokens: u.input_tokens ?? Math.ceil(sentBytes / 4) });
   if (!stream || !res.body) {
-    const j: any = await untilStop(res.json(), signal);
+    let j: any;
+    try { j = await untilStop(res.json(), signal); } catch (e) { throw withCost(e, costSoFar({})); }
     const blocks: any[] = Array.isArray(j?.content) ? j.content : [];
     // With a web search, the answer is the text after the last search's results (before it, the model only says what it
     // will look up). A failed search's result is one error object, not a list: it brings back no page.
@@ -121,7 +127,7 @@ async function send(d: DirectDeps, model: string, body: Record<string, unknown>,
       if (buf.length > MAX_LINE) throw failure(502, "api_error", "the reply had a line that never ended", auth.key);
     }
     if (buf) line(buf.trimEnd());
-  } catch (e) { void reader.cancel().catch(() => {}); throw e; }
+  } catch (e) { void reader.cancel().catch(() => {}); throw withCost(e, costSoFar(usage)); }
   return { text, usage, sources: [] };
 }
 
@@ -162,14 +168,14 @@ export class DirectVisionLane implements VisionLike {
     if (signal.aborted) throw stopped();
     const content = await userContent(buildDescribeMessages(req.images, req.question) as never);
     const r = await send(this.o, this.model, { system: DESCRIBE_SYSTEM, messages: [{ role: "user", content }] }, signal);
-    if (!r.text.trim()) throw new Error("nothing was said about the picture");
+    if (!r.text.trim()) throw withCost(new Error("nothing was said about the picture"), estimateUsd(this.model, r.usage));
     return { text: r.text.trim(), costUsd: round(estimateUsd(this.model, r.usage)) };
   }
   async ask(req: LookReq, signal: AbortSignal): Promise<{ text: string; costUsd: number }> {
     if (signal.aborted) throw stopped();
     const content = await userContent(buildVisionMessages(req.image, req.question, req.ocr, req.screens) as never);
     const r = await send(this.o, this.model, { system: req.system, messages: [{ role: "user", content }] }, signal);
-    if (!r.text.trim()) throw new Error("nothing was said about the screen");
+    if (!r.text.trim()) throw withCost(new Error("nothing was said about the screen"), estimateUsd(this.model, r.usage));
     return { text: r.text, costUsd: round(estimateUsd(this.model, r.usage)) };
   }
 }

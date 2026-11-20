@@ -77,6 +77,7 @@ import { claudeFolderExists, removeEmptyClaudeFolder } from "./litter.ts";
 import { appDisplayName, errorFixLabel, OFF_RECORD_LABEL, taskLabel } from "./labels.ts";
 import { cleanSelection, errorRequest, excerptOf, locateError, parseExplanation } from "./errorhelp.ts";
 import { secondLook, SecondLookError } from "./secondlook.ts";
+import { spentOf } from "./spent.ts";
 import type { FastLike } from "./lanes.ts";
 import { makeShareCard, projectTitle } from "./ship/card.ts";
 import { aboutLine, inspectProject } from "./proof/intake.ts";
@@ -1365,6 +1366,7 @@ export class AgentRunner {
       try {
         said = await this.o.describer({ images: added.images.map((p) => ({ mediaType: p.mediaType, base64: p.base64 })), question: redact(cmd.prompt) }, abort.signal);
       } catch (e) {
+        this.bookSpend(cmd.project, spentOf(e));   // taken and then stopped or failed: still paid for (hunt 20 Nov)
         if (abort.signal.aborted) { this.state(cmd.agent, "idle"); return { ended: { status: "interrupted", usd: 0 } }; }
         const why = String((e as Error).message ?? e);
         // Claude out of reach or a failed request is said as that (reach.ts), never as a problem with the picture.
@@ -1673,8 +1675,10 @@ export class AgentRunner {
     // One still there means the fix is not proven: the receipt and History say so, and it is not counted as a proven fix.
     const fixCheck = this.fixChecks.get(cmd.id);
     this.fixChecks.delete(cmd.id);
-    let rechecked: { batch: string; findings: FixFinding[] } | null = null;
-    if (fixCheck && status !== "interrupted") { try { rechecked = await fixCheck({ after: lastAfter, proof }); } catch { rechecked = null; } }
+    let rechecked: { batch: string; findings: FixFinding[] } | null = null, unchecked = false;
+    if (fixCheck && status !== "interrupted") {
+      try { const r = await fixCheck({ after: lastAfter, proof }); if (r === "unchecked") unchecked = true; else rechecked = r; } catch { unchecked = true; }
+    }
     if (rechecked && !rechecked.findings.length) rechecked = null;
     const still = stillCount(rechecked?.findings);
     // Save the task first, so a page that asks for the timeline when the receipt arrives sees it.
@@ -1716,8 +1720,9 @@ export class AgentRunner {
     for (const f of flags) this.markSaved("drift", cmd.project, taskId, f.kind);
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(lastSaid && proof !== "passed" && claimsPassed(lastSaid) ? { claimedPassed: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...(notesStay.length ? { notesStay } : {}), ...(flags.length ? { flags } : {}), ...(rechecked ? { rechecked } : {}), ...practice } as never);
     // A proven fix (M45: it ended done and its checks passed) counts once toward Free's month (plan.ts). Nothing else does,
-    // and an Undo or Bring back later never changes it. M104: nor a fix that left one of its review's problems there.
-    if (status === "done" && proof === "passed" && !still) this.o.fixes?.proven(opts.fixTicket, taskId);
+    // and an Undo or Bring back later never changes it. M104: nor a fix that left one of its review's problems there, nor
+    // (hunt 20 Nov) one whose recheck could not run.
+    if (status === "done" && proof === "passed" && !still && !unchecked) this.o.fixes?.proven(opts.fixTicket, taskId);
     // M78: a fix that ended not proven (the loop breaker stopped it, or its checks still failed) leaves one "tried and failed"
     // line with its proof. Never off the record, never for a practice copy, never after Stop.
     if (proof === "failed" && lastFailure && status !== "interrupted" && !offRecord && !cmd.practice) this.rememberTried(cmd.project, lbl, lastFailure, stuckOffered);
@@ -2607,6 +2612,7 @@ export class AgentRunner {
     } catch (e) {
       // Claude out of reach, or a failed request of a known kind, is named (reach.ts), so the card says it plainly.
       const msg = String((e as Error)?.message ?? e);
+      this.bookSpend(project, spentOf(e));   // taken and then stopped or failed: still paid for (hunt 20 Nov)
       say(false, { ...at, reason: ac.signal.aborted ? (timedOut ? "That took too long. Try again." : "Stopped.") : isClaudeStop(msg) ? withoutTryAgain(msg) : "I could not explain that just now. Try again." });
     } finally { clearTimeout(timer); this.picturing.delete(ac); }
   }
@@ -2635,7 +2641,7 @@ export class AgentRunner {
       if (ac.signal.aborted) { say(false, { reason: ended(), usdEstimate: r.costUsd }); return; }
       say(true, { verdict: r.verdict, items: r.items, checked: r.checked, cantTell: r.cantTell, search: r.search, searches: r.searches, usdEstimate: r.costUsd });
     } catch (e) {
-      const cost = e instanceof SecondLookError ? e.costUsd : 0;
+      const cost = e instanceof SecondLookError ? e.costUsd : spentOf(e);
       this.bookSpend(project, cost);
       // Claude out of reach, or a failed request of a known kind, is named (reach.ts), so the card says it plainly.
       const msg = String((e as Error)?.message ?? e);
@@ -2673,6 +2679,7 @@ export class AgentRunner {
       if (!d) { done(false, { reason: "I could not draw a clear picture of that. Try asking in different words, or press the key when the problem is on screen." }); return; }
       done(true, { diagram: d, usdEstimate: r.costUsd });
     } catch (e) {
+      this.bookSpend(cmd.project, spentOf(e));
       const msg = String((e as Error)?.message ?? e);
       done(false, { reason: ac.signal.aborted ? (timedOut ? slow : "Stopped.") : isClaudeStop(msg) ? withoutTryAgain(msg) : "I could not draw that just now. Try again." });
     }

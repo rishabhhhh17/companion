@@ -5,7 +5,7 @@
 import { lstatSync, readdirSync, readFileSync, readlinkSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { commandsOf, hasAnsiQuote, hasDynamic, inputTargets, nestedStrings, parseShell, redirectTargets, unwrap } from "./shell.ts";
+import { commandsOf, expandBraces, hasAnsiQuote, hasDynamic, inputTargets, nestedStrings, parseShell, redirectTargets, unwrap } from "./shell.ts";
 import { isSafeUrl } from "./research.ts";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
@@ -394,10 +394,41 @@ function pathVerdict(arg: string, ctx: Context, cwd: string): Verdict | null {
   if (!arg || arg === "-" || /^[a-z][a-z0-9+.-]*:\/\//i.test(arg)) return null;
   if (arg.startsWith("~")) return deny("outside_project", `${arg} is outside the project`);
   if (/^\/dev\/(null|stdout|stderr|tty|zero)$/.test(arg)) return null;
+  // Hunt 20 Nov 2026: the shell expands .gi?, .g* and .gi{t,t} to .git before the command runs, so a pattern is judged by
+  // every protected name it could become, not by its letters.
+  const reach = patternReachesProtected(arg);
+  if (reach === "..") return deny("outside_project", `${arg} could reach the folder above the project`);
+  if (reach) return deny(reach.startsWith(".git") ? "git" : "outside_project", protectedWhy(reach));
   const w = whereIs(ctx.project, arg, cwd);
   if (w.protectedPart) return deny(w.protectedPart.startsWith(".git") ? "git" : "outside_project", protectedWhy(w.protectedPart));
   if (!w.inside) return deny("outside_project", `${arg} is outside the project`);
   if (isSettingsFile(w.abs) || globMayMatchSettings(arg)) return ask("settings", `changes your private settings file (${isSettingsFile(w.abs) ? basename(w.abs) : ".env"})`, true);
+  return null;
+}
+
+const PROTECTED_NAMES = [...PROTECTED, ".gitmodules", ".."];
+/** The protected name (or "..") a wildcard or brace path could expand to, or null. A wildcard segment that does not start
+ * with a dot never matches a hidden name in bash or zsh, so src/*.js stays free. */
+export function patternReachesProtected(arg: string): string | null {
+  if (!/[*?[{]/.test(arg)) return null;
+  for (const alt of expandBraces(arg)) {
+    for (const seg of alt.split("/")) {
+      const low = seg.toLowerCase();
+      if (!/[*?[]/.test(seg)) { if (PROTECTED.has(low) || low === ".gitmodules") return low; continue; }
+      if (!seg.startsWith(".")) continue;
+      let re = "";
+      for (let i = 0; i < low.length; i++) {
+        const c = low[i];
+        if (c === "*") re += ".*";
+        else if (c === "?") re += ".";
+        else if (c === "[") { const end = low.indexOf("]", i + 2); if (end < 0) { re += "\\["; continue; } let cls = low.slice(i + 1, end); if (cls[0] === "!") cls = "^" + cls.slice(1); re += "[" + cls.replace(/\\/g, "\\\\") + "]"; i = end; }
+        else re += c.replace(/[.+^${}()|\\\]]/g, "\\$&");
+      }
+      let rx: RegExp; try { rx = new RegExp("^" + re + "$"); } catch { return ".git"; }
+      const hit = PROTECTED_NAMES.find((n) => rx.test(n));
+      if (hit) return hit;
+    }
+  }
   return null;
 }
 
@@ -610,6 +641,13 @@ function commandBody(words: string[], ctx: Context, cwd: string): Verdict {
       const a = args[i];
       if (name === "dd" && a.startsWith("of=")) paths.push(a.slice(3));
       else if (writer.flags?.includes(a) && args[i + 1] !== undefined) { paths.push(args[i + 1]); i++; }
+      // Hunt 20 Nov 2026: a short option glued to its value (-t.git/hooks, -C.git) or at the end of a cluster (-sSLo file).
+      else if (/^-[A-Za-z]/.test(a) && !a.startsWith("--") && writer.flags?.some((f) => /^-[A-Za-z]$/.test(f))) {
+        for (let k = 1; k < a.length; k++) {
+          if (!/[A-Za-z]/.test(a[k])) break;
+          if (writer.flags.includes(`-${a[k]}`)) { const rest = a.slice(k + 1); if (rest) paths.push(rest); else if (args[i + 1] !== undefined) { paths.push(args[i + 1]); i++; } break; }
+        }
+      }
       else if (writer.flags?.some((f) => f.startsWith("--") && a.startsWith(`${f}=`))) paths.push(a.slice(a.indexOf("=") + 1));
       else if (writer.all && !a.startsWith("-")) paths.push(a);
     }

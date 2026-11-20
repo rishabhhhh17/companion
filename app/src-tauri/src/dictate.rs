@@ -97,6 +97,10 @@ pub fn insert_at_cursor(target: &Target, text: &str, stopped: impl Fn() -> bool)
         return ("idle", String::new());
     }
     if let Plan::Copy(why) = insert_plan(target.focus(), focus_now()) { return ("copied", why.to_string()); }
+    // Hunt 20 Nov 2026: a password box, or secure typing (sudo asking for a password), may have come up while the words were
+    // being made. Checked again right before the paste: then the words stay copied and are never pasted.
+    let (role, subrole) = ax::focused(target.pid).map(|f| (f.role, f.subrole)).unwrap_or_default();
+    if let Err(v) = target_verdict(&role, &subrole, ax::secure_input_enabled(), &target.bundle, &rules::Denylist::empty()) { return ("copied", refused_words(v).to_string()); }
     // The app's own Edit > Paste first; Cmd+V only when that item could not be pressed (pressing both would paste twice).
     let by_menu = ax::press_menu(target.pid, "Edit", "Paste");
     if !by_menu { ax::press_paste(); }
@@ -168,5 +172,16 @@ mod tests {
         assert!(body.find("ensure_front").unwrap() < stop);
         // The log line holds a count, never the words.
         assert!(!body.contains("\"text\""));
+    }
+    #[test]
+    fn a_password_box_or_secure_typing_since_the_press_is_checked_again_right_before_the_paste() {
+        // Hunt 20 Nov 2026: sudo asking for a password while the words were being made must never receive them.
+        let src = include_str!("dictate.rs");
+        let body = &src[src.find("pub fn insert_at_cursor(").unwrap()..src.find("#[cfg(test)]").unwrap()];
+        let last_plan = body.rfind("insert_plan(").unwrap();
+        let check = body.find("secure_input_enabled()").expect("secure typing is read again in insert_at_cursor");
+        assert!(last_plan < check && check < body.find("press_menu").unwrap() && check < body.find("press_paste").unwrap(), "checked after the last focus check, before the paste");
+        let line = &body[body[..check].rfind('\n').unwrap()..check + body[check..].find('\n').unwrap()];
+        assert!(line.contains("target_verdict(") && line.contains("return (\"copied\", refused_words(v)"), "a refusal copies instead, in the refusal's words: {line}");
     }
 }

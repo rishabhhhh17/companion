@@ -18,6 +18,8 @@
 // Nothing here runs git or writes the person's git (rule 10).
 import { writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
+import { homedir } from "node:os";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { AskExt, DoneTool } from "./donesignal.ts";
 import { shortCommand } from "./guard.ts";
 import { shownPath } from "./livefeed.ts";
@@ -124,6 +126,26 @@ function questionsOf(input: Obj | null): { view: AskQuestion[]; labels: string[]
   return { view, labels, texts, raw: qs };
 }
 
+/** A command exactly as it will run, or null when the card could not show all of it: a secret redacted, more than one
+ *  line, or longer than the card holds. Allow must never approve text the person could not see (rule 13, hunt 20 Nov). */
+function wholeCommand(command: string): string | null {
+  const t = command.trim();
+  if (!t || /[\u0000-\u001f\u007f]/.test(t) || redact(t) !== t || Array.from(t).length > ASK_TARGET_MAX) return null;
+  return shortCommand(t) === t ? t : null;
+}
+/** A file for the card: inside the project, its path there; outside it, the whole path (home as ~), so it never looks like
+ *  the project's own file. Null when an outside path is too long to show whole or holds a secret (the tool asks itself). */
+function askPath(project: string, path: string, cwd?: string): string | null {
+  const root = resolve(project);
+  const abs = isAbsolute(path) ? resolve(path) : resolve(cwd ?? root, path);
+  const rel = relative(root, abs);
+  if (rel && !rel.startsWith("..") && !isAbsolute(rel)) return shownPath(project, path, cwd);
+  const home = homedir();
+  const out = abs === home || abs.startsWith(home + sep) ? `~${abs.slice(home.length)}` : abs;
+  if (/[\u0000-\u001f\u007f]/.test(out) || redact(out) !== out || Array.from(out).length > ASK_TARGET_MAX) return null;
+  return out;
+}
+
 /** A request as the card shows it, or null for anything the card cannot show (the tool then asks in its own window). ext
  *  is the hook it came through: perm (PermissionRequest) or question (PreToolUse on AskUserQuestion, questions only). */
 export function parseAsk(text: string, ext: AskExt, project: string): ParsedAsk | null {
@@ -143,9 +165,13 @@ export function parseAsk(text: string, ext: AskExt, project: string): ParsedAsk 
   if (name === "ExitPlanMode") return { kind: "plan", input: input ?? {}, ...always };
   if (name === "Bash" || name === "shell" || name === "exec_command") {
     const command = input && textOf(input.command);
-    return command ? { kind: "permission", action: "run", target: shortCommand(command), ...always } : null;
+    const shown = command ? wholeCommand(command) : null;
+    return shown ? { kind: "permission", action: "run", target: shown, ...always } : null;
   }
-  const pathOf = () => { const p = input && textOf(input.file_path ?? input.notebook_path ?? input.path); return p ? shownPath(project, p, cwd) : null; };
+  const rawPath = input ? textOf(input.file_path ?? input.notebook_path ?? input.path) : null;
+  const shownFile = rawPath ? askPath(project, rawPath, cwd) : null;
+  if (rawPath && !shownFile && (EDIT_TOOLS.has(name) || READ_TOOLS.has(name))) return null;
+  const pathOf = () => shownFile;
   if (EDIT_TOOLS.has(name)) { const p = pathOf(); return { kind: "permission", action: "edit", ...(p ? { target: p } : {}), ...always }; }
   if (READ_TOOLS.has(name)) { const p = pathOf() ?? (input && textOf(input.pattern) ? said(input.pattern as string, ASK_TARGET_MAX) : null); return { kind: "permission", action: "read", ...(p ? { target: p } : {}), ...always }; }
   if (name === "WebFetch" || name === "WebSearch") {

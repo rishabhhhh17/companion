@@ -322,7 +322,8 @@ fn display_of(app: &AppHandle, rect: coords::R) -> Option<coords::R> {
 /// Opens the failing file at its line (in the editor in front, or the first one installed, or the Mac's default),
 /// waits for it to come forward, then looks once (light first) and circles the line. Nothing is sent to a model.
 #[tauri::command]
-fn point_problem(app: AppHandle, project: String, problem: Value) {
+fn point_problem(app: AppHandle, window: tauri::WebviewWindow, project: String, problem: Value) {
+    if settings::only_card(window.label()).is_err() { return; }   // hunt 20 Nov: a capture starts from Home only
     let current = current_project();
     if current.is_empty() { say_showme(&app, "error", "Choose your project folder first.", json!({})); return; }
     // A check that finished after the folder changed belongs to the old project: never open its file in the new one.

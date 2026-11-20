@@ -618,6 +618,10 @@ pub fn runner_command(key: &str, v: &Value, project: &str, id: &str) -> Option<V
 /// retired), as with every other change.
 pub fn only_card(window: &str) -> Result<(), &'static str> { if window == "card" { Ok(()) } else { Err("not_card") } }
 
+/// Hunt 20 Nov 2026: the windows that only draw and listen (overlay.json). The command wrapper in main.rs refuses every app
+/// command from them, because Tauri itself allows every app command from every window.
+pub const LISTEN_ONLY: &[&str] = &["overlay", "follow"];
+
 /// The project a change is for. A page that says which project it was shown (house rules always do) has its change kept
 /// only while that is still the project in Home: the folder can change by itself in between (a copy from a link that
 /// finishes opens its folder), and one project's house rules must never be written over another's ("projectChanged").
@@ -1658,5 +1662,20 @@ mod tests {
             }
         }
         assert!(seen > 0, "a shared case covers a dragged place");
+    }
+
+    #[test]
+    fn the_listen_only_windows_can_call_no_command_and_home_only_commands_check_the_window() {
+        // Hunt 20 Nov 2026: Tauri allows every app command from every window unless told otherwise. The overlay and the
+        // follow window only listen, so the one command wrapper refuses every command from them; the commands that capture,
+        // press, paste or swap the key answer Home (the card window) only.
+        let m = crate::main_src();
+        let wrap = &m[m.find(".invoke_handler({").unwrap()..]; let wrap = &wrap[..wrap.find(".setup(").unwrap()];
+        assert!(wrap.contains("LISTEN_ONLY.contains(&invoke.message.webview().label())"), "{wrap}");
+        assert_eq!(LISTEN_ONLY, &["overlay", "follow"]);
+        for f in ["fn showme_start(", "fn point_problem(", "fn do_it_for_me(", "fn save_api_key(", "fn ph_accept(", "fn ph_restore("] {
+            let b = &m[m.find(f).unwrap_or_else(|| panic!("{f}"))..]; let b = &b[..b.find("\n}").map(|i| i.min(b.find("}\n").unwrap_or(i))).unwrap_or(b.len())];
+            assert!(b.contains("window: tauri::WebviewWindow") && b.contains("settings::only_card(window.label())"), "{f} must be Home only: {b}");
+        }
     }
 }

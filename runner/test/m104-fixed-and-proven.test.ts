@@ -190,7 +190,7 @@ describe("Fix it keeps the review and checks it again", () => {
     go(); await first;
     const after = await t.store.snapshot("After");
     const a = await svcFix[0].check!({ after: after.id, proof: "passed" });
-    expect(a?.findings.some((f) => f.outcome === "still")).toBe(true);
+    expect(a !== "unchecked" && a?.findings.some((f) => f.outcome === "still")).toBe(true);
     expect(t.modelCalls()).toBe(calls);
     expect(calls).toBe(0);
   });
@@ -226,7 +226,8 @@ describe("Fix it keeps the review and checks it again", () => {
     let check: FixCheck | undefined;
     (t.svc as any).deps.fix = async (_c: Command, c?: FixCheck) => { check = c; };
     await t.fixIt(batch);
-    expect(await check!({ after: "cp_999999", proof: "passed" })).toBeNull();
+    // Hunt 20 Nov: a recheck that could not run says so, so the fix is never counted as proven on it.
+    expect(await check!({ after: "cp_999999", proof: "passed" })).toBe("unchecked");
   });
 });
 
@@ -235,7 +236,7 @@ describe("Fix it keeps the review and checks it again", () => {
 const step = (status: string) => ({ rung: "browser", label: "browser", status: status as "passed", detail: "", ms: 1 });
 const pass: LadderResult = { verdict: "passed", steps: [step("passed")] as never };
 
-function world(fixCommand: string) {
+function world(fixCommand: string, o: { brokenCheck?: boolean } = {}) {
   const project = tmp("site");
   write(project, { "src/pay.ts": "export const pay = 1;\n" });
   const events: Ev[] = [];
@@ -254,7 +255,7 @@ function world(fixCommand: string) {
     fix: (start, check) => {
       const a = gate.admit(start);
       if (!a) return;
-      if (check) runner.checkAfter(a.id, check);
+      if (check) runner.checkAfter(a.id, o.brokenCheck ? async () => { throw new Error("the versions are gone"); } : check);
       let settle!: () => void;
       review.around(start.project!, new Promise<void>((r) => { settle = r; }), "agent.start");
       return runner.handle(a).finally(() => { settle(); runner.dropCheck(a.id); });
@@ -265,8 +266,8 @@ function world(fixCommand: string) {
   const until = async (pred: () => boolean, ms = 8000) => { for (let i = 0; i < ms / 20 && !pred(); i++) await sleep(20); expect(pred()).toBe(true); };
   return { project, events, of, until, review, log, used: () => free.count(monthOf(new Date(2026, 10, 17, 12))), change: (f: Record<string, string>) => { write(project, f); for (const r of Object.keys(f)) send?.(r); } };
 }
-async function fixedEndToEnd(fixCommand: string) {
-  const w = world(fixCommand);
+async function fixedEndToEnd(fixCommand: string, o: { brokenCheck?: boolean } = {}) {
+  const w = world(fixCommand, o);
   w.review.setProject(w.project); await w.review.ready();
   w.change({ "src/pay.ts": `export const k = "${KEY}";\n` });
   await w.until(() => w.of("review.batch").length === 1);
@@ -295,6 +296,12 @@ describe("the receipt says it, problem by problem", () => {
     expect(receipt.proof).toBe("passed");
     expect(receipt.rechecked.findings.find((f: { say: string }) => /key/i.test(f.say))?.outcome).toBe("still");
     expect(w.log.list(w.project)[0].still).toBeGreaterThanOrEqual(1);
+    expect(w.used()).toBe(0);
+    every(w.events);
+  });
+  test("hunt 20 Nov: a recheck that fails to run is not a proven fix, even when the checks passed", async () => {
+    const { w, receipt } = await fixedEndToEnd(`printf 'export const k = process.env.PAY_KEY;\\n' > src/pay.ts`, { brokenCheck: true });
+    expect(receipt.proof).toBe("passed");
     expect(w.used()).toBe(0);
     every(w.events);
   });

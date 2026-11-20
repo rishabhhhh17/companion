@@ -179,7 +179,12 @@ export class MessagesLoopEngine implements Engine {
           throw failure(res.status, type, message, auth.token);
         }
         let j: any;
-        try { j = await untilStop(res.json(), signal); } catch (e) { if (signal.aborted) { opts.unbilled?.(likelyInputUsd(opts.model, bytes) + estimateUsd(opts.model, { output_tokens: maxTokens })); return; } throw new Error(stoppedMessage("unknown", "the answer could not be read")); }
+        try { j = await untilStop(res.json(), signal); } catch (e) {
+          // Either way the usage server took and billed the request, so it is booked before anything else (hunt 20 Nov).
+          opts.unbilled?.(likelyInputUsd(opts.model, bytes) + estimateUsd(opts.model, { output_tokens: maxTokens }));
+          if (signal.aborted) return;
+          throw new Error(stoppedMessage("unknown", "the answer could not be read"));
+        }
         const usage: Usage = j?.usage ?? {};
         const cost = estimateUsd(opts.model, usage);
         spent += cost;

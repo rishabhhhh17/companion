@@ -10,6 +10,8 @@ import { answerToolAsk } from "./commands.ts";
 import { CONNECT_HOOKS, connection, connectAsk, OPTIONAL_HOOKS } from "./aiTools.ts";
 import { doneAsk, doneStateFrom, hookLabel, removedLine } from "./doneSignal.ts";
 import { panelView } from "./islandPanel.ts";
+import { islandWings } from "./home.ts";
+import { hoverAction, hoverLine } from "./notchMinimal.ts";
 import { S } from "./strings.ts";
 import { parseCommand } from "../../protocol/index.ts";
 
@@ -179,3 +181,18 @@ describe("the hooks in Settings and Connect", () => {
 // A type check: the card is built from what the model keeps.
 const _t: ToolAsk | null = toolAskFrom(perm);
 void _t;
+
+// Hunt 20 Nov 2026: an AI tool's ask must open the notch and be what the hover row talks about, even while Squibby itself
+// is idle (nothing else waiting, no task).
+describe("an ask on its own opens the notch and leads the hover row (hunt 20 Nov)", () => {
+  const idleWithAsk = (): Model => ({ ...withAsks(perm!), runnerUp: true });
+  test("the wings come out with the waiting mark", () => {
+    expect(islandWings({ ...initial(), runnerUp: true })).toBeNull();
+    expect(islandWings(idleWithAsk())).toEqual({ state: "needsYou", mark: "amber" });
+  });
+  test("the pill is Answer and the line says a question waits, never an unrelated check", () => {
+    const m = idleWithAsk();
+    expect(hoverAction(m, 0, { layout: "quick" }).id).toBe("answer");
+    expect(hoverLine(m, 0)?.words).toBe(S.m93.line.questions(1));
+  });
+});
