@@ -45,6 +45,13 @@
 // AfterTool on write_file and replace. It hands the tool's note to the guard folder as <token>.<pid>.<tool>.feed, never
 // waits and always exits 0: the edit has already happened, so nothing can be blocked. With Squibby closed it writes nothing.
 // The engine takes only the file's path and counts the lines, and removes the note as it reads it (guard.ts, livefeed.ts).
+// M114 (approve and answer from the notch): two more kinds, each after its own yes. approve: Claude Code's and Codex's
+// PermissionRequest; answer: Claude Code's PreToolUse on AskUserQuestion. The command hands the request to the guard folder
+// as <token>.<pid>.<tool>.perm or .question, waits for Squibby's answer file (at most ASK_WAIT_TENTHS, and only while the
+// engine is alive), prints the answer if it has anything in it, and always exits 0. An empty answer, no answer, a closed
+// Squibby or one that quits mid wait all print nothing: the tool asks in its own window as it always does (toolask.ts).
+// Two of Squibby's kinds may sit under one event (Codex's waiting and approve; Claude Code's guard and answer), so adding,
+// checking and removing one kind leaves the other alone (kindOf).
 // Nothing here runs git or writes the person's git (rule 10). Every other line of the file is kept as it was, a file that is
 // not plain JSON is refused and left alone, and Remove takes out only Squibby's own entry (found by its marker path).
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmdirSync, rmSync, statSync, watch as fsWatch } from "node:fs";
@@ -57,10 +64,10 @@ export const DONE_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity"
 export type DoneTool = (typeof DONE_TOOLS)[number];
 /** M77: the kinds of hook. done: the Stop hook (both tools). guard and waiting: Claude Code only. M78: start, Claude Code
  *  only: the start block (memory/startblock.ts) printed as a session starts. */
-export const HOOK_KINDS = ["done", "guard", "waiting", "start", "feed"] as const;
+export const HOOK_KINDS = ["done", "guard", "waiting", "start", "feed", "approve", "answer"] as const;
 export type HookKind = (typeof HOOK_KINDS)[number];
 /** The event each kind sits under in the tool's hooks file. */
-export const HOOK_EVENT: Readonly<Record<HookKind, string>> = { done: "Stop", guard: "PreToolUse", waiting: "Notification", start: "SessionStart", feed: "PostToolUse" };
+export const HOOK_EVENT: Readonly<Record<HookKind, string>> = { done: "Stop", guard: "PreToolUse", waiting: "Notification", start: "SessionStart", feed: "PostToolUse", approve: "PermissionRequest", answer: "PreToolUse" };
 /** M105: Codex's waiting hook sits under PermissionRequest (learn.chatgpt.com/docs/hooks, seen 15 Nov 2026). */
 export const CODEX_WAITING_EVENT = "PermissionRequest";
 /** The matcher of each kind (Stop has none). */
@@ -68,7 +75,7 @@ export const CODEX_WAITING_EVENT = "PermissionRequest";
  *  block, and printing it again would change the start of the conversation ([verify] on a real Mac). */
 /** M103: the guard also sees Claude Code's Read tool, so a read of a saved login file can be asked about first. Only the
  *  file's path is looked at, never its contents (Read's input holds no contents). */
-export const HOOK_MATCHER: Readonly<Partial<Record<HookKind, string>>> = { guard: "Bash|Read", waiting: "permission_prompt|idle_prompt", start: "startup|clear|compact" };
+export const HOOK_MATCHER: Readonly<Partial<Record<HookKind, string>>> = { guard: "Bash|Read", waiting: "permission_prompt|idle_prompt", start: "startup|clear|compact", answer: "AskUserQuestion" };
 /** M113: the feed hook's matcher in each tool that takes one: only the edit tools (Cursor's afterFileEdit is only edits, and
  *  the VS Code agent's PostToolUse has no matcher, so the engine reads only its edit tools). Codex's apply_patch is its edit
  *  tool ([verify] that Codex hands it to PostToolUse on a real Mac). */
@@ -78,7 +85,8 @@ export const FEED_TIMEOUT_S = 5;
 /** The hooks each tool may have. M80: the other tools have the done signal and the guard (their waiting and start contracts
  *  differ or are missing, so those stay Claude Code's). */
 /** M113: the feed for the tools with an after edit event; Antigravity and Windsurf are covered by the folder watcher. */
-export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting", "start", "feed"], codex: ["done", "guard", "waiting", "feed"], cursor: ["done", "guard", "feed"], copilot: ["done", "guard", "feed"], antigravity: ["done", "guard"], gemini: ["done", "guard", "feed"], windsurf: ["done", "guard"] };
+/** M114: approve for Claude Code and Codex (their PermissionRequest), answer for Claude Code (AskUserQuestion). */
+export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting", "start", "feed", "approve", "answer"], codex: ["done", "guard", "waiting", "feed", "approve"], cursor: ["done", "guard", "feed"], copilot: ["done", "guard", "feed"], antigravity: ["done", "guard"], gemini: ["done", "guard", "feed"], windsurf: ["done", "guard"] };
 /** M80: the event a hook sits under in each tool. Cursor names its own; the rest use Claude Code's names. */
 export const eventOf = (tool: DoneTool, hook: HookKind): string =>
   tool === "cursor" ? (hook === "guard" ? "beforeShellExecution" : hook === "feed" ? "afterFileEdit" : "stop")
@@ -200,6 +208,23 @@ export const feedEntryFor = (tool: DoneTool, guardDir: string, token: string): J
   if (tool === "gemini") return { matcher: FEED_MATCHER.gemini, hooks: [{ name: "companion-feed", type: "command", command, timeout: FEED_TIMEOUT_S * 1000 }] };
   return { matcher: FEED_MATCHER[tool] ?? FEED_MATCHER.claude, hooks: [{ type: "command", command, timeout: FEED_TIMEOUT_S }] };
 };
+/** M114: the end of an ask request's name, by kind: .perm for a permission request, .question for Claude Code's question. */
+export const ASK_HOOK_EXT = { approve: "perm", answer: "question" } as const;
+export type AskExt = (typeof ASK_HOOK_EXT)[keyof typeof ASK_HOOK_EXT];
+/** M114: how long the hook waits for Squibby's answer at most, in tenths of a second, and the timeout the tool gives it
+ *  (seconds, a little more). The wait the person sets (notch.askWait, toolask.ts) ends each ask earlier. */
+export const ASK_WAIT_TENTHS = 1250;
+export const ASK_TIMEOUT_S = 130;
+/** M114: the ask hook's command. Its input (the tool's request) goes to <guardDir>/<token>.<pid>.<tool>.<ext> through a
+ *  temporary name; then it waits for <that>.ok, stopping the moment Squibby's engine is gone, prints the answer when it is
+ *  not empty, removes its files and exits 0. A trap removes them too when the tool ends the hook (answered in the tool). */
+export const askCommand = (guardDir: string, token: string, tool: DoneTool, ext: AskExt): string =>
+  `${guardOpening(guardDir)} r="$d/${token}.$$.${tool}.${ext}"; trap 'rm -f "$r" "$r.tmp" "$r.ok"; exit 0' HUP INT TERM; cat >"$r.tmp" 2>/dev/null && mv "$r.tmp" "$r" 2>/dev/null || { rm -f "$r.tmp"; exit 0; }; i=0; while [ ! -e "$r.ok" ] && [ $i -lt ${ASK_WAIT_TENTHS} ] && kill -0 "$p" 2>/dev/null; do sleep 0.1; i=$((i+1)); done; [ -s "$r.ok" ] && cat "$r.ok" 2>/dev/null; rm -f "$r" "$r.ok"; exit 0`;
+/** M114: the ask entry in each tool's own shape (Claude Code's and Codex's are the same). */
+export const askEntryFor = (tool: DoneTool, guardDir: string, token: string, kind: "approve" | "answer"): Json => {
+  const command = askCommand(guardDir, token, tool, ASK_HOOK_EXT[kind]);
+  return { ...(kind === "answer" ? { matcher: HOOK_MATCHER.answer } : {}), hooks: [{ type: "command", command, timeout: ASK_TIMEOUT_S }] };
+};
 /** M77: the entry added under PreToolUse (guard) or Notification (waiting). */
 /** M78: the start hook's command: it prints the project's start block, a file Squibby wrote earlier, and always ends with 0.
  *  It reads nothing else and needs no running engine, so the block reaches Claude while Squibby is closed too. Claude Code
@@ -245,6 +270,21 @@ const ours = (entry: unknown, marker: string): boolean => commandsOf(entry).some
  *  the done folder, or a guard or waiting command that opens with the guard folder. */
 const anyOurs = (entry: unknown, dir: string, guardDir: string, startDir: string): boolean =>
   holdersOf(entry).some((h) => typeof h.command === "string" && ((h.command.includes(`${dir}/`) && h.command.startsWith("/usr/bin/touch -- ")) || h.command.startsWith(`d=${shQuote(guardDir)};`) || h.command.startsWith(`s=${shQuote(startDir)};`)));
+
+/** M114: which of Squibby's kinds a command is, by its opening and the name it hands over: the start block, a touch (done,
+ *  or Codex's waiting signal with .wait), or one of the guard folder's (.feed, .perm, .question, .note; anything else is
+ *  the guard). Null for a command that is not Squibby's. */
+export function kindOf(c: string): HookKind | null {
+  if (c.startsWith("s=")) return "start";
+  if (c.startsWith("/usr/bin/touch -- ")) return /\.wait' 2>/.test(c) ? "waiting" : "done";
+  if (!c.startsWith("d=")) return null;
+  if (c.includes(`.feed"`)) return "feed";
+  if (c.includes(`.${ASK_HOOK_EXT.approve}"`)) return "approve";
+  if (c.includes(`.${ASK_HOOK_EXT.answer}"`)) return "answer";
+  if (c.includes(`.note"`)) return "waiting";
+  return "guard";
+}
+const kindsOf = (entry: unknown): HookKind[] => commandsOf(entry).map(kindOf).filter((k): k is HookKind => k !== null);
 
 export const NOT_JSON = (file: string) => `${file} is not in a form ${PRODUCT} can change safely, so nothing was written. Nothing in it was changed.`;
 export const NOT_A_FOLDER = "That folder could not be found, so nothing was written.";
@@ -323,6 +363,7 @@ export class DoneSignals {
     if (kind === "waiting") return tool === "claude" ? waitingEntry(this.guardDir, t) : waitTouchEntry(join(this.dir, markerName(t, tool, true)));
     if (kind === "start") return startEntry(this.startDir, t);
     if (kind === "feed") return feedEntryFor(tool, this.guardDir, t);
+    if (kind === "approve" || kind === "answer") return askEntryFor(tool, this.guardDir, t, kind);
     return doneEntryFor(tool, join(this.dir, markerName(t, tool)));
   }
   /** Whether an entry under an event is Squibby's own of this kind for this project. */
@@ -331,7 +372,9 @@ export class DoneSignals {
     if (kind === "done") return ours(entry, join(this.dir, token));
     if (kind === "waiting" && ours(entry, `${join(this.dir, token)}.`)) return true;
     if (kind === "start") return commandsOf(entry).some((c) => c.startsWith(`s=${shQuote(this.startDir)};`) && c.includes(`/${token}.md"`));
-    return commandsOf(entry).some((c) => c.startsWith(`d=${shQuote(this.guardDir)};`) && c.includes(`/${token}.`));
+    // M114: one of the guard folder's kinds, by what its command names (kindOf), so the guard and answer under one event,
+    // or Codex's waiting and approve, are never taken for each other.
+    return commandsOf(entry).some((c) => c.startsWith(`d=${shQuote(this.guardDir)};`) && c.includes(`/${token}.`) && kindOf(c) === kind);
   }
   /** M80: the key of the object that holds a hook's event lists: `hooks` for most tools, or Squibby's own named hook at the
    *  top of Antigravity's file. */
@@ -398,7 +441,8 @@ export class DoneSignals {
     // M85: an entry of this kind that is ours but older (a guard written before it could ask) is replaced by today's.
     const current = JSON.stringify(this.entryOf(tool, hook, token));
     if (list.some((e) => this.oursOf(e, hook, token) && JSON.stringify(e) === current)) return this.plan(p, tool, hook);
-    hooks[event] = [...list.filter((e) => !anyOurs(e, this.dir, this.guardDir, this.startDir)), this.entryOf(tool, hook, token)];
+    // M114: only entries of this kind are replaced; another of Squibby's kinds under the same event stays.
+    hooks[event] = [...list.filter((e) => !(anyOurs(e, this.dir, this.guardDir, this.startDir) && kindsOf(e).includes(hook))), this.entryOf(tool, hook, token)];
     // The highest folder of the file's path that is not there yet: Squibby makes it, and remembers it.
     const parts = rel.split("/").slice(0, -1);
     let madeDir: string | null = null;
@@ -429,7 +473,8 @@ export class DoneSignals {
     if (now && isObj(h0) && Array.isArray(h0[event])) {
       const hooks: Json = { ...h0 };
       // Every Squibby entry under this event goes (an older token's too), nothing of anyone else's.
-      const kept = (hooks[event] as unknown[]).filter((e) => !anyOurs(e, this.dir, this.guardDir, this.startDir));
+      // M114: only this kind (another of Squibby's kinds under the same event stays).
+      const kept = (hooks[event] as unknown[]).filter((e) => !(anyOurs(e, this.dir, this.guardDir, this.startDir) && kindsOf(e).includes(hook)));
       if (kept.length) hooks[event] = kept; else delete hooks[event];
       const k = this.holderKey(tool, hook);
       let out: Json = { ...now };

@@ -96,7 +96,8 @@ export function miniReceipt(m: Pick<Model, "task" | "receipt" | "undo">, v: Verd
 }
 /** `kept`: the result the person pressed Keep on; the panel then says the project's line instead (island.tsx). */
 export function panelView(m: Model, jobs: JobCard[], o: { note: string; status: string; kept?: string | null }): PanelView {
-  if (jobs.some((j) => j.approval)) return { kind: "questions" };
+  // M114: an ask of the person's own AI tool is a question too (notchAsk.tsx draws its card in the same list).
+  if (jobs.some((j) => j.approval) || (m.toolAsks?.length ?? 0) > 0) return { kind: "questions" };
   const job = jobs.find((j) => j.key.startsWith("task:"));
   if (job) return { kind: "job", job };
   const done = jobs.find((j) => j.key.startsWith("done:") && j.key !== o.kept);

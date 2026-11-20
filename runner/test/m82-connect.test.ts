@@ -31,9 +31,11 @@ describe("Connect and Disconnect, through the engine's own hooks", () => {
   test("each tool's Connect set is hooks that tool has; Claude Code's adds the waiting signal, never the start block", () => {
     for (const t of DONE_TOOLS) for (const h of CONNECT_HOOKS[t]) expect(TOOL_HOOKS[t]).toContain(h);
     // Changed on purpose (M113, 19 Nov 2026): Connect also adds the live feed where the tool has an after edit event.
-    expect([...CONNECT_HOOKS.claude]).toEqual(["done", "guard", "waiting", "feed"]);
+    // Changed on purpose (M114, 20 Nov 2026): and the notch's answers.
+    expect([...CONNECT_HOOKS.claude]).toEqual(["done", "guard", "waiting", "feed", "approve", "answer"]);
     // M105: Codex also has a waiting signal (PermissionRequest), so its Connect set adds it.
-    expect([...CONNECT_HOOKS.codex]).toEqual(["done", "guard", "waiting", "feed"]);
+    // Changed on purpose (M114): and approve.
+    expect([...CONNECT_HOOKS.codex]).toEqual(["done", "guard", "waiting", "feed", "approve"]);
     for (const t of ["cursor", "copilot", "gemini"] as const) expect([...CONNECT_HOOKS[t]]).toEqual(["done", "guard", "feed"]);
     for (const t of ["antigravity", "windsurf"] as const) expect([...CONNECT_HOOKS[t]]).toEqual(["done", "guard"]);
   });
@@ -63,7 +65,8 @@ describe("Connect and Disconnect, through the engine's own hooks", () => {
     s.add(p, "claude", "start");
     for (const c of connectCommands(p, stateOf(s, p), "claude")) run(s, c as never);
     // Changed on purpose (M113): Connect adds the live feed too.
-    expect(onHooks(s, p).sort()).toEqual(["claude:done", "claude:feed", "claude:guard", "claude:start", "claude:waiting"]);
+    // Changed on purpose (M114): and the notch's answers.
+    expect(onHooks(s, p).sort()).toEqual(["claude:answer", "claude:approve", "claude:done", "claude:feed", "claude:guard", "claude:start", "claude:waiting"]);
     for (const c of disconnectCommands(p, stateOf(s, p), "claude")) run(s, c as never);
     expect(onHooks(s, p)).toEqual(["claude:start"]);
     const j = JSON.parse(readFileSync(join(p, ".claude/settings.local.json"), "utf8"));
@@ -87,7 +90,8 @@ describe("Connect and Disconnect, through the engine's own hooks", () => {
     // Other tools in the same project still connect.
     for (const c of connectCommands(p, st, "codex")) run(s, c as never);
     // Changed on purpose (M113): Connect adds the live feed too.
-    expect(onHooks(s, p).sort()).toEqual(["codex:done", "codex:feed", "codex:guard", "codex:waiting"]);
+    // Changed on purpose (M114): and approve.
+    expect(onHooks(s, p).sort()).toEqual(["codex:approve", "codex:done", "codex:feed", "codex:guard", "codex:waiting"]);
   });
 
   test("no project, no commands", () => {

@@ -27,6 +27,7 @@ import { runwayFrom, savedFrom, type Runway } from "./runway.ts";
 import type { SavedJobView } from "../../protocol/index.ts";
 import { DONE_SIGNAL_TOOLS, LOGIN_OUTCOMES, type DoneSignalTool, type LoginOutcome } from "../../protocol/index.ts";
 import { feedFrom, type FeedSession } from "./notchFeed.ts";
+import { ASKS_KEPT, toolAskFrom, type ToolAsk } from "./notchAsk.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
@@ -334,6 +335,9 @@ export type Model = {
   /** M113: the live feed (feed.update, notchFeed.ts): what the person's own AI tools are editing and running, by session.
    *  In memory only; Stop everything drops it, and the next event fills it again. */
   feed?: FeedSession[] | null;
+  /** M114: the asks of the person's own AI tools waiting for a press in the notch (toolask.request, notchAsk.ts), oldest
+   *  first. In memory only; resolved, pressed, Stop everything and the engine going each take them away. */
+  toolAsks?: ToolAsk[] | null;
   /** M77: a saved copy was just taken before a destructive command (guard.saved): the notch's line for a few seconds. */
   guardSaved?: { project: string; at: number } | null;
   /** M85 review: the person's own AI tool was just told to ask them first (guard.asked), in any project: the notch's line
@@ -799,7 +803,8 @@ function reduceRest(m: Model, e: Ev): Model {
     case "ui.approvalAnswered": return { ...m, approvals: m.approvals.filter((a) => a.id !== e.approval) };
     // The shell's reason is already one plain sentence (runner.rs HELPER_DOWN and the others); it is shown as it is, and
     // cleared when the helper says hello again.
-    case "app.runner_down": { const down = typeof e.reason === "string" && e.reason ? plainError(e.reason) : S.helperStopped; return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: down, downError: down }; }
+    // M114: the engine going takes every ask with it (its hooks stop waiting the moment it is gone, and the tools ask themselves).
+    case "app.runner_down": { const down = typeof e.reason === "string" && e.reason ? plainError(e.reason) : S.helperStopped; return { ...withAgents({ ...m, runnerUp: false, toolAsks: null }, m.agents), error: down, downError: down }; }
     case "runner.hello": return { ...withAgents({ ...m, runnerUp: true, helloSeen: true }, m.agents), error: m.error && m.error === m.downError ? null : m.error, downError: undefined };
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
     // The new engine keeps no conversation either: the last task can no longer be followed up or tried again (gone). A check
@@ -816,7 +821,7 @@ function reduceRest(m: Model, e: Ev): Model {
       return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), away: {}, driveAway: null, workIn: {}, task, receipt: m.receipt ? { ...m.receipt, gone: true } : null, bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice && ["lesson", "proving"].includes(m.practice.stage) ? { ...m.practice, stage: "found" as const, checksFailed: undefined } : m.practice, point: null, where: null, teach: turn, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null, followUp: "idle" }, {}), notice, error: null };
     }
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
-    case "app.stop_everything": return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, costPause: null, signIn: null, toast: null, followUp: "idle", task: m.task }, {}), notice: S.stoppedEverything, error: null, stopped: (m.stopped ?? 0) + 1, toolBusy: null, feed: null };
+    case "app.stop_everything": return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, costPause: null, signIn: null, toast: null, followUp: "idle", task: m.task }, {}), notice: S.stoppedEverything, error: null, stopped: (m.stopped ?? 0) + 1, toolBusy: null, feed: null, toolAsks: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       // Only this line is the connection's to set or clear: a notice about something else (the engine restarting, say) stays,
@@ -1018,6 +1023,18 @@ function reduceRest(m: Model, e: Ev): Model {
     case "ui.noticeExpired": return typeof e.notice === "string" && m.notice === e.notice ? { ...m, notice: null } : m;
     // M113: the live feed, only when the protocol allows it (names, counts and short commands); anything else leaves it.
     case "feed.update": { const f = feedFrom(e.sessions); return f === null ? m : { ...m, feed: f.length ? f : null }; }
+    // M114: an ask of the person's own AI tool, only when the protocol allows it; once each, at most ASKS_KEPT.
+    case "toolask.request": {
+      const a = toolAskFrom(e);
+      const was = m.toolAsks ?? [];
+      if (!a || was.some((x) => x.ask === a.ask)) return m;
+      return { ...m, toolAsks: [...was, a].slice(-ASKS_KEPT) };
+    }
+    // M114: the ask ended (answered, in the tool, its time, Stop everything), or the person just pressed (the card goes at once).
+    case "toolask.resolved": case "ui.toolAskAnswered": {
+      const left = (m.toolAsks ?? []).filter((x) => x.ask !== e.ask);
+      return left.length === (m.toolAsks ?? []).length ? m : { ...m, toolAsks: left.length ? left : null };
+    }
     // M90: a connected tool is working (busy) or done (not busy) in a project.
     case "hook.busy": {
       if (typeof e.project !== "string") return m;

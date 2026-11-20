@@ -283,7 +283,8 @@ function Island() {
     return () => clearTimeout(id);
   }, [peekKey]);
   const questionsOpen = useSetting("island.openForQuestions") !== false;   // read every render: a hook is never skipped
-  const ask = out && ((questionsOpen && m.approvals.length > 0) || resultPeek);
+  // M114: an ask of the person's own AI tool opens it the same way (its card waits in the notch's question list).
+  const ask = out && ((questionsOpen && (m.approvals.length > 0 || (m.toolAsks?.length ?? 0) > 0)) || resultPeek);
   // M68: the hello. When the app starts, when the Mac wakes (a timer that fired far too late: the Mac slept), or when this
   // page comes back after more than an hour hidden (the screen locked or asleep), the notch widens for about 3 seconds with
   // the Visor and one line (notchHello.ts). Only on a real notch, at most once an hour, never while a call app is in front
@@ -455,7 +456,7 @@ function Island() {
         {/* M68: the word at rest, laid out but never shown, so the right wing is asked for as wide as it needs. */}
         <span className="island-rest-word island-step-measure" ref={restMeasure} aria-hidden="true">{rest?.word ?? ""}</span>
         {(take || said) && <div className="island-take" role="status"><span>{take ? S.m111.take(characterName(nameSet)) : S.m111.inNotch(characterName(nameSet))}</span></div>}
-        <IslandPanel ref={panelRef} m={m} line={line} shown={panelShown} brief={briefRef.current} unseen={unseen} review={review && !hushed} reviewKey={reviewKey} hello={helloRef.current} kept={kept} onKeep={keep} lineKind={lineKind} />
+        <IslandPanel ref={panelRef} m={m} line={line} shown={panelShown} brief={briefRef.current} unseen={unseen} review={review && !hushed} reviewKey={reviewKey} hello={helloRef.current} kept={kept} onKeep={keep} lineKind={lineKind} onAsked={(ask) => dispatch({ type: "ui.toolAskAnswered", ask })} />
       </span>
     </main>
   );

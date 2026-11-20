@@ -52,6 +52,7 @@ import { DoneSignals, type DonePlan } from "./donesignal.ts";
 import { ToolBusy } from "./toolbusy.ts";
 import { HOOKLESS_TOOLS, LiveFeed } from "./livefeed.ts";
 import { HookGuard, SAVED_LABEL, waitingMinutesOf } from "./guard.ts";
+import { askWaitOf, ToolAsks } from "./toolask.ts";
 import { SessionStartNotes } from "./memory/sessionstart.ts";
 
 const SDK_VERSION = "0.3.293";
@@ -151,7 +152,9 @@ const review = new ReviewService({
 // M90: the person's own tool working (its guard hook ran), said for Flowflow's peek out of the notch; its done hook ends it.
 const toolBusy = new ToolBusy({ emit: (e) => say(e) });
 // M105: the tool that finished credits the batch it moves on; Codex's waiting signal is said as hook.waiting with its tool.
-const doneSignals = new DoneSignals(settings.data, { onDone: (p, tool) => { guard.activity(p); toolBusy.done(p); liveFeed.done(p, tool); review.doneSignal(p, tool); }, onWaiting: (p, tool) => guard.toolWaiting(p, tool) });
+// M114: the asks of the person's own AI tools, answered only by their press in the notch (toolask.ts). In memory only.
+const toolAsks = new ToolAsks({ emit: (e) => say(e), waitMs: () => askWaitOf(runnerSettings.get("notch.askWait")) * 1000 });
+const doneSignals = new DoneSignals(settings.data, { onDone: (p, tool) => { guard.activity(p); toolBusy.done(p); liveFeed.done(p, tool); toolAsks.done(p, tool); review.doneSignal(p, tool); }, onWaiting: (p, tool) => guard.toolWaiting(p, tool) });
 doneSignals.start();
 // M78: the start block Claude Code's SessionStart hook prints, and the project's notes search index. Both are copies of the
 // notes files, written only while the person has the start hook set up; copies left from a hook that is gone are removed.
@@ -176,6 +179,8 @@ const guard = new HookGuard(doneSignals.guardFolder, {
   // M113: what the tool edits and runs, for the live feed.
   feed: (p, tool, text) => liveFeed.edit(p, tool, text),
   ran: (p, tool, text) => liveFeed.ran(p, tool, text),
+  // M114: a permission request or a question of the person's own tool, for its card in the notch.
+  toolAsk: (p, tool, ext, file, pid, text) => toolAsks.take(p, tool, ext, file, pid, text),
 });
 guard.start();
 const doneState = (project: string, tools: DonePlan[], problem?: string) =>
@@ -204,7 +209,8 @@ const interrupts = new Interrupts();
   interrupts.register("watches", { stop: () => watches.stopAll(), groups: g.watches, close: () => watches.stop() });
   interrupts.register("review", { stop: () => review.stopAll(), close: () => review.stop() });
   interrupts.register("assist", { stop: () => assist?.cancelAll(), groups: g.assist });
-  interrupts.register("guard", { stop: () => { guard.stopWaits(); toolBusy.stop(); liveFeed.stop(); }, close: () => guard.stop() });
+  // M114: Stop everything hands every ask back to its tool (an empty answer, never a deny).
+  interrupts.register("guard", { stop: () => { guard.stopWaits(); toolBusy.stop(); liveFeed.stop(); toolAsks.stop(); }, close: () => { toolAsks.stop(); guard.stop(); } });
   // The hooks are the person's own Claude Code's: Stop everything ends nothing of theirs, and the engine closing stops
   // listening to them (the start files stay for the next session, M78).
   interrupts.register("doneSignals", { stop: () => undefined, close: () => doneSignals.stop() });
@@ -294,6 +300,9 @@ function dispatch(cmd: Command) {
     inflight.add(p);
     return;
   }
+  // M114: the person's press on a card for their own AI tool's ask. A press that cannot be honoured leaves the ask waiting
+  // (the card stays, and the tool still asks in its own window when the wait ends).
+  if (cmd.type === "toolask.answer") { toolAsks.answer(cmd); return; }
   if (cmd.type === "donesignal.show" || cmd.type === "donesignal.add" || cmd.type === "donesignal.remove") {
     try {
       const done = cmd.type === "donesignal.add" ? doneSignals.add(cmd.project, cmd.tool, cmd.hook ?? "done") : cmd.type === "donesignal.remove" ? doneSignals.remove(cmd.project, cmd.tool, cmd.hook ?? "done") : null;

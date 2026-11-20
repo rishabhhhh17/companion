@@ -675,6 +675,8 @@ export const S = {
     "runway.warnAt": "Before a big job, a warning when the Claude limit is this close, with Save for after the reset.",
     // M113
     "notch.liveFeed": "Pointing at the notch lists the files your AI tool edits and the commands it runs, while it works.",
+    // M114
+    "notch.askWait": "How long a question from your AI tool waits in the notch before the tool asks in its own window.",
     "talk.accuracy": "Best understands more words. It is a one time download of 574 MB, kept on this Mac.",
   } as Record<string, string>,
   // Short words for a choice drawn side by side (a Segmented control never wraps: the spec, 2.3). The full words stay in a
@@ -684,6 +686,8 @@ export const S = {
     "spend.pauseAt": { off: "Off", "3": "3 times", "5": "5 times" },
     // M77
     "notch.waitingMinutes": { "5": "5 min", "15": "15 min", "60": "1 hour" },
+    // M114
+    "notch.askWait": { "30": "30 sec", "60": "1 min", "120": "2 min" },
     // M90
     "notch.peekSide": { left: "Left", right: "Right" },
     "notch.peekHideAfter": { "1": "1 min", "2": "2 min", "5": "5 min", "10": "10 min" },
@@ -2661,6 +2665,8 @@ export const S = {
     "island.hello": { label: "Say hello in the notch", help: "Off unless you turn it on. On, a short hello shows when you start the app, wake your Mac or come back after more than an hour. The notch widens for about 3 seconds with one line, such as Hey Sam, and one fact if there is one. Only on a Mac with a notch, at most once an hour, and never with a sound. Never while a call app such as Zoom is in front. It checks only which app is in front, so turn on Hide from screen sharing to keep it out of a share.", also: ["hello", "greeting", "hi", "notch", "welcome", "wake", "start", "name"] },
     "you.name": { label: "Your name", help: "When you point at the notch it greets you with the first word, such as Hey Sam. The hello in the notch uses it too. Only what you type here is used, and it stays on this Mac. Empty, it says Hey there.", also: ["your name", "name", "call me", "hello", "greeting", "profile", "me", "you"], placeholder: "Your name" },
     "you.buildsWith": { label: "The AI you build with", help: "Your answer to the first run's question. It only picks which tip you see first. It is kept on this Mac and never sent anywhere. Not set forgets it.", also: ["lovable", "bolt", "replit", "cursor", "claude code", "ai tool", "builder", "tip", "first run"], options: { unset: "Not set", lovable: "Lovable", bolt: "Bolt", replit: "Replit", cursor: "Cursor", claudeCode: "Claude Code", other: "Something else" } },
+    // M114: approve and answer from the notch.
+    "notch.askWait": { label: "Give me this long to answer in the notch", help: `When Claude Code or Codex asks for permission, the notch shows Allow and Don't allow. Claude Code's questions show with their choices. Press nothing for this long and the tool asks in its own window, as it always does. Answer in the tool works at any time. Each tool needs its notch answers row on (Fixing, Start reviews sooner).`, also: ["approve", "allow", "deny", "permission", "question", "answer", "notch", "wait", "timeout", "Claude Code", "Codex"], options: { "30": "30 seconds", "60": "1 minute", "120": "2 minutes" } },
     // M113: the live feed in the notch.
     "notch.liveFeed": { label: "Show what your AI tools are doing", help: `While a connected AI tool works, pointing at the notch lists the files it edited and the commands it ran, newest first. Each file shows how many lines were added and taken away. A press on a line opens the review in Home. Only file names, counts and short commands are shown, and nothing is kept once the tool is done. For a tool you connected before, press Show edits live on its row in Settings, Fixing, Your AI tools.`, also: ["live", "feed", "ticker", "edits", "diff", "lines", "commands", "notch", "activity", "Claude Code", "Codex", "Cursor", "Gemini"] },
     "island.showStep": { label: "Show the step on the notch", help: "Only with Show wings at rest on. While a job works, the notch shows its step, such as Fixing, and a thin line of the four steps. Off, it shows only its marks. Home's work card always shows the step.", also: ["progress", "step", "notch", "working", "live", "line"] },
@@ -3953,7 +3959,10 @@ export const S = {
       start: () => "Give Claude Code your notes as each session starts",
       // M113: the live feed.
       feed: (tool: string) => `Show ${tool}'s edits live in the notch`,
-    } as Record<"done" | "guard" | "waiting" | "start" | "feed", (tool: string) => string>,
+      // M114: approve and answer from the notch.
+      approve: (tool: string) => `Answer ${tool}'s permission requests from the notch`,
+      answer: () => "Answer Claude Code's questions from the notch",
+    } as Record<"done" | "guard" | "waiting" | "start" | "feed" | "approve" | "answer", (tool: string) => string>,
     // M113: with the live feed, the line also tells which file it just edited and how many lines changed.
     connectWhat: (tool: string, feed = false) => `Each line only tells ${PRODUCT} that ${tool} is done, ${feed ? "about to run a destructive command or read saved logins, or which file it just edited and how many lines changed" : "or about to run a destructive command or read saved logins"}. Nothing is blocked unless you choose that in Settings, and nothing ${tool} says is kept.`,
     yes: "Connect",
@@ -4467,5 +4476,51 @@ export const S = {
     showLive: "Show edits live",
     showLiveLabel: (tool: string) => `Show ${tool}'s edits live in the notch`,
     liveSaid: (tool: string) => `${tool}'s edits will show live in the notch.`,
+  },
+  // M114: approve and answer from the notch (notchAsk.ts). A card for the person's own AI tool's ask: what it wants, Allow
+  // and Don't allow (and Always allow, with its rule shown first), or its question's choices; Answer in the tool always works.
+  m114: {
+    wants: {
+      run: (tool: string) => `${tool} wants to run a command`,
+      edit: (tool: string) => `${tool} wants to change a file`,
+      read: (tool: string) => `${tool} wants to read a file`,
+      fetch: (tool: string) => `${tool} wants to open a web page`,
+      tool: (tool: string) => `${tool} wants to use another tool`,
+    } as Record<"run" | "edit" | "read" | "fetch" | "tool", (tool: string) => string>,
+    plan: (tool: string) => `${tool} has a plan and wants to start`,
+    planYes: "Start",
+    planNo: "Keep planning",
+    asks: (tool: string) => `${tool} asks`,
+    inProject: (project: string) => `in ${project}`,
+    always: "Always allow",
+    // Shown on the card before any press: exactly the rule Always allow writes, and where.
+    alwaysBefore: "Always allow saves",
+    alwaysAfter: "in Claude Code's settings for this project.",
+    alwaysLine: (rule: string) => `Always allow saves ${rule} in Claude Code's settings for this project.`,
+    inTool: (tool: string) => `Answer in ${tool}`,
+    inToolSay: (tool: string) => `Answer in ${tool} instead. The notch lets go and ${tool} asks you itself.`,
+    // A question card: one question at a time.
+    of: (n: number, total: number) => `${n} of ${total}`,
+    send: "Send",
+    next: "Next",
+    pickSome: "Pick one or more, then Send.",
+    picked: (label: string) => `${label}, picked`,
+    // Under four or more choices: what the pointed or focused choice means, or this until one is pointed at.
+    aboutHint: "Point at a choice to read more about it.",
+    // Settings, Fixing, Start reviews sooner: the group's own words.
+    groupNote: "Claude Code and Codex can also be answered from the notch: Allow and Don't allow for their permission requests, and Claude Code's questions with their choices.",
+    more: (n: number) => (n === 1 ? "1 more waiting" : `${n} more waiting`),
+    // Settings, Your AI tools: the rows, their cards before the yes, and Remove's line.
+    rowTitle: (tool: string) => `${tool}: answer its permission requests from the notch`,
+    rowLine: (tool: string) => `When ${tool} asks for permission, the notch shows Allow and Don't allow${tool === "Claude Code" ? ", and Always allow with the exact rule it saves" : ""}. Answer in ${tool} always works, and if you press nothing ${tool} asks in its own window.`,
+    askTitle: (tool: string) => `Answer ${tool}'s permission requests from the notch?`,
+    askWhat: (tool: string) => `When ${tool} asks for permission, it hands its request to ${PRODUCT_S} own folder and waits a moment for your answer. ${PRODUCT} shows what it wants in the notch and answers only when you press. If you press nothing, if you answer in ${tool}, or if ${PRODUCT} is closed, ${tool} asks you in its own window as it always does. The request is removed as it is read and never kept.`,
+    answerRowTitle: "Claude Code: answer its questions from the notch",
+    answerRowLine: "When Claude Code asks you to choose, the notch shows the question and its choices. Answer in Claude Code always works.",
+    answerTitle: "Answer Claude Code's questions from the notch?",
+    answerWhat: `When Claude Code asks you to choose, it hands the question to ${PRODUCT_S} own folder and waits a moment. ${PRODUCT} shows it in the notch and answers only with the choice you press. If you press nothing, answer in Claude Code, or ${PRODUCT} is closed, Claude Code asks you itself. Nothing is kept.`,
+    removed: (tool: string) => `${tool} will ask you in its own window again.`,
+    // Connect's card, when it adds the notch's answers.
+    connectNote: (tool: string) => `When ${tool} asks for permission${tool === "Claude Code" ? " or asks you to choose" : ""}, it waits a moment for your press in the notch. ${PRODUCT} never answers for you. Press nothing and ${tool} asks in its own window.`,
   },
 } as const;

@@ -75,6 +75,7 @@
     "ship.whyLive": {"gate": "never", "page": true, "project": true},
     "spending.set": {"gate": "never", "project": true},
     "spending.show": {"gate": "never", "page": true, "project": true},
+    "toolask.answer": {"gate": "never", "page": true},
     "tasks.list": {"gate": "never", "page": true, "project": true},
     "teach.check": {"gate": "never", "page": true, "project": true, "own": "light"},
     "teach.try": {"gate": "never", "page": true, "project": true, "own": "edits"},

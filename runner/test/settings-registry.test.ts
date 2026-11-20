@@ -175,6 +175,8 @@ describe("the shipped list of settings", () => {
       "developer.tools": false,
       // M113: the live feed in the notch (on; it only shows names, counts and short commands, and keeps nothing).
       "notch.liveFeed": true,
+      // M114: how long a card for the person's own AI tool's ask waits in the notch before the tool asks in its own window.
+      "notch.askWait": "60",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -188,6 +190,10 @@ describe("the shipped list of settings", () => {
   test("M113: the live feed switch is the pages' own, on", () => {
     expect(defOf("notch.liveFeed")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
     expect(validate(defOf("notch.liveFeed")!, "yes").ok).toBe(false);
+  });
+  test("M114: the ask card's wait is the engine's, 1 minute, never longer than the hook waits", () => {
+    expect(defOf("notch.askWait")).toMatchObject({ section: "home", kind: "choice", default: "60", options: ["30", "60", "120"], scope: "app", applies: ["runner"], store: "settings", live: true });
+    expect(validate(defOf("notch.askWait")!, "110").ok).toBe(false);
   });
   test("M98: the developer tools switch is the pages' own, off", () => {
     expect(defOf("developer.tools")).toMatchObject({ section: "display", kind: "switch", default: false, scope: "app", applies: ["pages"], store: "settings", live: true });

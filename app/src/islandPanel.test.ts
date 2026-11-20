@@ -253,7 +253,8 @@ describe("a self opened panel is armed after a moment (M46)", () => {
     expect(view).toContain('data-armed={ready() ? "yes" : undefined}');
     for (const b of ['<Button size="sm" className="ip-yes" tabIndex={tab} onClick={click(j.key, () => void invoke("island_click").catch(() => {}))}>', '<div className="ip-result ip-receipt" data-tone={view.job.tone} data-armed={cardOk(view.job.key, now) ? "yes" : undefined}', 'onClick={click(view.job.key, () => void invoke("island_go", { then: PANEL_DO.undo }).catch(() => {}))}']) expect(view, b).toContain(b);
     expect(view).toContain("const click = (key: string, f: () => void) => () => { if (!ready() || !cardOk(key, Date.now())) return; f(); };");
-    expect(view).toContain("const keys = jobs.map((j) => j.key).join(\" \");");   // every card's first sight, not only questions'
+    // M114 (changed on purpose): the asks of the person's own AI tools are first seen the same way.
+    expect(view).toContain("const keys = [...jobs.map((j) => j.key), ...asks.map(askKey)].join(\" \");");   // every card's first sight, not only questions'
     expect(read("./style.css")).toContain(".island-panel button.ip-job:not([data-armed]) { cursor: default; }");
     expect(read("./style.css")).toContain(".island-panel[data-brief]:not([data-armed]) { cursor: default; }");
   });

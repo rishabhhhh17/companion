@@ -589,6 +589,7 @@ describe("the bare notch (M46)", () => {
   test("it never drops by itself for a start, a step or a cost: only a proven fix or a failure (resultPeekKey)", () => {
     expect(page).toContain("resultPeekKey(islandJobs(m))");
     expect(page).not.toContain("workPeekKey");
-    expect(page).toContain("const ask = out && ((questionsOpen && m.approvals.length > 0) || resultPeek);");
+    // M114 (changed on purpose): an ask of the person's own AI tool opens it the same way as Squibby's own question.
+    expect(page).toContain("const ask = out && ((questionsOpen && (m.approvals.length > 0 || (m.toolAsks?.length ?? 0) > 0)) || resultPeek);");
   });
 });

@@ -445,6 +445,26 @@ mod tests {
         assert!(ts.contains("r=\"$d/${token}.$$.${tool}.feed\"; cat >\"$r.tmp\" 2>/dev/null && mv \"$r.tmp\" \"$r\" 2>/dev/null || rm -f \"$r.tmp\"; exit 0"), "the runner writes the same command");
     }
     #[test]
+    fn m114_the_approve_and_answer_lines_go_and_the_persons_own_permission_and_pre_tool_hooks_stay() {
+        // M114: approve under PermissionRequest (Claude Code and Codex) and answer under PreToolUse on AskUserQuestion (Claude
+        // Code), both opening with the guard folder, go with Delete everything; the person's own hooks under the same events stay.
+        let t = t("m114");
+        let ask = |tool: &str, ext: &str| format!("d='{}/guard'; p=$(cat \"$d/pid\" 2>/dev/null) && kill -0 \"$p\" 2>/dev/null || {{ exit 0; }}; r=\"$d/0123456789abcdef01234567.$$.{tool}.{ext}\"; exit 0", t.data.display());
+        let q = |s: String| serde_json::to_string(&s).unwrap();
+        create_dir_all(t.project.join(".claude")).unwrap();
+        create_dir_all(t.project.join(".codex")).unwrap();
+        fwrite(t.project.join(".claude/settings.local.json"), format!("{{ \"hooks\": {{ \"PermissionRequest\": [ {{ \"hooks\": [ {{ \"type\": \"command\", \"command\": \"./notify.sh\" }} ] }}, {{ \"hooks\": [ {{ \"type\": \"command\", \"command\": {}, \"timeout\": 130 }} ] }} ], \"PreToolUse\": [ {{ \"matcher\": \"AskUserQuestion\", \"hooks\": [ {{ \"type\": \"command\", \"command\": {}, \"timeout\": 130 }} ] }}, {{ \"matcher\": \"Bash\", \"hooks\": [ {{ \"type\": \"command\", \"command\": \"./lint.sh\" }} ] }} ] }} }}", q(ask("claude", "perm")), q(ask("claude", "question")))).unwrap();
+        fwrite(t.project.join(".codex/hooks.json"), format!("{{ \"hooks\": {{ \"PermissionRequest\": [ {{ \"hooks\": [ {{ \"type\": \"command\", \"command\": {}, \"timeout\": 130 }} ] }} ] }} }}", q(ask("codex", "perm")))).unwrap();
+        index_with(&t, &["codex"], &[]);
+        assert_eq!(remove(&t.project, &t.data), vec![".claude/settings.local.json", ".codex/hooks.json"]);
+        let claude: serde_json::Value = serde_json::from_str(&fs::read_to_string(t.project.join(".claude/settings.local.json")).unwrap()).unwrap();
+        assert_eq!(claude, serde_json::json!({ "hooks": { "PermissionRequest": [ { "hooks": [ { "type": "command", "command": "./notify.sh" } ] } ], "PreToolUse": [ { "matcher": "Bash", "hooks": [ { "type": "command", "command": "./lint.sh" } ] } ] } }), "the person's own hooks stay");
+        assert!(!t.project.join(".codex/hooks.json").exists(), "a file Squibby made that holds nothing else goes");
+        let ts = include_str!("../../../runner/src/donesignal.ts");
+        assert!(ts.contains("approve: \"PermissionRequest\", answer: \"PreToolUse\"") && ts.contains("answer: \"AskUserQuestion\""), "the runner writes the same events");
+        assert!(EVENTS.contains(&"PermissionRequest") && EVENTS.contains(&"PreToolUse"));
+    }
+    #[test]
     fn this_file_never_runs_git_and_the_runners_rule_is_the_same() {
         let src = include_str!("donehooks.rs");
         let code = &src[..src.find("#[cfg(test)]").unwrap()];

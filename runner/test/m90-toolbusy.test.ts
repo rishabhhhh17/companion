@@ -85,7 +85,8 @@ describe("hook.busy", () => {
     expect(main).toContain("busy: (p) => toolBusy.seen(p),");
     // M105 (changed on purpose): the done signal names the tool that finished, and Codex's waiting signal goes to the guard.
     // M113 (changed on purpose): the done signal also ends the live feed's session, and Stop everything empties the feed.
-    expect(main).toContain("const doneSignals = new DoneSignals(settings.data, { onDone: (p, tool) => { guard.activity(p); toolBusy.done(p); liveFeed.done(p, tool); review.doneSignal(p, tool); }, onWaiting: (p, tool) => guard.toolWaiting(p, tool) });");
-    expect(main).toContain(`interrupts.register("guard", { stop: () => { guard.stopWaits(); toolBusy.stop(); liveFeed.stop(); }, close: () => guard.stop() });`);
+    // M114 (changed on purpose): the done signal also ends that tool's asks, and Stop everything hands every ask back.
+    expect(main).toContain("const doneSignals = new DoneSignals(settings.data, { onDone: (p, tool) => { guard.activity(p); toolBusy.done(p); liveFeed.done(p, tool); toolAsks.done(p, tool); review.doneSignal(p, tool); }, onWaiting: (p, tool) => guard.toolWaiting(p, tool) });");
+    expect(main).toContain(`interrupts.register("guard", { stop: () => { guard.stopWaits(); toolBusy.stop(); liveFeed.stop(); toolAsks.stop(); }, close: () => { toolAsks.stop(); guard.stop(); } });`);
   });
 });

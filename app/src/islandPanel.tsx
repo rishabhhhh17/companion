@@ -16,7 +16,7 @@ import { FlowMini } from "./flowflowMini.tsx";
 import type { IslandLineKind } from "./home.ts";
 import { ARM_MS, answerHere, armed, cardReady, islandJobs, panelNote, panelView, PANEL_DO, type JobCard } from "./islandPanel.ts";
 import { keycaps, keyHint, keysFrom, keysNow, setKeysNow } from "./keys.ts";
-import { answerApproval, stopAgent } from "./commands.ts";
+import { answerApproval, answerToolAsk, stopAgent } from "./commands.ts";
 import type { Model } from "./model.ts";
 import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
@@ -31,6 +31,8 @@ import { useDragOut } from "./tuck.ts";
 import { characterName } from "./companion.ts";
 import { NotchFeed, feedGo } from "./notchFeed.tsx";
 import { feedBlocks } from "./notchFeed.ts";
+import { askKey, NotchAsks, type AskChoice } from "./notchAsk.tsx";
+import { waitingAsks } from "./notchAsk.ts";
 
 /** `brief` (M26): the panel opened by itself (a question, or a result that matters), so it shows only that; the pointer
  *  opens the whole panel. `unseen` (M46): results finished while Home was closed, said on the hover panel's top line only
@@ -44,11 +46,14 @@ type Props = { m: Model; line: string; shown: boolean; brief?: boolean; unseen?:
   /** M69: Keep on the mini receipt: the result it was pressed on (island.tsx folds the panel back and keeps it folded). */
   kept?: string | null; onKeep?: (key: string) => void;
   /** What `line` is about (home.ts islandLineKind), so the hover never reads it by its words. */
-  lineKind?: IslandLineKind | null };
+  lineKind?: IslandLineKind | null;
+  /** M114 review: a press on a tool ask's card, so the page drops the card at once (ui.toolAskAnswered); the engine says
+   *  toolask.resolved too, even when it cannot honour the press, so no card hangs. */
+  onAsked?: (ask: string) => void };
 
 void invoke("key_map").then((v) => setKeysNow(keysFrom(v))).catch(() => {});
 
-export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPanel({ m, line, shown, brief, unseen = 0, review = false, reviewKey = false, hello = null, kept = null, onKeep, lineKind = null }, ref) {
+export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPanel({ m, line, shown, brief, unseen = 0, review = false, reviewKey = false, hello = null, kept = null, onKeep, lineKind = null, onAsked }, ref) {
   // What the panel shows and its size (M19, Look and feel): the work and its results, usual or compact.
   const showWork = useSetting("panel.showWork") !== false;
   // M70: the small panel's buttons (panel.showButtons). Read every render: a hook is never skipped. M93: off, the action is
@@ -65,7 +70,9 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   // that opened by itself, every card does, cardReady).
   const seen = useRef(new Map<string, number>());
   const [now, setNow] = useState(() => Date.now());
-  const keys = jobs.map((j) => j.key).join(" ");
+  // M114: the asks of the person's own AI tools wait their ARM_MS from first sight too.
+  const asks = waitingAsks(m, now);
+  const keys = [...jobs.map((j) => j.key), ...asks.map(askKey)].join(" ");
   useEffect(() => {
     if (!shown) { seen.current.clear(); return; }
     const t = Date.now();
@@ -109,7 +116,11 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   const action = hoverAction(m, now, { layout: layout === "job" ? "job" : "quick", on: groups.on, buttons: showButtons });
   const stopSay = `${S.stop}. ${keyHint("stop", S.look.stopKeys)}`;
   const questions = jobs.filter((j) => j.approval);
-  const list = questions.length > 0 && <ul className="ip-jobs" aria-label={S.panel.jobs}>
+  // M114: a press on a tool ask's card, only once it is armed (as Allow and Don't allow below).
+  const askArmed = (key: string) => armed(seen.current.get(key) ?? null, now);
+  const askPress = (key: string) => ready() && armed(seen.current.get(key) ?? null, Date.now());
+  const toolAnswer = (ask: string, choice: AskChoice, picks?: number[][]) => { void invoke("send_command", { cmd: answerToolAsk(ask, choice, picks) }).catch(() => {}); onAsked?.(ask); };
+  const list = (questions.length > 0 || asks.length > 0) && <ul className="ip-jobs" aria-label={S.panel.jobs}>
       {questions.map((j) => (
         <li key={j.key}>
           <div className="ip-job ip-ask" data-tone={j.tone} data-armed={armed(seen.current.get(j.key) ?? null, now) ? "yes" : undefined}>
@@ -124,6 +135,8 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
           </div>
         </li>
       ))}
+      {/* M114: the person's own AI tool's ask (notchAsk.tsx), after Squibby's own questions. */}
+      <NotchAsks asks={asks} tabIndex={tab} armedNow={askArmed} canPress={askPress} onAnswer={toolAnswer} />
     </ul>;
   const live = view.kind === "questions" ? list
     : view.kind === "result" ? (

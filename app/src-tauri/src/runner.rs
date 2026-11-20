@@ -1026,6 +1026,42 @@ mod tests {
         assert_eq!(list["tasks"][0]["still"].as_u64(), Some(1));
     }
     #[test]
+    fn m114_a_tools_ask_is_answered_from_a_page_names_no_folder_and_is_never_replayed_or_logged() {
+        // M114 (runner/src/toolask.ts): the shared fixtures. The press may come from a page and names no folder; the asks are
+        // news for the notch only: never kept to replay to a page that loads later, never a log line, and they carry only the
+        // card's words (never the tool's own request, its session or its input).
+        let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");
+        let cmds: Vec<Value> = fixtures.lines().filter(|l| l.contains("\"type\":\"toolask.")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(cmds.len(), 4);
+        for c in &cmds {
+            assert!(check_command(c).is_ok(), "{c}");
+            assert!(!PROJECT_BOUND.contains(&"toolask.answer"));
+            assert!(check_project(c, "").is_ok(), "{c}");
+            assert!(["allow", "always", "deny", "tool", "answer"].contains(&c["choice"].as_str().unwrap()));
+            let a = c["ask"].as_str().unwrap();
+            assert!(a.len() == 15 && a.starts_with("ta_") && a[3..].chars().all(|x| x.is_ascii_hexdigit()), "{a}");
+        }
+        for l in fixtures.lines().filter(|l| l.contains("\"id\":\"m114c")) {
+            let v: Value = serde_json::from_str(l).unwrap();
+            if v["type"] == "donesignal.add" { assert!(check_command(&v).is_ok()); assert!(["approve", "answer"].contains(&v["hook"].as_str().unwrap())); }
+        }
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let evs: Vec<Value> = events.lines().filter(|l| l.contains("\"type\":\"toolask.")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(evs.len(), 6);
+        for e in &evs {
+            let mut sticky = BTreeMap::new();
+            assert!(!remember(&mut sticky, e), "never replayed");
+            let mut seen = BTreeMap::new();
+            assert!(approval_line(e, &mut seen).is_none(), "never a log line");
+            for k in e.as_object().unwrap().keys() {
+                assert!(["v", "id", "ts", "type", "ask", "project", "tool", "kind", "action", "target", "always", "questions", "expiresAt", "outcome"].contains(&k.as_str()), "{k}");
+            }
+            if let Some(t) = e["target"].as_str() { assert!(!t.is_empty() && t.chars().count() <= 80 && !t.contains('\n'), "{t}"); }
+            if let Some(a) = e["always"].as_str() { assert_eq!(e["tool"], "claude", "Always is Claude Code's only"); assert!(a.chars().count() <= 120); }
+            if e["kind"] == "question" { assert_eq!(e["tool"], "claude"); assert!(e["questions"].as_array().is_some_and(|q| !q.is_empty() && q.len() <= 4)); }
+        }
+    }
+    #[test]
     fn m105_a_review_names_the_tool_that_finished_and_codex_waiting_carries_no_words() {
         // M105: the shared fixtures (read by the runner's suite and the pages too). The shell passes these through as they are;
         // here it checks the shape it may forward: `by` and `tool` are one of the seven tools' ids, and another tool's waiting

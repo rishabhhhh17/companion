@@ -19,8 +19,9 @@ export const LIST: readonly ListTool[] = (list as { tools: ListTool[] }).tools;
  *  still counts as connected (OPTIONAL_HOOKS): its row in Settings offers it. */
 /** M113: and the live feed, for the tools with an after edit event; a tool connected before it still counts as connected
  *  (OPTIONAL_HOOKS), and its row in Settings offers it. */
+/** M114: and the notch's answers (approve for Claude Code and Codex, answer for Claude Code), optional the same way. */
 export const CONNECT_HOOKS: Readonly<Record<ToolId, readonly HookKind[]>> = {
-  claude: ["done", "guard", "waiting", "feed"], codex: ["done", "guard", "waiting", "feed"], cursor: ["done", "guard", "feed"], copilot: ["done", "guard", "feed"], antigravity: ["done", "guard"], gemini: ["done", "guard", "feed"], windsurf: ["done", "guard"],
+  claude: ["done", "guard", "waiting", "feed", "approve", "answer"], codex: ["done", "guard", "waiting", "feed", "approve"], cursor: ["done", "guard", "feed"], copilot: ["done", "guard", "feed"], antigravity: ["done", "guard"], gemini: ["done", "guard", "feed"], windsurf: ["done", "guard"],
 };
 
 /** The tool's name as people know it. */
@@ -49,7 +50,7 @@ export function findTools(found: Found): { here: ToolId[]; notHere: ToolId[] } {
 /** The rows of one tool that Connect owns, from the engine's state. */
 export const connectRows = (st: DoneState | null, tool: ToolId): DoneRow[] => (st?.tools ?? []).filter((r) => r.tool === tool && CONNECT_HOOKS[tool].includes(r.hook));
 
-export const OPTIONAL_HOOKS: Readonly<Partial<Record<ToolId, readonly HookKind[]>>> = { claude: ["feed"], codex: ["waiting", "feed"], cursor: ["feed"], copilot: ["feed"], gemini: ["feed"] };
+export const OPTIONAL_HOOKS: Readonly<Partial<Record<ToolId, readonly HookKind[]>>> = { claude: ["feed", "approve", "answer"], codex: ["waiting", "feed", "approve"], cursor: ["feed"], copilot: ["feed"], gemini: ["feed"] };
 /** A tool is connected when every hook Connect adds is on (an optional one aside, M105); partly when some are. */
 export function connection(st: DoneState | null, tool: ToolId): "on" | "partly" | "off" {
   const rows = connectRows(st, tool);
@@ -82,7 +83,8 @@ export function connectAsk(st: DoneState | null, tool: ToolId): ConnectAsk | nul
   return {
     title: S.m82.connectTitle(name),
     parts: CONNECT_HOOKS[tool].flatMap((h) => { const r = rows.find((x) => x.hook === h); return r ? [{ hook: h, label: S.m82.partLabel[h](name), where: S.doneSignal.askWhere(r.file, r.creates), what: r.adds }] : []; }),
-    notes: [S.m82.connectWhat(name, rows.some((r) => r.hook === "feed")), S.doneSignal.askGit, ...(toolNote ? [toolNote] : [])],
+    // M114: with the notch's answers, the card also says the tool waits a moment for a press, and that it never answers alone.
+    notes: [S.m82.connectWhat(name, rows.some((r) => r.hook === "feed")), ...(rows.some((r) => r.hook === "approve" || r.hook === "answer") ? [S.m114.connectNote(name)] : []), S.doneSignal.askGit, ...(toolNote ? [toolNote] : [])],
   };
 }
 

@@ -124,7 +124,8 @@ describe("Home's side list and Settings", () => {
   });
   test("a Codex connected before M105 stays connected; Connect for a new Codex adds its waiting signal too", () => {
     // Changed on purpose (M113, 19 Nov 2026): Connect also offers Codex's live feed.
-    expect([...CONNECT_HOOKS.codex]).toEqual(["done", "guard", "waiting", "feed"]);
+    // Changed on purpose (M114, 20 Nov 2026): and approve, so its permission requests can be answered from the notch.
+    expect([...CONNECT_HOOKS.codex]).toEqual(["done", "guard", "waiting", "feed", "approve"]);
     expect(connection(st([row("codex", "done", true), row("codex", "guard", true), row("codex", "waiting", false)]), "codex")).toBe("on");
     const fresh = st([row("codex", "done", false), row("codex", "guard", false), row("codex", "waiting", false)]);
     expect(connection(fresh, "codex")).toBe("off");

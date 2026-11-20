@@ -169,7 +169,8 @@ describe("lines from before M105 (the migration)", () => {
 describe("Codex's waiting signal (PermissionRequest)", () => {
   test("Codex has a waiting hook under PermissionRequest; the other tools have none, and Claude Code keeps its own", () => {
     // M113 (changed on purpose): Codex also has the live feed hook.
-    expect([...TOOL_HOOKS.codex]).toEqual(["done", "guard", "waiting", "feed"]);
+    // M114 (changed on purpose): and approve, beside the waiting signal under PermissionRequest.
+    expect([...TOOL_HOOKS.codex]).toEqual(["done", "guard", "waiting", "feed", "approve"]);
     expect(eventOf("codex", "waiting")).toBe("PermissionRequest");
     expect(eventOf("claude", "waiting")).toBe("Notification");
     for (const t of ["cursor", "copilot", "antigravity", "gemini", "windsurf"] as const) expect(TOOL_HOOKS[t].includes("waiting")).toBe(false);

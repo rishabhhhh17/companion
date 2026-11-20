@@ -16,6 +16,9 @@
 // M113 (the live feed): a feed note (<token>.<pid>.<tool>.feed, from the feed hook after an edit) is handed to the feed and
 // removed as it is read; it is never answered (nothing waits for it). A note bigger than FEED_NOTE_MAX is never read whole:
 // only its start, for the tool's name and the file's path. Each guard request is handed to the feed too, as a run.
+// M114 (approve and answer from the notch): a .perm or .question request (from the approve and answer hooks) is handed to
+// the asks (toolask.ts) with its file and the hook's process id, and removed as it is read. Its answer file is written only
+// by the asks: an empty one at once when no asks are wired or the project is not known, so the tool asks in its own window.
 // Nothing here runs git or writes the person's git (rule 10): the snapshot is Squibby's own shadow copy, and Undo restores
 // from it.
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, watch as fsWatch, writeFileSync } from "node:fs";
@@ -23,7 +26,7 @@ import { basename, join, resolve } from "node:path";
 import { databaseProgram, databaseScript, databaseSetting, databaseTool } from "./dbsafety.ts";
 import { liveCommand } from "./livesystems.ts";
 import { loginModeOf, savedLoginCommand, savedLoginPath, shownPath } from "./savedlogins.ts";
-import { DONE_TOOLS, GUARD_PID, type DoneTool } from "./donesignal.ts";
+import { DONE_TOOLS, GUARD_PID, type AskExt, type DoneTool } from "./donesignal.ts";
 import { clip, redact } from "./redact.ts";
 import { commandsWithFolder, resolveLinks, whereIs } from "./safety.ts";
 
@@ -41,7 +44,7 @@ const WAITING_TYPES = new Set(["permission_prompt", "idle_prompt"]);
 /** A request file: <token>.<pid>, with .note for a waiting note, or (M85) .ask from a hook that can ask the person first.
  *  The M103 review: a guard hook names its AI tool too (<token>.<pid>.<tool>.ask), so a note can say which tool it was;
  *  a hook written before that has none. Only the seven known tools' names are read. Nothing else in the folder is touched. */
-const REQUEST = new RegExp(`^([0-9a-f]{24})\\.(\\d{1,10})(?:\\.(${DONE_TOOLS.join("|")}))?(\\.note|\\.ask|\\.block|\\.feed)?$`);
+const REQUEST = new RegExp(`^([0-9a-f]{24})\\.(\\d{1,10})(?:\\.(${DONE_TOOLS.join("|")}))?(\\.note|\\.ask|\\.block|\\.feed|\\.perm|\\.question)?$`);
 /** M113: a feed note bigger than this is read only at its start (livefeed.ts FEED_NOTE_MAX, the same number). */
 export const FEED_NOTE_MAX = 4 * 1024 * 1024;
 const FEED_HEAD = 64 * 1024;
@@ -59,7 +62,8 @@ export function feedHead(head: string): string | null {
 export const FEED_TMP_STALE_MS = 5000;
 /** M113 review: how often the folder is looked over for feed notes whose watch event never came (FSEvents can drop one). */
 export const FEED_RESCAN_MS = 2000;
-const FEED_NOTE = /\.feed$/, FEED_TMP = /\.feed\.tmp$/;
+/** M114: an ask request whose watch event never came is taken by the same look over the folder (the hook waits for it). */
+const FEED_NOTE = /\.(feed|perm|question)$/, FEED_TMP = /\.feed\.tmp$/;
 /** M85: the History row's name for a command the person's own tool was asked to ask about first. */
 export const ASKED_LABEL = "Asked first: ";
 /** M85: the most a reason the hook carries may be, in characters. */
@@ -172,6 +176,8 @@ export type GuardDeps = {
   feed?: (project: string, tool: DoneTool | null, text: string) => void;
   /** M113: a guard request, for the feed's run line (livefeed.ts reads only the short redacted command). */
   ran?: (project: string, tool: DoneTool | null, text: string) => void;
+  /** M114: an ask request (toolask.ts ToolAsks.take): the asks write its answer file. Without it, it is answered empty. */
+  toolAsk?: (project: string, tool: DoneTool, ext: AskExt, file: string, pid: number, text: string) => void;
   snapshotWaitMs?: number;
   watch?: typeof fsWatch;
   /** For tests: FEED_RESCAN_MS. */
@@ -268,6 +274,14 @@ export class HookGuard {
     const project = this.o.projectOf(token);
     const tool = m[3] as DoneTool | undefined, kind = m[4];
     if (kind === ".note") { if (project) this.note(project, text); return; }
+    if (kind === ".perm" || kind === ".question") {
+      // M114: the hook waits for <file>.ok. Only the asks answer it, on the person's press; anything else gets an empty
+      // answer at once, so the tool asks in its own window. A request that names no tool is a hook this engine never wrote.
+      const ext = kind.slice(1) as AskExt;
+      if (!project || !tool || !this.o.toolAsk) { try { writeFileSync(`${file}.ok`, "", { mode: 0o600 }); } catch { /* the hook gives up on its own */ } return; }
+      try { this.o.toolAsk(project, tool, ext, file, Number(m[2]), text); } catch { try { writeFileSync(`${file}.ok`, "", { mode: 0o600 }); } catch { /* gone */ } }
+      return;
+    }
     if (kind === ".feed") {
       // Never answered: the feed hook does not wait. The tool is working, so its waiting mark ends.
       if (!project || !text) return;

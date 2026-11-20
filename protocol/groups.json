@@ -19,7 +19,7 @@
       "runner": [] },
     { "id": "stop", "group": "core", "hotkeys": ["stop"], "permissions": [], "settings": [],
       "commands": ["showme_clear", "showme_hide", "speak_stop"],
-      "runner": ["agent.interrupt", "agent.interruptAll", "approval.resolve", "assist.cancel", "runner.ping", "google.accounts"] },
+      "runner": ["agent.interrupt", "agent.interruptAll", "approval.resolve", "toolask.answer", "assist.cancel", "runner.ping", "google.accounts"] },
     { "id": "projects", "group": "core", "permissions": [], "settings": [],
       "commands": ["get_project", "list_projects", "use_project", "pick_project", "clone_project", "start_in_new_folder", "list_made", "open_made", "reveal_made", "trash_made", "numbers_mail", "save_receipt"],
       "runner": ["tasks.list", "project.inspect", "project.install", "project.clone", "recap.ask", "week.show", "jobs.save", "jobs.list", "jobs.drop"] },

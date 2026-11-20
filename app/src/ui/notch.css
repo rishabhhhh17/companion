@@ -160,3 +160,41 @@
 .island-panel :is(.lf-seen, .lf-times) { color: var(--chat-when); font-family: var(--font); font-weight: 400; }
 /* M113 review: a press with nothing to open yet says so here, under its block, and the person stays in the notch. */
 .island-panel .lf-said { margin: 0; padding: 0 6px; color: var(--notch-fg-2); font: 400 11px / 16px var(--font); overflow-wrap: anywhere; animation: ip-fade var(--dur-notch-row) var(--ease-out) both; }
+/* M114: the card for the person's own AI tool's ask, in the notch's question list. It is the notch's own question card
+   (style.css .ip-job .ip-ask, amber edge, .ip-answer buttons); these only lay out its choices, Always allow's rule and Answer
+   in the tool. Colours and motion are the notch's own tokens. A new question fades in (a fade only, so Reduce Motion needs
+   nothing more). */
+.island-panel .ta-card .ta-count { margin-inline-start: var(--space-2); color: var(--notch-fg-2); font-variant-numeric: tabular-nums; }
+.island-panel .ta-card .ta-q { grid-column: 1 / -1; display: grid; gap: var(--space-2); min-width: 0; animation: ip-fade var(--dur-notch-row) var(--ease-out) both; }
+.island-panel .ta-card .ta-choices { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; opacity: .4; transition: opacity var(--dur-2) var(--ease-out); }
+.island-panel .ta-card[data-armed] .ta-choices { opacity: 1; }
+.island-panel .ta-card:not([data-armed]) .ta-choices button { cursor: default; }
+.island-panel .ta-card .ta-choice { max-width: 100%; overflow: hidden; white-space: nowrap; gap: var(--space-1); }
+.island-panel .ta-card .ta-choice .ta-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* M114 review: a choice's own words under its label (three choices or fewer), muted, one line. */
+.island-panel .ta-card .ta-choice:has(.ta-about) { display: inline-grid; grid-template-columns: minmax(0, 1fr); justify-items: start; align-content: center; column-gap: var(--space-1); padding-block: 5px; text-align: start; }
+.island-panel .ta-card .ta-choice:has(.ta-about):has(.ta-tick) { grid-template-columns: auto minmax(0, 1fr); }
+.island-panel .ta-card .ta-choice:has(.ta-about) :is(.ta-label, .ta-about) { grid-column: -2; }
+.island-panel .ta-card .ta-choice .ta-about { max-width: 100%; overflow: hidden; text-overflow: ellipsis; color: var(--notch-fg-2); font: 400 11px / 15px var(--font); }
+/* M114 review: picked reads as picked, never as focus: a tick and a lighter fill, the usual edge (the focus ring stays the
+   outline). */
+.island-panel .ta-card .ta-choice[aria-pressed="true"] { border-color: var(--btn2-edge); background: var(--chat-send); }
+.island-panel .ta-card .ta-choice .ta-tick { display: inline-grid; place-items: center; color: var(--notch-ink); }
+.island-panel .ta-card .ta-choice:has(.ta-about) .ta-tick { grid-row: 1 / span 2; }
+/* M114 review: four or more choices share one muted line: the pointed or focused choice's own words. */
+.island-panel .ta-card .ta-hint { margin: 0; min-height: 15px; overflow: hidden; color: var(--notch-fg-2); font: 400 11px / 15px var(--font); white-space: nowrap; text-overflow: ellipsis; }
+.island-panel .ta-card .ta-send { justify-content: end; grid-auto-columns: auto; }
+.island-panel .ta-card .ta-foot { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.island-panel .ta-card .ta-foot .ta-hint { flex: 1; min-width: 0; }
+.island-panel .ta-card .ta-foot .ta-send { margin-inline-start: auto; }
+.island-panel .ta-card .ta-rule { grid-column: 1 / -1; margin: 0; color: var(--notch-fg-2); font: 400 11px / 15px var(--font); overflow-wrap: anywhere; }
+.island-panel .ta-card .ta-rule code { font-family: var(--font-code); color: var(--notch-ink); }
+/* break-ui: Answer in the tool sits in the card's own top right column (empty on these cards), so a long question or a long
+   rule never pushes it out of the notch's room; the dot stays beside the title's first line. */
+.island-panel .ta-card { align-items: start; grid-template-columns: 30px minmax(0, 1fr) auto; }
+.island-panel .ta-card .ip-dot { margin-top: 4px; }
+.island-panel .ta-card .ip-text b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.island-panel .ta-card button.ta-intool { grid-row: 1; grid-column: 3; justify-self: end; white-space: nowrap; margin: 0; padding: 2px 4px; border: 0; border-radius: 6px; background: transparent; color: var(--notch-fg-2); font: 400 11px / 16px var(--font); cursor: pointer; transition: color var(--dur-hover) var(--ease-out), background-color var(--dur-hover) var(--ease-out); }
+.island-panel .ta-card button.ta-intool:hover { color: var(--notch-ink); background: var(--chat-icon-bg); }
+.island-panel .ta-card button.ta-intool:focus-visible { outline: 2px solid var(--notch-ink); outline-offset: -2px; }
+.island-panel .ta-more { color: var(--notch-note); font-size: var(--t-caption); text-align: center; }

@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Answer your AI tool from the notch: 20 Nov 2026
+
+- **Allow or don't, right in the notch.** When Claude Code or Codex stops to ask permission, the notch opens with what it wants in plain words ("Claude Code wants to run a command", then `npm test`) and Allow and Don't allow. No need to find the terminal.
+- **Always allow shows its rule first.** For Claude Code, Always allow says exactly what it saves (`Bash(npm test:*)`) before you press it, and saves only that, in Claude Code's own settings for this project.
+- **Questions too.** When Claude Code asks you to choose, the question and its choices show in the notch. One press answers; when you can pick several, pick them and press Send. Several questions come one at a time, and each new one waits a moment before a press counts, so a quick double click never answers the next question by mistake. What each choice means shows right under it, and a picked choice gets a tick.
+- **Your tool is never stuck.** Answer in Claude Code (or Codex) is on every card. Press nothing and the tool asks in its own window after a minute (30 seconds, 1 minute or 2 minutes in Settings). Answer in the terminal and the card goes by itself. Stop everything hands every question back. Squibby never answers for you.
+- **Your choice, per project.** It is one more line in each tool's own settings for the project, added only after the card that shows it. Tools you connected before get it from their row in Settings, Fixing.
+
 ## A glass look and a better menu bar: 20 Nov 2026
 
 - **Home is glass now.** Your desktop shows softly through Home, black at the top where it comes out of the notch. Now, Learn, History and Memory are tabs along the top, under one short line that says what is going on ("Evening. Nothing needs you."). Close, Settings and Stop sit in the top right corner.

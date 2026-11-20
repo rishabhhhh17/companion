@@ -135,3 +135,9 @@
 {"v":1,"id":"m95c2","type":"tutor.note","project":"p_9f2c","source":"practice","practice":"key"}
 {"v":1,"id":"m95c3","type":"tutor.note","project":"p_9f2c","source":"check","checkpoint":"cp_12","right":false}
 {"v":1,"id":"m95c4","type":"tutor.forget","kind":"key_in_code","part":"learned"}
+{"v":1,"id":"m114c1","type":"toolask.answer","ask":"ta_0123456789ab","choice":"allow"}
+{"v":1,"id":"m114c2","type":"toolask.answer","ask":"ta_0123456789ab","choice":"always"}
+{"v":1,"id":"m114c3","type":"toolask.answer","ask":"ta_a1b2c3d4e5f6","choice":"answer","picks":[[1],[0,2]]}
+{"v":1,"id":"m114c4","type":"toolask.answer","ask":"ta_a1b2c3d4e5f6","choice":"tool"}
+{"v":1,"id":"m114c5","type":"donesignal.add","project":"p_9f2c","tool":"claude","confirm":true,"hook":"approve"}
+{"v":1,"id":"m114c6","type":"donesignal.add","project":"p_9f2c","tool":"claude","confirm":true,"hook":"answer"}

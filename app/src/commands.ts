@@ -41,6 +41,9 @@ export const followUp = (project: string, text: string): Command | null => {
 };
 export const retryTask = (project: string): Command => ({ v: 1, id: id(), type: "agent.send", project, agent: AGENT, retry: true });
 // M85: scope "project" only after the page saved the card's own house rule line (Always allow for this project).
+/** M114: the person's press on a card for their own AI tool's ask (notchAsk.tsx): Allow, Always allow, Don't allow, Answer
+ *  in the tool, or the choices picked for each question (by place). */
+export const answerToolAsk = (ask: string, choice: "allow" | "always" | "deny" | "tool" | "answer", picks?: number[][]): Command => ({ v: 1, id: id(), type: "toolask.answer", ask, choice, ...(picks ? { picks } : {}) });
 export const answerApproval = (approval: string, allow: boolean, scope: "once" | "project" = "once"): Command =>
   ({ v: 1, id: id(), type: "approval.resolve", approval, decision: allow ? "allow" : "deny", scope: allow ? scope : "once" });
 // force: only for "Put my fix back" in Your turn, where the person's own attempt is meant to be replaced (it stays in the safety copy).
@@ -215,7 +218,7 @@ export const warmEngine = (): Command => ({ v: 1, id: id(), type: "engine.warm" 
 export const practiceKey = (project: string, step: "write" | "fix"): Command => ({ v: 1, id: id(), type: "practice.key", project, step });
 // M75: the other tool's done signal (the add only after the card's yes), the cost pause's answer and the sign in handover's.
 export const showDoneSignal = (project: string): Command => ({ v: 1, id: id(), type: "donesignal.show", project });
-export const addDoneSignal = (project: string, tool: DoneTool, hook: "done" | "guard" | "waiting" | "start" | "feed" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.add", project, tool, confirm: true, ...(hook !== "done" ? { hook } : {}) });
-export const removeDoneSignal = (project: string, tool: DoneTool, hook: "done" | "guard" | "waiting" | "start" | "feed" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.remove", project, tool, ...(hook !== "done" ? { hook } : {}) });
+export const addDoneSignal = (project: string, tool: DoneTool, hook: "done" | "guard" | "waiting" | "start" | "feed" | "approve" | "answer" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.add", project, tool, confirm: true, ...(hook !== "done" ? { hook } : {}) });
+export const removeDoneSignal = (project: string, tool: DoneTool, hook: "done" | "guard" | "waiting" | "start" | "feed" | "approve" | "answer" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.remove", project, tool, ...(hook !== "done" ? { hook } : {}) });
 export const chooseCost = (agent: string, choice: "keep" | "stop" | "undo"): Command => ({ v: 1, id: id(), type: "cost.choose", agent, choice });
 export const answerSignIn = (agent: string, choice: "open" | "continue" | "skip" | "getBrowser"): Command => ({ v: 1, id: id(), type: "proof.signIn", agent, choice });

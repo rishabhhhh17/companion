@@ -183,11 +183,18 @@ export type DoneSignalTool = (typeof DONE_SIGNAL_TOOLS)[number];
  *  take a snapshot before a destructive command (runner/src/guard.ts). waiting: Claude Code's Notification hook, so the
  *  notch can say Claude is waiting for the person. Absent means done. */
 /** M113: feed, the live feed hook after an edit (runner/src/donesignal.ts). */
-export const HOOK_KINDS = ["done", "guard", "waiting", "start", "feed"] as const;
+/** M114: approve (Claude Code's and Codex's PermissionRequest) and answer (Claude Code's AskUserQuestion), so the person
+ *  can answer from the notch (runner/src/toolask.ts). */
+export const HOOK_KINDS = ["done", "guard", "waiting", "start", "feed", "approve", "answer"] as const;
 export type HookKind = (typeof HOOK_KINDS)[number];
 export type DoneSignalShow = Envelope & { type: "donesignal.show"; project: string };
 export type DoneSignalAdd = Envelope & { type: "donesignal.add"; project: string; tool: DoneSignalTool; confirm: true; hook?: HookKind };
 export type DoneSignalRemove = Envelope & { type: "donesignal.remove"; project: string; tool: DoneSignalTool; hook?: HookKind };
+/** M114: the person's press on a card in the notch for their own AI tool's ask (runner/src/toolask.ts). allow, always and
+ *  deny answer a permission request (always only where the card showed a rule); answer picks a choice of each question by
+ *  its place (picks[i] for question i); tool hands the ask back to the tool's own window. Names no folder. */
+export const TOOL_ASK_CHOICES = ["allow", "always", "deny", "tool", "answer"] as const;
+export type ToolAskAnswer = Envelope & { type: "toolask.answer"; ask: string; choice: (typeof TOOL_ASK_CHOICES)[number]; picks?: number[][] };
 /** M75: the answer to the cost pause card. keep: go on (asked again only at twice the line); stop: end the task as a stop;
  *  undo: end it, then put the files back to the task's own safety copy. */
 export const COST_CHOICES = ["keep", "stop", "undo"] as const;
@@ -366,7 +373,7 @@ export type ReviewFix = Envelope & { type: "review.fix"; project: string; batch:
 // put back too (their version is kept in the recovery folder first). Never the whole project, never a .env file, never git.
 export type ReviewUndoPlan = Envelope & { type: "review.undoPlan"; project: string; batch: string };
 export type ReviewUndo = Envelope & { type: "review.undo"; project: string; batch: string; confirm: true; overwrite?: string[] };
-export type Command = ReviewNow | ReviewDismiss | ReviewFix | ReviewUndoPlan | ReviewUndo | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | CostChoose | ProofSignIn | WeekShow | ShipWhyLive | JobsSave | JobsList | JobsDrop | TutorList | TutorNote | TutorForget;
+export type Command = ReviewNow | ReviewDismiss | ReviewFix | ReviewUndoPlan | ReviewUndo | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | ToolAskAnswer | CostChoose | ProofSignIn | WeekShow | ShipWhyLive | JobsSave | JobsList | JobsDrop | TutorList | TutorNote | TutorForget;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -640,6 +647,16 @@ export type FeedEditLine = { kind: "edit"; path: string; added?: number; removed
 export type FeedRunLine = { kind: "run"; command: string; n: number };
 export type FeedSession = { key: string; project: string; tool?: DoneSignalTool; via: "hook" | "folder"; state: "working" | "done"; items: (FeedEditLine | FeedRunLine)[] };
 export type FeedUpdate = Envelope & { type: "feed.update"; sessions: FeedSession[] };
+/** M114: an ask of the person's own AI tool, for its card in the notch. Only the card's words travel: what the tool wants
+ *  (action and a short redacted target: a command, a file from the project down, a site), the rule Always would write
+ *  (Claude Code only), or the questions with their choices. Never the request itself, its session or its descriptions. */
+export const TOOL_ASK_TOOLS = ["claude", "codex"] as const;
+export const TOOL_ASK_KINDS = ["permission", "question", "plan"] as const;
+export const TOOL_ASK_ACTIONS = ["run", "edit", "read", "fetch", "tool"] as const;
+export const TOOL_ASK_OUTCOMES = ["allowed", "always", "denied", "answered", "inTool", "expired", "elsewhere", "done", "stopped"] as const;
+export type ToolAskQuestion = { header?: string; question: string; multi: boolean; options: { label: string; about?: string }[] };
+export type ToolAskRequest = Envelope & { type: "toolask.request"; ask: string; project: string; tool: (typeof TOOL_ASK_TOOLS)[number]; kind: (typeof TOOL_ASK_KINDS)[number]; action?: (typeof TOOL_ASK_ACTIONS)[number]; target?: string; always?: string; questions?: ToolAskQuestion[]; expiresAt: string };
+export type ToolAskResolved = Envelope & { type: "toolask.resolved"; ask: string; outcome: (typeof TOOL_ASK_OUTCOMES)[number] };
 export const FEED_SESSIONS_MAX = 3;
 export const FEED_LINES_MAX = 4;
 /** M75: a task has used far more than a usual task here, and waits for the person. No amount (F29, M69). */
@@ -803,7 +820,7 @@ export type ReviewReplay = {
   checks: { label: string; status: "passed" | "failed" | "skipped"; exit?: number }[]; shot?: string;
 };
 export type ReviewUntold = { beyond: string[]; beyondMore: number; todos: number; checks: ReviewChecks };
-export type Event = GuardSaved | GuardAsked | HookWaiting | HookBusy | FeedUpdate | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewUndoPlanEvent | ReviewUndone | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved | TutorLearned;
+export type Event = ToolAskRequest | ToolAskResolved | GuardSaved | GuardAsked | HookWaiting | HookBusy | FeedUpdate | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewUndoPlanEvent | ReviewUndone | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved | TutorLearned;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -974,6 +991,22 @@ const feedOk = (v: unknown): string | null => {
   });
   return ok ? null : '"sessions" must be at most 3 sessions of at most 4 lines: a file with its line counts, or a short command';
 };
+// M114: an ask's id, its card's words within their limits, and only the keys a card may carry.
+const ASK_ID = /^ta_[0-9a-f]{12}$/;
+const textMax = (v: unknown, max: number) => typeof v === "string" && v.length > 0 && Array.from(v).length <= max && !/[\u0000-\u001f\u007f]/.test(v);
+const askQuestionsOk = (v: unknown): boolean => Array.isArray(v) && v.length >= 1 && v.length <= 4 && v.every((x) => {
+  const q = x as Record<string, unknown> | null;
+  return !!q && typeof q === "object" && !Array.isArray(q) && onlyKeys(q, ["header", "question", "multi", "options"]) && (q.header === undefined || textMax(q.header, 30)) && textMax(q.question, 300) && typeof q.multi === "boolean"
+    && Array.isArray(q.options) && q.options.length >= 2 && q.options.length <= 6 && q.options.every((o) => { const p = o as Record<string, unknown> | null; return !!p && typeof p === "object" && !Array.isArray(p) && onlyKeys(p, ["label", "about"]) && textMax(p.label, 80) && (p.about === undefined || textMax(p.about, 160)); });
+});
+const toolAskOk: Check = (m) => {
+  const ok = onlyKeys(m, ["v", "id", "ts", "type", "ask", "project", "tool", "kind", "action", "target", "always", "questions", "expiresAt"]) && typeof m.ask === "string" && ASK_ID.test(m.ask)
+    && (m.action === undefined || (TOOL_ASK_ACTIONS as readonly unknown[]).includes(m.action)) && (m.target === undefined || textMax(m.target, 80)) && (m.always === undefined || (textMax(m.always, 120) && m.tool === "claude" && m.kind === "permission"))
+    && (m.kind === "question" ? askQuestionsOk(m.questions) && m.tool === "claude" && m.action === undefined : m.questions === undefined) && (m.kind !== "permission" || m.action !== undefined)
+    && typeof m.expiresAt === "string" && !Number.isNaN(Date.parse(m.expiresAt));
+  return ok ? null : 'a tool ask carries its id, the card\'s short words (an action and target, a rule for Always, or 1 to 4 questions of 2 to 6 choices) and when it ends, nothing else';
+};
+const picksOk: Check = (m) => (m.picks === undefined || (Array.isArray(m.picks) && m.picks.length <= 4 && m.picks.every((p) => Array.isArray(p) && p.length <= 6 && p.every((n) => Number.isInteger(n) && n >= 0 && n < 6))) ? null : '"picks" must be the places of the choices picked, a list for each question');
 // M103: kind "login" always comes with what happened, and what happened only with it.
 const loginOk = (o: Record<string, unknown>): boolean =>
   (o.kind === undefined ? o.outcome === undefined : o.kind === "login" && (LOGIN_OUTCOMES as readonly unknown[]).includes(o.outcome))
@@ -1192,6 +1225,8 @@ const COMMANDS: Record<string, Check[]> = {
   "donesignal.show": [str("project")],
   "donesignal.add": [str("project"), oneOf("tool", [...DONE_SIGNAL_TOOLS]), (m) => (m.confirm === true ? null : 'adding a hook needs the person\'s yes, "confirm": true'), opt("hook", oneOf("hook", [...HOOK_KINDS]))],
   "donesignal.remove": [str("project"), oneOf("tool", [...DONE_SIGNAL_TOOLS]), opt("hook", oneOf("hook", [...HOOK_KINDS]))],
+  // M114: the person's press on a card for their own AI tool's ask.
+  "toolask.answer": [(m) => (typeof m.ask === "string" && ASK_ID.test(m.ask) ? null : '"ask" must be the id of an ask'), oneOf("choice", [...TOOL_ASK_CHOICES]), picksOk],
   "cost.choose": [str("agent"), oneOf("choice", [...COST_CHOICES])],
   "proof.signIn": [str("agent"), oneOf("choice", [...SIGN_IN_CHOICES])],
 };
@@ -1316,6 +1351,9 @@ const EVENTS: Record<string, Check[]> = {
   "guard.saved": [str("project"), str("checkpoint"), (m) => (typeof m.command === "string" && m.command.length > 0 && Array.from(m.command).length <= 80 ? null : '"command" must be a short text, at most 80 characters')],
   "guard.asked": [str("project"), (m) => (typeof m.command === "string" && m.command.length > 0 && Array.from(m.command).length <= 80 ? null : '"command" must be a short text, at most 80 characters'), (m) => (typeof m.reason === "string" && m.reason.length > 0 && Array.from(m.reason).length <= 300 ? null : '"reason" must be text, at most 300 characters'), (m) => (loginOk(m as Record<string, unknown>) ? null : '"kind" login must come with "outcome": asked, ran or blocked, and "tool" must be one of the AI tools')],
   "hook.busy": [str("project"), bool("busy")],
+  // M114: an ask of the person's own AI tool, for its card in the notch, and how it ended.
+  "toolask.request": [str("project"), oneOf("tool", [...TOOL_ASK_TOOLS]), oneOf("kind", [...TOOL_ASK_KINDS]), toolAskOk],
+  "toolask.resolved": [(m) => (typeof m.ask === "string" && ASK_ID.test(m.ask) ? null : '"ask" must be the id of an ask'), oneOf("outcome", [...TOOL_ASK_OUTCOMES])],
   // M113: names, counts and short commands only (feedOk).
   "feed.update": [(m) => feedOk(m.sessions)],
   "hook.waiting": [str("project"), bool("waiting"), opt("message", (m) => (typeof m.message === "string" && Array.from(m.message).length <= 120 ? null : '"message" must be text, at most 120 characters')), opt("tool", oneOf("tool", [...DONE_SIGNAL_TOOLS])),
