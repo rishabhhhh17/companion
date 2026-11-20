@@ -88,8 +88,8 @@ describe("the style and the character are real settings, and a store from before
   });
   test("a store saved before M65 or M71 reads the one black look, whatever it saved; a Friendly store keeps its water character", () => {
     const before = { "look.theme": "night", "look.density": "compact", "look.icons": "colour", "look.stamps": false, "look.gloss": "on", "look.corners": "crisp", "look.light": "moving", "look.colour": "vivid", "look.style": "friendly" };
-    expect(lookAttrs(before)).toEqual({ ...FIXED_LOOK, "data-colours": "colourful", "data-character": "friendly" });   // M71: the founder was told the water stays
-    expect(lookAttrs({ ...before, "look.style": "instrument" })).toEqual({ ...FIXED_LOOK, "data-colours": "colourful", "data-character": "visor" });
+    expect(lookAttrs(before)).toEqual({ ...FIXED_LOOK, "data-colours": "colourful", "data-character": "friendly", "data-material": "glass" });   // GLASS: the material rides along, Glass by default. M71: the founder was told the water stays
+    expect(lookAttrs({ ...before, "look.style": "instrument" })).toEqual({ ...FIXED_LOOK, "data-colours": "colourful", "data-character": "visor", "data-material": "glass" });
   });
   test("the Visor unless another is picked, and the face, bubbles and water are the water character's only", () => {
     expect(characterOf(undefined)).toBe("visor");   // M68: the Visor; M71: the usual whatever the retired style says
@@ -128,13 +128,15 @@ describe("the style and the character are real settings, and a store from before
     }
     expect(S.set["look.style"].options).toEqual({ instrument: "Instrument", friendly: "Friendly" });
     expect(S.set["look.character"].options).toEqual({ visor: "Visor", orb: "Glass orb", friendly: "Water", match: "Visor" });
-    expect(PAGES.look.groups.flatMap((g) => g.items)).toHaveLength(4);
+    // GLASS (19 Nov 2026) adds Material, on purpose: five.
+    expect(PAGES.look.groups.flatMap((g) => g.items)).toHaveLength(5);
   });
   test("Home and Settings set both on their root; the notch keeps its own look", () => {
     const hook = read("./useLook.ts");
     expect(hook).toContain('const character = storedSetting("look.character"), style = storedSetting("look.style");');
     // M72 (finding 2): the style goes through too, so the root agrees with the drawn character.
-    expect(hook).toContain('{ "look.colour": colour, "look.character": character, "look.style": style }');
+    // GLASS: the material rides on the root with the choices.
+    expect(hook).toContain('{ "look.colour": colour, "look.character": character, "look.style": style, "look.material": material }');
     expect(read("./island.tsx")).toContain("useLook({ keepNight: true });");
   });
 });

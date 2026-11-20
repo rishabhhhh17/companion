@@ -20,6 +20,41 @@
 :root {
   color-scheme: dark;
 
+  /* ---------- GLASS (19 Nov 2026, the founder picked direction B, Glass and light): the material ----------
+     On :root[data-material="glass"] (lookfeel.ts lookAttrs, look.material). A neutral dark glass (no navy: the channels
+     within 4 of each other, chroma near 0) that lets the desktop through: the shell puts macOS's own blur (an
+     NSVisualEffectView) behind the page where it can, and this tint sits on it. The tint is darker than the lab's 0.66 on
+     purpose (its known risk): measured in glass.test.ts over a white, a mid grey and a black wallpaper, words 9 to 1 or more,
+     secondary words 5.7 to 1 or more, raised rows 4.9 to 1 or more, hints and the focus ring 3 to 1 or more. Colour stays
+     only for meaning (proven green, failed red, needs you amber, the blue accent for the one main action and focus). */
+
+  --mat-tint: rgba(18, 18, 22, .84);            /* the glass itself, over the desktop (and the blur behind it) */
+  --mat-tint-solid: rgba(18, 18, 22, .96);      /* Reduce transparency, Increase contrast, or no blur behind */
+  --mat-top: #000000;                           /* the top, the notch's own black, so the panel grows out of the notch */
+  --mat-ink: #F5F5F7;                           /* words */
+  --mat-ink-2: rgba(235, 235, 245, .7);         /* secondary words */
+  --mat-ink-3: rgba(235, 235, 245, .52);        /* hints only, never words the person must read */
+  --mat-raised: rgba(255, 255, 255, .06);       /* a row or a field inside the glass (never a second glass) */
+  --mat-raised-hover: rgba(255, 255, 255, .1);
+  --mat-selected: rgba(255, 255, 255, .14);     /* the open tab, the selected row: lighter, not a colour */
+  --mat-overlay: rgba(28, 28, 32, .96);         /* a menu or a sheet over the glass: near solid */
+  --mat-edge: rgba(255, 255, 255, .07);         /* side and bottom hairlines */
+  --mat-edge-top: rgba(255, 255, 255, .12);     /* the light catching the top edge of the popover */
+  --mat-edge-strong: rgba(255, 255, 255, .45);  /* Increase contrast: 3 to 1 on the glass */
+  --mat-focus: var(--flow-focus);               /* the focus ring (the water's light), 3 to 1 or more on the glass over any wallpaper */
+  --mat-shadow: 0 30px 80px rgba(0, 0, 0, .45); /* the panel: the floating layer only */
+  --mat-shadow-pop: 0 16px 40px rgba(0, 0, 0, .4);   /* the menu bar popover */
+  --mat-blur: blur(40px) saturate(170%);        /* the panel (in the web view; the desktop blur is the shell's) */
+  --mat-blur-pop: blur(28px) saturate(170%);    /* the popover */
+  --mat-top-h: 32px;                            /* the notch's height: solid black */
+  --mat-fade-h: 84px;                           /* by here the black has become glass */
+  --mat-tab-h: 28px;                            /* a tab */
+  --mat-head-h: 80px;                           /* the black strip and the row of tabs under it (glass.css .gl-top) */
+  --mat-row-h: 36px;                            /* a row in the popover */
+  --mat-pop-from: .96;                          /* the popover arrives from this scale, at its icon (rulebook G5.3) */
+  --mat-pop-r: 14px;                            /* the popover's corners (the shell rounds its blur to the same: traypop.rs POP_R) */
+  --mat-pop-w: 320px;                           /* the popover's width (the shell's window is this wide: traypop.rs) */
+
   /* ---------- M76: the go live report (goLiveReport.ts) ----------
      A report is a file sent to a client and printed, so it is always light, whatever the look. The page reads these when it
      saves one and writes them into the file, since a sent file cannot read this one. Words 4.5 to 1 on the paper. */
@@ -1108,3 +1143,26 @@
 .island-panel { --main: var(--acc); --main-hover: var(--acc-hover); --main-press: var(--acc-press); --main-ink: var(--acc-ink); }
 /* M69 step 3: Friendly's main buttons and send arrow in Home are the same accent key as Instrument's, never a white pill. */
 :root:not([data-style="instrument"]) .home { --main: var(--acc); --main-hover: var(--acc-hover); --main-press: var(--acc-press); --main-ink: var(--acc-ink); }
+
+/* Glass on Home and Settings: the steps of black become steps of glass, lighter for higher (a row, a field, a menu), and the
+   words take the glass inks. Only role tokens move; the fixed colours stay as they are. */
+:root[data-theme="black"][data-material="glass"] {
+  --bg: transparent;
+  --surface-1: var(--mat-raised);
+  --surface-2: var(--mat-raised-hover);
+  --surface-3: var(--mat-selected);
+  --inset: var(--mat-raised);
+  --fg: var(--mat-ink);
+  --fg-2: var(--mat-ink-2);
+  --fg-3: var(--mat-ink-3);
+  --line: var(--mat-edge);
+  --edge: var(--mat-edge);
+  --btn2-bg: var(--mat-raised-hover);
+  --focus: var(--mat-focus);
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --mat-tint: var(--mat-tint-solid); --mat-blur: none; --mat-blur-pop: none; }
+}
+@media (prefers-contrast: more) {
+  :root { --mat-tint: var(--mat-tint-solid); --mat-edge: var(--mat-edge-strong); }
+}

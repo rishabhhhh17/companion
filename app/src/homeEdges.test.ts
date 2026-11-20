@@ -42,7 +42,9 @@ const stub = (layout: "tall" | "wide") => `(() => {
   const answers = {
     get_project: ${JSON.stringify(P)}, list_projects: [${JSON.stringify(P)}], claude_status: { state: "ready" },
     replay_events: ${JSON.stringify(REPLAY)},
-    settings_get: { values: { "look.layout": ${JSON.stringify(layout)} }, usual: {}, project: ${JSON.stringify(P)}, migrated: ["pageStorage.v1"], problems: [], changed: [] },
+    // GLASS (19 Nov 2026): these measure the bar of Before (look.material classic), where Close and the places live in the
+    // bar; Glass puts them in the top strip and is measured in its own test (glassEdges.test.ts).
+    settings_get: { values: { "look.layout": ${JSON.stringify(layout)}, "look.material": "classic" }, usual: {}, project: ${JSON.stringify(P)}, migrated: ["pageStorage.v1"], problems: [], changed: [] },
     home_geom: { shown: true }, key_map: null, practice_list: [], quiet_now: false,
     data_inventory: { items: [], keySaved: true, projectsWithNotes: 0 },
   };

@@ -51,9 +51,12 @@ export async function renderHome(o: Setup = {}) {
   return renderPage(<Card />, o);
 }
 
-/** Presses the first button with this accessible name, as a person would, and lets the page answer. */
+/** Presses the first button with this accessible name, as a person would, and lets the page answer. GLASS (19 Nov 2026):
+ *  under Glass, the usual material, the places are tabs in a real tablist (glassHome.tsx), so a place with no button of that
+ *  name is pressed as its tab; getAllByRole still throws when neither is there. */
 export async function press(name: string | RegExp, ms = 60) {
-  const b = screen.getAllByRole("button", { name })[0];
+  const asButton = screen.queryAllByRole("button", { name });
+  const b = asButton.length > 0 ? asButton[0] : screen.getAllByRole("tab", { name })[0];
   await act(async () => { fireEvent.click(b); await new Promise((r) => setTimeout(r, ms)); });
   return b;
 }

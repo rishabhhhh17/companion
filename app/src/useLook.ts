@@ -6,16 +6,20 @@
 // Friendly store that never picked a character says "friendly" on the root, as Home and the edge draw it.
 import { useEffect } from "react";
 import { storedSetting, useSetting } from "./settingsStore.ts";
-import { applyLook, applyLookChoices, flowColours } from "./lookfeel.ts";
+import { applyLook, applyLookChoices, flowColours, materialOf } from "./lookfeel.ts";
 
 export function useLook(opts: { keepNight?: boolean; choices?: boolean } = {}): { light: string; deep: string } {
   useEffect(() => { applyLook(document.documentElement); }, []);
   const colour = useSetting("look.colour");
+  // GLASS: the material (Glass, the usual, or Before) rides on the root too (lookfeel.ts lookAttrs data-material).
+  const material = useSetting("look.material");
   useSetting("look.character");
   const character = storedSetting("look.character"), style = storedSetting("look.style");
   const choices = !!opts.choices && !opts.keepNight;
   useEffect(() => {
-    if (choices) applyLookChoices(document.documentElement, { "look.colour": colour, "look.character": character, "look.style": style });
-  }, [choices, colour, character, style]);
+    if (choices) applyLookChoices(document.documentElement, { "look.colour": colour, "look.character": character, "look.style": style, "look.material": material });
+  }, [choices, colour, character, style, material]);
+  // Every page (the notch's and the menu bar's too) knows the material, so their glass rules apply without the Home choices.
+  useEffect(() => { document.documentElement.setAttribute("data-material", materialOf(material)); }, [material]);
   return flowColours("ocean");
 }

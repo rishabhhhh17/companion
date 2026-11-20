@@ -1,0 +1,134 @@
+/* GLASS (the founder, 19 Nov 2026: "the liquid glass looks so very good"; direction B of the look lab). Every rule here
+   hangs off [data-material="glass"] (lookfeel.ts lookAttrs, look.material), so Before is exactly the look it was.
+   Colours, sizes and times are tokens (tokens.css, the --mat-* block). The rulebook's APP GLASS lines each rule answers are
+   named in docs/milestones/GLASS.md. Loaded last on Home's page (card.tsx) and on the menu bar's (trayPanel.tsx). */
+
+/* ---------- Home's body: the notch's black at the top, melting into the glass (G1.4) ---------- */
+/* The shape grows out of the notch in black, as before (homeShape.css). Once open, its body pieces fade and the glass shows:
+   the black strip under the notch stays (the band and its shoulders are never hidden). Opacity only, never the blur (G5.4). */
+[data-material="glass"] .card.home, [data-material="glass"] .home-stage[data-told] .home-frame > .card.home {
+  /* No backdrop-filter here: in a see through window it would blur only the page itself (nothing is behind Home's page),
+     and it would make Home the box its fixed layers (sheets, menus) are placed in. The desktop's blur is macOS's own,
+     under the page (shell_traypop.rs home_glass_sync). */
+  background-color: var(--mat-tint);
+}
+[data-material="glass"] .home-stage[data-told][data-phase="open"] .hs > span { opacity: 0; transition: transform var(--dur-notch-open-h) var(--ease-notch-open-h), opacity var(--dur-2) var(--ease-out); }
+/* The floating layer's one shadow (G1.5) and a hairline down the sides and round the foot (G1.3). */
+[data-material="glass"] .home-stage .hs::after { box-shadow: var(--mat-shadow); }
+[data-material="glass"] .home-stage[data-told] .home-frame::after { --edge: var(--mat-edge); }
+
+/* ---------- The top: the black strip with Flowflow and the greeting, then the tabs (glassHome.tsx) ---------- */
+[data-material="glass"] .gl-top { flex: none; position: sticky; top: 0; z-index: 6; isolation: isolate; display: flex; flex-direction: column; align-items: stretch; }
+/* The notch's black, solid for its height and fading into the glass by --mat-fade-h: one black layer with a mask (a mask
+   is no colour, so no gradient paints the glass). */
+[data-material="glass"] .gl-top::before {
+  content: ""; position: absolute; inset: 0 0 auto; z-index: -1; height: var(--mat-fade-h); background: var(--mat-top); pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) var(--mat-top-h), transparent);
+  mask-image: linear-gradient(180deg, var(--mask-solid) var(--mat-top-h), transparent);
+}
+[data-material="glass"] .gl-strip { display: flex; align-items: center; gap: var(--space-2); min-height: var(--mat-top-h); padding: 0 var(--space-2) 0 var(--space-4); }
+/* Flowflow small beside the notch, at the notch wing's own size (its art unchanged: the Visor, the orb or the water). */
+[data-material="glass"] .gl-flow { flex: none; --orb: var(--orb-notch); --orb-gap: var(--hair); height: var(--orb-panel); }
+[data-material="glass"] .gl-flow.ff-orb { width: var(--orb-panel); }
+[data-material="glass"] img.gl-flow { width: auto; height: var(--orb-panel); }
+/* Every character the same small size beside the notch (the GLASS review): the live water and its still picture too. */
+[data-material="glass"] .gl-flow.ff-mini { width: var(--orb-panel); }
+[data-material="glass"] .gl-flow :is(img, canvas, svg) { max-width: var(--orb-panel); max-height: var(--orb-panel); }
+/* A long task name is cut in words (glass.ts clipWords), never hidden; the whole greeting is the tooltip and what VoiceOver reads. */
+[data-material="glass"] .gl-greet { flex: 1 1 auto; min-width: 0; margin: 0; color: var(--mat-ink-2); font-weight: var(--w-strong); font-size: var(--t-small); line-height: var(--lh-small); letter-spacing: var(--track-body); overflow-wrap: anywhere; }
+[data-material="glass"] .gl-end { display: flex; flex: none; align-items: center; gap: var(--space-1); }
+[data-material="glass"] .gl-end .btn { color: var(--mat-ink-2); }
+[data-material="glass"] .gl-end .btn:hover:not(:disabled) { color: var(--mat-ink); }
+
+/* The tabs (G3.1, G3.2, G5.5): a quiet track in the middle, the open tab lighter and heavier (never colour alone). Content
+   swaps at once; a hover is a fill only, 120 ms; a press goes in on pointer down. */
+[data-material="glass"] .gl-tabs { display: flex; flex-wrap: wrap; justify-content: center; align-self: center; gap: var(--hair); margin: var(--space-2) 0 var(--space-2); padding: calc(var(--hair) * 2); border-radius: var(--r-pill); background: var(--mat-raised); }
+[data-material="glass"] .gl-tab {
+  position: relative; display: inline-flex; align-items: center; gap: var(--space-1); height: var(--mat-tab-h); padding: 0 var(--space-3);
+  border: var(--hair) solid transparent; border-radius: var(--r-pill); background: transparent; color: var(--mat-ink-2);
+  font-weight: var(--w-strong); font-size: var(--t-label); line-height: var(--lh-label); letter-spacing: var(--track-body); cursor: default;
+  transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out);
+}
+[data-material="glass"] .gl-tab:hover { background-color: var(--mat-raised-hover); color: var(--mat-ink); }
+[data-material="glass"] .gl-tab:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+[data-material="glass"] .gl-tab[aria-selected="true"] { background-color: var(--mat-selected); color: var(--mat-ink); font-weight: var(--w-bold); }
+[data-material="glass"] .gl-tab:focus-visible { outline: 2px solid var(--mat-focus); outline-offset: 2px; }
+[data-material="glass"] .gl-tab .tabdot { margin-left: 0; }
+
+/* ---------- The wide Home under the top: the side keeps the recent work; the places moved to the tabs ---------- */
+[data-material="glass"] .home[data-side] .side { top: var(--mat-head-h); height: calc(100vh - var(--mat-head-h)); border-right: var(--hair) solid var(--mat-edge); background: transparent; }
+[data-material="glass"] .home[data-side] .side > .side-list:empty { display: none; }
+[data-material="glass"] .home[data-side] .work { min-height: calc(100vh - var(--mat-head-h)); }
+/* Settings in the wide Home: its own list of sections fills the height left under the top. */
+[data-material="glass"] .home[data-view="settings"] > .inner { min-height: 0; }
+/* The project row under the tabs is no black band of its own in either layout: the tabs stay in view, it scrolls away. */
+/* As specific as wide.css's sticky black row (.home[data-side] .work > .bar), whatever order the sheets load in (the GLASS review). */
+[data-material="glass"] .home .work > .bar, [data-material="glass"] .home[data-side] .work > .bar { position: relative; top: auto; background: transparent; box-shadow: none; }
+[data-material="glass"] .home .work > .bar::before { display: none; }
+
+/* Rows, cards and fields are steps of glass (tokens.css glass block), never a second glass (G1.6, G1.12): no shadow on them. */
+[data-material="glass"] .home :is(.ui-card, .panel, .ui-group) { box-shadow: none; }
+/* The small chat out of the notch: the same glass under its words (the mockup's chat), its dotted grid kept faint. */
+[data-material="glass"] .home[data-chat] .notch-chat { background-color: transparent; }
+
+/* ---------- Reduce transparency and Increase contrast (G1.9) ---------- */
+@media (prefers-contrast: more) {
+  [data-material="glass"] .gl-tab[aria-selected="true"] { border-color: var(--mat-edge-strong); }
+}
+
+/* ---------- The menu bar's popover (trayPanel.tsx): glass in both materials' places, near solid under Before ----------
+   One floating layer with one shadow (G1.5), a light top edge (G1.3), rows grouped by space with no boxes (G3.4), exactly
+   one filled button (G2.7), Stop everything with its keys, destructive and rare things at the foot (G3.7). It never moves
+   on open except a short fade from the shell (G5.3), and holds no loop while idle (G5.15). */
+html.tray-page, body.tray-page { margin: 0; background: transparent; }
+.tray {
+  box-sizing: border-box; width: var(--mat-pop-w); display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3);
+  border: var(--hair) solid var(--mat-edge); border-radius: var(--mat-pop-r); background: var(--mat-tint);
+  -webkit-backdrop-filter: var(--mat-blur-pop); backdrop-filter: var(--mat-blur-pop);
+  box-shadow: inset 0 var(--hair) 0 var(--mat-edge-top); color: var(--mat-ink); font-family: var(--font); font-size: var(--t-label); line-height: var(--lh-label);
+  -webkit-user-select: none; user-select: none; cursor: default;
+}
+/* Opened by a click many times a day: 200 ms from the icon (scale and fade, no slide); closed at once by the shell. */
+.tray { transform-origin: top center; transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out); }
+.tray[data-shut] { opacity: 0; transform: scale(var(--mat-pop-from)); transition: none; }
+@media (prefers-reduced-motion: reduce) { .tray, .tray[data-shut] { transform: none; } }
+[data-material="classic"] .tray { background: var(--mat-tint-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.tr-now { display: flex; flex-direction: column; }
+.tr-now-in { display: flex; align-items: flex-start; gap: var(--space-2); width: 100%; min-height: var(--mat-row-h); padding: 0 var(--space-1); }
+/* A waiting question, changes to review or the work running: the line is a button to it (the GLASS review). */
+.tr-now-go { box-sizing: border-box; border: var(--hair) solid transparent; border-radius: var(--r-card); padding: 0 var(--space-2) 0 var(--space-1); background: transparent; color: inherit; font: inherit; text-align: start; cursor: default; transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
+.tr-now-go:hover { background: var(--mat-raised-hover); }
+.tr-now-go:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+.tr-now-go:focus-visible { outline: 2px solid var(--mat-focus); outline-offset: 2px; }
+.tr-now-go > svg { flex: none; align-self: center; color: var(--mat-ink-2); }
+.tr-now-mark { flex: none; align-self: flex-start; position: relative; top: calc((var(--mat-row-h) - var(--lh-label)) / 2); width: var(--space-2); height: var(--space-2); margin-top: calc((var(--lh-label) - var(--space-2)) / 2); border-radius: var(--r-pill); background: var(--fg-3); }
+.tr-now[data-tone="working"] .tr-now-mark { background: var(--acc); }
+.tr-now[data-tone="needsYou"] .tr-now-mark { background: var(--amber); }
+/* A long task name is cut in words (glass.ts clipWords); the whole words are the tooltip, and the status line reads them whole. */
+.tr-now-words { flex: 1 1 auto; margin-block: calc((var(--mat-row-h) - var(--lh-label)) / 2); min-width: 0; color: var(--mat-ink); font-weight: var(--w-bold); font-size: var(--t-label); line-height: var(--lh-label); overflow-wrap: anywhere; }
+.tr-rows { display: flex; flex-direction: column; }
+.tr-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--mat-row-h); padding: 0 var(--space-1); }
+.tr-key { flex: none; color: var(--mat-ink-2); font-size: var(--t-small); }
+.tr-val { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; color: var(--mat-ink); font-size: var(--t-small); text-align: end; overflow-wrap: anywhere; }
+.tr-quiet { color: var(--mat-ink-2); }
+.tr-name { overflow-wrap: anywhere; }
+.tr-actions { display: flex; flex-direction: column; gap: var(--space-1); }
+.tr-act, .tr-item, .tr-link {
+  display: flex; align-items: center; gap: var(--space-2); min-height: var(--mat-row-h); padding: 0 var(--space-3); border: var(--hair) solid transparent; border-radius: var(--r-card);
+  background: transparent; color: var(--mat-ink); font: inherit; text-align: start; cursor: default;
+  transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out);
+}
+.tr-act { background: var(--mat-raised); font-weight: var(--w-strong); }
+.tr-act.primary { background: var(--acc); color: var(--acc-ink); }
+.tr-act:hover, .tr-item:hover, .tr-link:hover { background: var(--mat-raised-hover); }
+.tr-act.primary:hover { background: var(--acc-hover); }
+.tr-act:active, .tr-item:active, .tr-link:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+.tr-act:focus-visible, .tr-item:focus-visible, .tr-link:focus-visible { outline: 2px solid var(--mat-focus); outline-offset: 2px; }
+.tr-link { min-height: 0; padding: var(--space-1) var(--space-2); color: var(--mat-focus); font-size: var(--t-small); }
+.tr-foot { display: flex; flex-direction: column; padding-top: var(--space-2); border-top: var(--hair) solid var(--mat-edge); }
+.tr-item { color: var(--mat-ink-2); font-size: var(--t-small); }
+.tr-item:hover { color: var(--mat-ink); }
+.tr-item > span { flex: 1 1 auto; }
+.tr-item .ui-keys { flex: none; }
+/* A sheet or a dialog over Home lies over the top too (its scrim and its edge reach the panel's top), so the top steps back. */
+[data-material="glass"] .home:has(.ui-sheet-layer) > .gl-top { z-index: auto; }

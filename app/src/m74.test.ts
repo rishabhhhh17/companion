@@ -142,7 +142,8 @@ describe("the words", () => {
     for (const k of NEW) expect(SET[k]?.label, k).toBeTruthy();
   });
   test("the look stays fixed: M74 adds nothing to the Look page", () => {
-    expect(mainKeys("look")).toEqual(["look.colour", "look.character", "look.layout", "display.textSize"]);
+    // GLASS (19 Nov 2026) adds Material, on purpose; M74 itself still adds nothing.
+    expect(mainKeys("look")).toEqual(["look.colour", "look.character", "look.layout", "display.textSize", "look.material"]);
     expect(PAGES.look.more).toEqual([]);
     for (const k of NEW) expect(k.startsWith("look."), k).toBe(false);
   });

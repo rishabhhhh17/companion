@@ -237,7 +237,9 @@ describe("M71: one black look, colour for meaning only", () => {
     // M90: the character peeking out of the notch, held to the same rules.
     ["peekout.css", parse(sheet("./peekout.css"))],
     // M111: the character tucking into the notch, held to the same rules.
-    ["tuck.css", parse(sheet("./tuck.css"))]];
+    ["tuck.css", parse(sheet("./tuck.css"))],
+    // GLASS: the glass material, held to the same rules.
+    ["glass.css", parse(sheet("./glass.css"))]];
   test("the lint covers every stylesheet in the app", () => {
     const all = readdirSync(new URL(".", import.meta.url)).filter((f) => f.endsWith(".css")).filter((f) => f !== "tokens.css");
     const covered = new Set(M71_FILES.map(([f]) => f));

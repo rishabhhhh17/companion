@@ -441,7 +441,10 @@ describe("one main button per state", () => {
     // Changed on purpose (feel round 2, 19 Nov 2026): Stop pushed into the row of places moved every tab under the pointer.
     // In the tall Home it sits in the top right corner beside Settings and Close; in the wide Home before the places.
     // Outside the Settings condition both times, so Settings gets it too.
-    expect(bar).toContain('{!side && <div className="bar-end">{barStop}{home.tab !== "settings" && gearButton}{closeButton}</div>}');
+    // GLASS (19 Nov 2026, changed on purpose): under Glass the same three sit in the black strip's top right corner
+    // (glassHome.tsx GlassTop), on every place and in Settings; the bar keeps them under Before.
+    expect(bar).toContain('{!side && !glassOn && <div className="bar-end">{barStop}{home.tab !== "settings" && gearButton}{closeButton}</div>}');
+    expect(card).toContain('end={<>{barStop}{home.tab !== "settings" && gearButton}{closeButton}</>}>');
     expect(bar.indexOf("{side && barStop}")).toBeLessThan(bar.indexOf('{home.tab !== "settings" && places.map('));
   });
   test("the labels are the spec's, and a project not chosen yet has its own", () => {

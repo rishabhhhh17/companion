@@ -74,7 +74,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
   look: {
     icon: "image",
     groups: [
-      { id: "look.home", items: ["look.colour", "look.character", "look.layout", "display.textSize"] },
+      { id: "look.home", items: ["look.colour", "look.character", "look.layout", "display.textSize", "look.material"] },
     ],
     more: [],
   },

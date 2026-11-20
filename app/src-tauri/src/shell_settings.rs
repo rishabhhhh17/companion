@@ -170,6 +170,8 @@ fn setting_applied(app: &AppHandle, key: &str) {
     if key == loginitem::KEY && off(key) { loginitem::off(); }
     // M89: Speech accuracy: Best downloads once picked, Standard frees it (shell_voice.rs).
     if key == speechmodel::KEY { speech_accuracy_applied(app); }
+    // GLASS: Material switched with Home open: macOS's blur under Home's body comes or goes at once (shell_traypop.rs).
+    if key == "look.material" { let _ = app.run_on_main_thread(home_glass_sync); }
     home_setting_applied(app, key);
 }
 

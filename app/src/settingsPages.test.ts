@@ -35,7 +35,8 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
     for (const p of SIDEBAR) expect(mainKeys(p).length, p).toBeLessThanOrEqual(10);
     expect(MAIN.size).toBeGreaterThanOrEqual(38);
     // The M103 review (changed on purpose): Saved logins (Your AI tools) came up to Privacy's main level from More options.
-    expect(MAIN.size).toBeLessThanOrEqual(55);
+    // GLASS (19 Nov 2026, changed on purpose): Material (Glass or Before) joined the Look page's main level.
+    expect(MAIN.size).toBeLessThanOrEqual(56);
   });
   test("the main levels are the ones the spec names", () => {
     // M74: the warning before the daily limit, and the most one task may spend, beside it.
@@ -43,7 +44,8 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
     expect(mainKeys("account")).toEqual(["spend.dailyLimit", "spend.warnAt", "spend.pauseAt", "budget.task"]);   // M75: the cost pause beside them   // M68: what to call you, for the hello in the notch
     // M71: the text size moved to the Look page, beside Colour, Character and Layout.
     expect(mainKeys("general")).toEqual(["app.openAtLogin", "island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops", "guide.on", "secondLook.on", "files.on", "watch.on"]);
-    expect(mainKeys("look")).toEqual(["look.colour", "look.character", "look.layout", "display.textSize"]);
+    // GLASS: Material, last on the Look page.
+    expect(mainKeys("look")).toEqual(["look.colour", "look.character", "look.layout", "display.textSize", "look.material"]);
     // 2 Nov 2026: what pointing at the notch opens is in More options, first beside how long the notch waits.
     expect(PAGES.general.more.find((t) => t.id === "more.general.notch")!.items[0]).toBe("island.pointOpens");
     // M57 UI 12: the review of changes leads the Fixing page.

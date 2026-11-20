@@ -27,6 +27,8 @@ import type { VerdictKind } from "./verdict.ts";
 type Props = {
   places: SidePlace[]; tab: Tab; waits: Tab | null; recent: HistoryItem[]; now: number;
   onPick: (t: Tab) => void; onSettings: () => void; onOpen: (item: HistoryItem) => void;
+  /** GLASS: false when Settings already sits in the top strip (glassHome.tsx GlassTop), so Home has one Settings button. */
+  settingsFoot?: boolean;
   /** M52: the review card when Home shows it (review.ts reviewShown), first in the recent work; its press opens Now there. */
   review?: ReviewCard | null; onReview?: () => void;
   /** M69 step 2: how many things wait on a place (the review card's findings on Now), drawn as a small count. */
@@ -57,11 +59,12 @@ function useGlide(tab: Tab, places: readonly SidePlace[]) {
   return { list, g };
 }
 
-export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, onOpen, review, onReview, counts, tools, onTool }: Props) {
+export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, onOpen, review, onReview, counts, tools, onTool, settingsFoot = true }: Props) {
   const { list, g } = useGlide(tab, places);
   const on = (places as readonly string[]).includes(tab) ? (tab as SidePlace) : null;
   return (
-    <nav className="side" aria-label={S.look.placesLabel}>
+    // GLASS: with no places in it (they are the tabs), the side is the recent work, and is named for it: one Places landmark.
+    <nav className="side" aria-label={places.length > 0 ? S.look.placesLabel : S.look.sideRecent}>
       <ul className="side-list" ref={list} data-glide="">
         {g && on && <li className="side-glide" role="presentation" aria-hidden="true" data-c={PLACE_COLOUR[on]} data-still={g.still || undefined} style={{ "--glide-y": `${g.y}px`, "--glide-h": `${g.h}px` } as CSSProperties} />}
         {places.map((t) => (
@@ -132,9 +135,9 @@ export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, 
           </ul>
         </section>
       )}
-      <div className="side-foot">
+      {settingsFoot && <div className="side-foot">
         <SidebarItem id={tabId("settings")} icon="gear" colour="grey" label={S.homeTabs.settings} selected={false} attention={waits === "settings"} onClick={onSettings} />
-      </div>
+      </div>}
     </nav>
   );
 }

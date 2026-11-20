@@ -288,7 +288,8 @@ describe("cards grow in and fold away", () => {
     expect(card).toMatch(/import \{ CountUp, useHomeMotion \} from "\.\/smoothMotion\.ts";/);
     // M66 fix 4: a render where only streamed text changed is not measured (homeFlow.test.ts).
     expect(card).toContain("useHomeMotion(root, work, view, home.tab, homeOpen, streamOnly);");
-    expect(card).toContain('<div className="work" ref={work}>');
+    // The GLASS review (changed on purpose): the column also carries the tabpanel's id and role under Glass.
+    expect(card).toContain('<div className="work" ref={work} id={glassOn ? GLASS_PANEL_ID : undefined}');
     expect(card).toMatch(/<div className="view" ref=\{view\}/);
   });
 });

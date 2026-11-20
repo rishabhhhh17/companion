@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A glass look and a better menu bar: 20 Nov 2026
+
+- **Home is glass now.** Your desktop shows softly through Home, black at the top where it comes out of the notch. Now, Learn, History and Memory are tabs along the top, under one short line that says what is going on ("Evening. Nothing needs you."). Close, Settings and Stop sit in the top right corner.
+- **The old look is one choice away.** Settings, Look, Material: Glass or Before. Before is the black look with the coloured tiles, exactly as it was.
+- **The menu bar icon opens a small panel.** It says what Squibby is doing, and one press takes you to a waiting question or changes to look at. It shows your project and its last check, and has Check my project, Check before going live, Settings, Stop everything and Quit. With no project open it offers Choose a project first. The icon gets a small dot when something needs you. Right click still gives the short menu.
+
 ## Fixes from a full check of the app: 20 Nov 2026
 
 - **The chat answers in the chat.** Ask a question in the small chat and the answer shows there as a reply. A plain answer stays in the chat; work that changed files still opens Home with Undo and proof.

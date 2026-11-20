@@ -33,7 +33,9 @@ describe("M84: the side list of AI tools", () => {
   test("each connected tool with what it is doing now; Claude Code waiting first; a press opens Your AI tools", async () => {
     await renderHome({ settings: { "look.layout": "wide" } });
     await runner({ type: "hook.waiting", project: PROJECT, waiting: true }, tools(true));
-    const side = screen.getByRole("navigation", { name: S.look.placesLabel });
+    // The GLASS review (changed on purpose): under Glass, the usual, the places are tabs, so the side list is named for the
+    // recent work it holds (Before keeps the name Places).
+    const side = screen.getByRole("navigation", { name: S.look.sideRecent });
     const names = [...side.querySelectorAll(".side-tool")].map((b) => b.getAttribute("aria-label"));
     expect(names).toEqual([S.m84.toolSay("Claude Code", S.m84.toolState.waiting), S.m84.toolSay("Cursor", S.m84.toolState.watching)]);
     await press(S.m84.toolSay("Cursor", S.m84.toolState.watching));

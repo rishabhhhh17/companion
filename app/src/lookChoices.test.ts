@@ -128,7 +128,8 @@ describe("the choices are real settings, with their words and one place in Setti
   // the page's More options, kept whole, so the page stays at ten settings.
   test("the Look page offers four things: Colour, Character, Layout and Text size (M71)", () => {
     expect(PAGES.look.groups.map((g) => g.id)).toEqual(["look.home"]);
-    expect(PAGES.look.groups[0].items).toEqual(["look.colour", "look.character", "look.layout", "display.textSize"]);
+    // GLASS (19 Nov 2026): Material joins them, last, so Glass or Before is one choice away.
+    expect(PAGES.look.groups[0].items).toEqual(["look.colour", "look.character", "look.layout", "display.textSize", "look.material"]);
     expect(PAGES.look.more).toEqual([]);
     expect(S.pages.look.title).toBe("Look");
     expect(S.setGroupTitles["look.home"]).toBe("Home");
@@ -158,7 +159,7 @@ describe("the choices are real settings, with their words and one place in Setti
 describe("M71: one black look; Colour and Character are the choices, the retired keys load and are ignored", () => {
   const FOUNDER = { "look.style": "friendly", "look.colour": "vivid", "look.theme": "deep" };
   test("the usual values give the fixed black look, Colourful and the Visor", () => {
-    expect(lookAttrs({})).toEqual({ ...FIXED_LOOK, "data-colours": "colourful", "data-character": "visor" });
+    expect(lookAttrs({})).toEqual({ ...FIXED_LOOK, "data-colours": "colourful", "data-character": "visor", "data-material": "glass" });
     expect(FIXED_LOOK["data-theme"]).toBe("black");
     expect(FIXED_LOOK["data-tone"]).toBe("dark");
     expect(COLOUR_CHOICES).toEqual(["colourful", "calm"]);
@@ -190,7 +191,7 @@ describe("M71: one black look; Colour and Character are the choices, the retired
   test("Home sets them on its root and keeps them in step; the island and the character keep the notch's look", () => {
     const attrs: Record<string, string> = {};
     applyLookChoices({ setAttribute: (k, v) => { attrs[k] = v; } }, { "look.colour": "calm", "look.corners": "crisp" });
-    expect(attrs).toEqual({ ...FIXED_LOOK, "data-colours": "calm", "data-character": "visor" });
+    expect(attrs).toEqual({ ...FIXED_LOOK, "data-colours": "calm", "data-character": "visor", "data-material": "glass" });
     const theme: Record<string, string> = {};
     applyLook({ style: { setProperty: () => {} }, setAttribute: (k, v) => { theme[k] = v; } });
     expect(theme["data-theme"]).toBe("black");
@@ -220,6 +221,19 @@ describe("each choice is a data attribute on the root, never a branch in the cod
       const src = read(f);
       for (const k of ["look.density", "look.icons", "look.stamps", "look.gloss", "look.corners", "look.light", "look.colour", "look.style"]) expect(src, `${f} reads ${k}`).not.toContain(`"${k}"`);
     }
+  });
+});
+
+// GLASS (19 Nov 2026, recorded in docs/milestones/GLASS.md): Material is a choice of structure, like Layout, not of tokens.
+// Glass puts the places in a real tablist and Before keeps the coloured place buttons, which CSS alone cannot swap (roles,
+// tab order, ids). So card.tsx may branch on it, in exactly one place, through materialOf; every colour and surface of
+// Glass still hangs off data-material in CSS.
+describe("Material is the one look choice the code may branch on, in one place", () => {
+  test("card.tsx reads look.material once, through materialOf, and the other parts never", () => {
+    const card = read("./card.tsx");
+    expect(card.match(/"look\.material"/g) ?? []).toHaveLength(1);
+    expect(card).toContain('const glassOn = materialOf(useSetting("look.material")) === "glass" && onboarded;');
+    for (const f of ["./homeSide.tsx", "./practicePanel.tsx", "./itemMarks.tsx", "./itemLook.ts", "./glassHome.tsx"]) expect(read(f), f).not.toContain('"look.material"');
   });
 });
 

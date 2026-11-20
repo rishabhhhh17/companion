@@ -1,1 +1,1 @@
-{ "identifier": "default", "windows": ["dock", "card", "island", "peekout"], "permissions": ["core:default"] }
+{ "identifier": "default", "windows": ["dock", "card", "island", "peekout", "tray"], "permissions": ["core:default"] }

@@ -60,6 +60,9 @@ import { ShotPair } from "./homeRest.tsx";
 import { heroMeaning, MEANING_COLOUR, PILL_MEANING, PLACE_COLOUR, PLACE_ICON, statusDot, type Colour } from "./meaning.ts";
 import { reviewHead } from "./reviewHead.ts";
 import { HomeSide } from "./homeSide.tsx";
+import { GLASS_PANEL_ID, GlassTabs, GlassTop, glassTabId } from "./glassHome.tsx";
+import { glassGreeting, glassGreetingWhole } from "./glass.ts";
+import { materialOf } from "./lookfeel.ts";
 import { ReviewCardView, REVIEW_ID } from "./reviewCard.tsx";
 import { ReviewUndoPart } from "./reviewUndoPart.tsx";
 import { lookCommand, undoCommand, undoOffered } from "./reviewUndo.ts";
@@ -146,6 +149,7 @@ import "./ui/pages.css";
 import "./ui/fix.css";
 import "./ui/homeNow.css";
 import "./ui/black.css";
+import "./ui/glass.css";
 import { checksOnOpen, Landing, onlyStreamChanged, revealTo, scrollerOf, STREAM_LINES, waitNeedsScroll, waitScroll } from "./homeFlow.ts";
 import { changeSize } from "./changeSize.ts";
 import { contentAtMs, fromOf } from "./homeShape.ts";
@@ -2433,6 +2437,10 @@ export function Card() {
   // while it fits (homeLayout.ts sideOn); then the top row has no places of its own. Tall is the one column from before.
   const layout = layoutOf(useSetting("look.layout"));
   const side = sideOn({ layout, text: textSizeFrom(useSetting("display.textSize")), onboarded, tab: home.tab });
+  // GLASS (19 Nov 2026, the founder picked direction B): the glass material puts the places in a tablist in the middle of
+  // the top, under the notch's black strip with the greeting (glassHome.tsx); the side keeps the recent work. Before keeps
+  // everything as it was.
+  const glassOn = materialOf(useSetting("look.material")) === "glass" && onboarded;
   // What stops any work (the audit, item 12) and changes waiting for a review (item 11): each leads Now when it is there.
   const [claudeSt, setClaudeSt] = useClaudeStatus();
   // Feel round 2: the engine has a moment to say hello before Home says it is starting (homeHero.ts HELLO_GRACE_MS).
@@ -3008,6 +3016,12 @@ export function Card() {
         if (hk && "go" in hk) { e.preventDefault(); pickTab(hk.go); return; }
         if (hk && "rows" in hk) { if (moveRow(hk.rows)) e.preventDefault(); return; } }}>
       {/* M71: Home is one black surface; the rooms' light (data-element, RoomLight) is retired. */}
+      {/* GLASS: the black strip with the greeting and the corner buttons, then the tabs, over the whole width and outside
+          the content grid, so every place (Settings too) keeps its own layout under it. */}
+      {glassOn && !chat && <GlassTop state={m.character} greeting={glassGreeting(m, clock, new Date(clock).getHours())} whole={glassGreetingWhole(m, clock, new Date(clock).getHours())}
+        end={<>{barStop}{home.tab !== "settings" && gearButton}{closeButton}</>}>
+        <GlassTabs places={navPlaces} tab={home.tab} waits={waitsOn} onPick={pressPlace} />
+      </GlassTop>}
       <div className="inner" ref={inner}>
       {/* M96: the small chat out of the notch, only while Home is the small chat; everything else in Home stays laid out but
           hidden until it opens out (black.css), so nothing in it is lost. */}
@@ -3026,14 +3040,15 @@ export function Card() {
         }}
         onSettings={() => { openOut(); gear(); }} onExpand={() => { openOut(); pickTab("now"); }} onClose={() => escClose.current()} />}
       {/* The wide Home (look.layout, M51): the places and the recent work in a list on the left, the work beside it. */}
-      {side && <HomeSide places={sidePlaces({ learnOn: learnShown() })} tab={home.tab} waits={waitsOn} recent={sideRecent(project ? m.history : [])} now={clock}
+      {side && <HomeSide places={glassOn ? [] : sidePlaces({ learnOn: learnShown() })} settingsFoot={!glassOn} tab={home.tab} waits={waitsOn} recent={sideRecent(project ? m.history : [])} now={clock}
         onPick={pickTab} onSettings={gear} onOpen={openRecent} review={reviewOn && !undoneHere ? m.review : null} onReview={openReview} counts={reviewOn && !undoneHere && reviewHead(m.review) ? { now: reviewHead(m.review)!.count } : undefined}
         tools={project ? sideTools(m, doneTools) : null} onTool={(g) => { if (g.then?.set) { setSetPlace(g.then.set); pickTab("settings"); } else pickTab("now"); }} />}
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
       {!onboarded && <PartBoundary part="firstRun"><Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding}
         point={m.point} approvals={m.approvals} usage={m.proUsage ?? null} firstCheck={firstCheck} answer={answerFromFirstRun} fixFound={() => setTimeout(fixKnown, 0)} cloneLink={cloneLink} copying={copying} cloneNote={m.cloneNote} why={m.error ?? m.notice} /></PartBoundary>}
       {/* The work: one column (in the wide Home, beside the list, with the ask box along its bottom; otherwise no box at all). */}
-      <div className="work" ref={work}>
+      {/* GLASS: the content column is the tabs' one panel, labelled by the open tab (none in Settings, which is no tab). */}
+      <div className="work" ref={work} id={glassOn ? GLASS_PANEL_ID : undefined} role={glassOn && home.tab !== "settings" ? "tabpanel" : undefined} aria-labelledby={glassOn && home.tab !== "settings" ? glassTabId(home.tab) : undefined}>
       {/* The top bar (F28, the overhaul spec 4.1): on Now, the project's name with a chevron menu (Change folder, Open from a
           link, the folders used before); in a place, a back arrow and its name. On the right, quiet buttons with words
           (Learn only until the first practice is done, History, Memory, Settings), then Close. A place that waits for the
@@ -3060,7 +3075,7 @@ export function Card() {
             <h1 id="home-title" className={!side && home.tab !== "settings" ? "view-title sr" : "view-title"}>{viewTitle}</h1>
           </>}
           {/* In the wide Home the side list is the one Places landmark, so the bar's buttons are a plain group then (item 51). */}
-          <PlacesBox side={side}>
+          {!glassOn && <PlacesBox side={side}>
             {/* M73 (fluid, item 5): one highlight slides between the places of the tall Home's row (ui/parts.tsx PlacesGlide). */}
             {!side && home.tab !== "settings" && <PlacesGlide k={home.tab} colour={PLACE_COLOUR[home.tab]} />}
             {/* While a job runs, Stop is one press away on every place, not only on Now (Now has its own, in the hero or the
@@ -3079,10 +3094,10 @@ export function Card() {
                 : <PlaceButton key={t} id={tabId(t)} place={t} label={S.home.places[t]} on={t === home.tab} waits={waits} waitsWord={S.homeTabWaiting} onClick={() => pressPlace(placeAfter(home.tab, t))} />;
             })}
             {side && closeButton}
-          </PlacesBox>
+          </PlacesBox>}
           {/* Feel round 1 (the founder, 18 Nov 2026: "take the X button to the side"): in the tall Home, Settings and Close sit
               in the panel's top right corner, on the same edge as the cards, in the first row; the places fill the row under it. */}
-          {!side && <div className="bar-end">{barStop}{home.tab !== "settings" && gearButton}{closeButton}</div>}
+          {!side && !glassOn && <div className="bar-end">{barStop}{home.tab !== "settings" && gearButton}{closeButton}</div>}
         </header>
       )}
       {/* Each place sits in its own boundary (must fix 4): a part that fails to draw shows one line and Reload this part,

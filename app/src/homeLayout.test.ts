@@ -73,7 +73,8 @@ describe("Home draws the wide layout", () => {
     expect(card).toMatch(/<main className=\{`card home[^`]*`\}[^>]*data-layout=\{layout\}[^>]*data-side=\{side \? "" : undefined\}/);
     expect(card).toContain("{side && <HomeSide ");
     // The work is one column beside the list: the bar, the status, the ask box, the results.
-    expect(card).toContain('<div className="work" ref={work}>');
+    // The GLASS review (changed on purpose): under Glass the same column is also the tabs' one tabpanel.
+    expect(card).toContain('<div className="work" ref={work} id={glassOn ? GLASS_PANEL_ID : undefined}');
   });
   test("the places are in the list, not twice: the top row has none while the list shows, and Now's recent fixes are not drawn twice", () => {
     expect(card).toContain("const places = side ? [] : barPlaces(");
@@ -88,7 +89,10 @@ describe("Home draws the wide layout", () => {
     expect(card).toContain('const placeEl = (t: Tab): HTMLElement | null => document.getElementById(tabId(t)) ?? (t === "now" ? box.current : null);');
     expect(side).toContain("selected={t === tab}");
     expect(side).toContain("attention={waits === t && t !== tab}");
-    expect(side).toContain('aria-label={S.look.placesLabel}');
+    // The GLASS review (changed on purpose): with no places in it (Glass's tabs hold them) the list is named for the recent
+    // work, and its Settings is left out when the top strip has one, so Home has one Places landmark and one Settings.
+    expect(side).toContain('aria-label={places.length > 0 ? S.look.placesLabel : S.look.sideRecent}');
+    expect(side).toContain("{settingsFoot && <div className=\"side-foot\">");
     expect(side).toContain("onClick={onSettings}");
     // A recent task opens its own receipt, says how it ended, and shows its mark in its tone.
     expect(side).toContain("onClick={() => onOpen(i)}");
