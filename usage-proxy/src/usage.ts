@@ -46,6 +46,7 @@ export class UsageSniffer {
   #u = ZERO();
   #done = false;
   #failed = false;
+  #started = false;
   #dataRead = 0;
   push(bytes: Uint8Array): void {
     let i = 0;
@@ -67,6 +68,9 @@ export class UsageSniffer {
   usage(): Usage { return { ...this.#u }; }
   /** Did the reply reach its end (message_stop)? A stream cut short did not. */
   complete(): boolean { return this.#done; }
+  /** Did Anthropic's message_start, which carries the prompt's own token counts, reach the proxy? Audit run 2, finding 6
+   *  (re-attack round 3): a stream cut short before it never told us the prompt, so the prompt is booked from the estimate. */
+  promptSeen(): boolean { return this.#started; }
   /** Did Anthropic itself end the reply with an error event (overloaded_error, api_error)? */
   failedUpstream(): boolean { return this.#failed; }
   /** How many data lines were decoded and looked at (a test holds this to the start, the last update, the stop and an error). */
@@ -108,6 +112,6 @@ export class UsageSniffer {
     let e: any;
     try { e = JSON.parse(line.slice(5)); } catch { return; }
     const u = e?.type === "message_start" ? e.message?.usage : e?.type === "message_delta" ? e.usage : null;
-    if (u) read(this.#u, u, Math.max);
+    if (u) { read(this.#u, u, Math.max); if (e.type === "message_start") this.#started = true; }
   }
 }

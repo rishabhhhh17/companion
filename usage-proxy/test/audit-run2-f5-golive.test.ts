@@ -24,6 +24,7 @@ import { ACCOUNT_DELETE_PATH, ME_PATH, REPORT_USE_PATH } from "../src/account-ro
 import { CHECKOUT_PATH } from "../src/billing-routes.ts";
 import { FakeNamespace } from "./fake-do.ts";
 import { withOwnerSig } from "./owner-sig-fixture.ts";
+import { DODO_BASE_BINDING, WRANGLER_TABLE } from "./wrangler-vars-stub.ts";
 
 const NOW = Date.UTC(2026, 10, 19, 12, 0, 0);
 const DAY = 86_400_000;
@@ -44,7 +45,9 @@ afterAll(() => server.stop(true));
 
 const env = (ns: FakeNamespace, base: string, over: Partial<Env> = {}): Env => ({
   STORE: ns, PROXY_ON: "on", ANTHROPIC_API_KEY: KEY, METADATA_USER_ID_SECRET: USER_SECRET, UPSTREAM_BASE: `http://127.0.0.1:${server.port}`,
-  PAYMENTS_ON: "on", PAYMENT_PROVIDER: "dodo", DODO_API_BASE: base, DODO_WEBHOOK_SECRET: HOOK_SECRET, DODO_PRODUCTS: TABLE,
+  // A clean switch: on the live address the webhook is live mode's (an event's mode is the secret that verified it).
+  PAYMENTS_ON: "on", PAYMENT_PROVIDER: "dodo", DODO_API_BASE: base, DODO_PRODUCTS: TABLE,
+  ...(base === DODO_LIVE_BASE ? { DODO_WEBHOOK_SECRET_LIVE: HOOK_SECRET } : { DODO_WEBHOOK_SECRET: HOOK_SECRET }),
   DODO_PAYMENTS_API_KEY: base === DODO_LIVE_BASE ? "dodo_live_STAND-IN-KEY-0000" : "dodo_test_STAND-IN-KEY-0000", ...over,
 } as Env);
 async function call(e: Env, path: string, init: RequestInit = {}): Promise<Response> {
@@ -184,8 +187,11 @@ case "$1 $2" in
   "deploy --dry-run")
     out=""; prev=""; for a in "$@"; do [ "$prev" = "--outdir" ] && out="$a"; prev="$a"; done
     echo "export class StoreObject {}" > "$out/entry.js"
+    {
     echo 'env.STORE (StoreObject)      Durable Object'
     echo 'env.PAYMENT_PROVIDER ("${o.provider}")      Environment Variable'
+    ${DODO_BASE_BINDING}
+    } | ${WRANGLER_TABLE}
     exit 0 ;;
   "secret list") cat "${join(dir, "names.json")}"; exit 0 ;;
   "deploy ") echo "Uploaded"; exit 0 ;;

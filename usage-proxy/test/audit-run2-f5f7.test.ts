@@ -21,6 +21,7 @@ import { newToken } from "../src/tokens.ts";
 import { costOf } from "../src/usage.ts";
 import { PLANS } from "../src/plans.ts";
 import { FakeNamespace } from "./fake-do.ts";
+import { DODO_BASE_BINDING, WRANGLER_TABLE } from "./wrangler-vars-stub.ts";
 
 const ROOT = join(import.meta.dir, "..");
 const SCRIPT = join(ROOT, "scripts", "deploy.sh");
@@ -38,8 +39,11 @@ case "$1 $2" in
   "deploy --dry-run")
     out=""; prev=""; for a in "$@"; do [ "$prev" = "--outdir" ] && out="$a"; prev="$a"; done
     echo "export class StoreObject {}" > "$out/entry.js"
+    {
     echo 'env.STORE (StoreObject)      Durable Object'
     echo 'env.PAYMENT_PROVIDER ("${o.provider ?? "none"}")      Environment Variable'
+    ${DODO_BASE_BINDING}
+    } | ${WRANGLER_TABLE}
     exit 0 ;;
   "secret list") cat "${join(dir, "names.json")}"; exit 0 ;;
   "deploy ") echo "Uploaded"; exit 0 ;;
@@ -78,7 +82,11 @@ describe("finding 5: scripts/deploy.sh never deploys forwarding with test mode p
   test("each alone still deploys, and both together on the live address with --live-payments", () => {
     expect(deploy({ secrets: [...ALWAYS_SECRETS, "PROXY_ON", ...FORWARDING_SECRETS], base: TEST_BASE })(["--apply"]).code).toBe(0);
     expect(deploy({ secrets: [...ALWAYS_SECRETS, "PAYMENTS_ON", ...PAYMENT_SECRETS], base: TEST_BASE })(["--apply"]).code).toBe(0);
-    const live = deploy({ secrets: [...ALL_ON, "PAYMENTS_ON"], base: LIVE_BASE })(["--apply", "--live-payments"]);
+    // Audit run 2, finding 5, re-attack round 1: live mode's webhook secret must be set before the live address.
+    const noLiveHook = deploy({ secrets: [...ALL_ON, "PAYMENTS_ON"], base: LIVE_BASE })(["--apply", "--live-payments"]);
+    expect(noLiveHook.code).toBe(1);
+    expect(noLiveHook.deploys).toEqual([]);
+    const live = deploy({ secrets: [...ALL_ON, "PAYMENTS_ON", "DODO_WEBHOOK_SECRET_LIVE"], base: LIVE_BASE })(["--apply", "--live-payments"]);
     expect(live.code).toBe(0);
     expect(live.deploys).toEqual(["deploy"]);
   });

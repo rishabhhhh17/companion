@@ -68,20 +68,27 @@ export const chargeableSub = (x: Sub, liveNow = false): boolean => countsNow(x, 
 /** A subscription that could still charge the person, or still gives Pro: a second Pro checkout is refused while one exists. */
 export const liveSub = (x: Sub, now: number): boolean =>
   x.status === "on_hold" || (x.plan !== "free" && (x.until === undefined || x.until > now));
-/** The sub as kept: only these fields. */
-export const keptSub = (c: SubChange, at: number): Sub => ({ plan: c.plan, status: c.status, at,
-  ...(c.until !== undefined ? { until: c.until } : {}), ...(c.renewsOn !== undefined ? { renewsOn: c.renewsOn } : {}),
-  ...(c.customerId ? { customerId: c.customerId, customerMode: c.customerMode ?? "test" } : {}), ...(c.mode ? { mode: c.mode } : {}) });
+/** The sub as kept: only these fields. `was`: the same subscription as kept before. Audit run 2, finding 5, re-attack round 1:
+ *  a subscription kept as test mode (or before modes were kept) is never moved up to live by a later event. Dodo's test and
+ *  live modes never share a subscription, so a live label there can only come from a mistake, and test is the safe side. */
+export const keptSub = (c: SubChange, at: number, was?: Sub): Sub => {
+  const mode = c.mode === "live" && was && modeOf(was) !== "live" ? "test" : c.mode;
+  return { plan: c.plan, status: c.status, at,
+    ...(c.until !== undefined ? { until: c.until } : {}), ...(c.renewsOn !== undefined ? { renewsOn: c.renewsOn } : {}),
+    ...(c.customerId ? { customerId: c.customerId, customerMode: c.customerMode ?? "test" } : {}), ...(mode ? { mode } : {}) };
+};
 
 /** M116 step 5: the plan an owner is on now, for the operator's view: a payment's plan until its end date, else the plan
- *  written with their newest working token, else Free. */
-export function shownPlan(paid: OwnerPlan | undefined, tokenPlan: string | null, now: number): string {
-  if (paid) return paid.until !== undefined && now >= paid.until ? "free" : paid.plan;
+ *  written with their newest working token, else Free. Audit run 2, finding 5, round 3: with `liveNow` (Dodo is live), a plan
+ *  paid in test mode is Free, as /v1/me and the proxy read it (paidPlanCounts). */
+export function shownPlan(paid: OwnerPlan | undefined, tokenPlan: string | null, now: number, liveNow = false): string {
+  if (paid) return !countsNow(paid, liveNow) || (paid.until !== undefined && now >= paid.until) ? "free" : paid.plan;
   return tokenPlan ?? "free";
 }
-/** Subscriptions that give Pro now. Two of them means the person pays twice: the operator refunds one in Dodo. */
-export const liveSubCount = (subs: readonly [string, Sub][], now: number): number =>
-  subs.filter(([, x]) => x.plan !== "free" && (x.until === undefined || x.until > now)).length;
+/** Subscriptions that give Pro now. Two of them means the person pays twice: the operator refunds one in Dodo. Audit run 2,
+ *  finding 5, round 3: with `liveNow`, only live ones count. A test card's subscription is not money in live Dodo. */
+export const liveSubCount = (subs: readonly [string, Sub][], now: number, liveNow = false): number =>
+  subs.filter(([, x]) => countsNow(x, liveNow) && x.plan !== "free" && (x.until === undefined || x.until > now)).length;
 
 /** One line of use: requests, tokens and dollars. Input counts cached input too. */
 export type ModelUse = { requests: number; inputTokens: number; outputTokens: number; usd: number };
@@ -124,7 +131,9 @@ export type Deleted = { ok: true; leftovers: number } | { ok: false; why: "live_
  *  Nothing was granted, so the operator refunds it in Dodo, and cancels the subscription for a `subscription` one. Dodo ids
  *  only: no owner id, no email. `id`: the payment id or the subscription id. Kept until the operator clears it (`refunds done`):
  *  each one is a real payment, so the list cannot be grown by anyone who does not pay. */
-export type RefundNeeded = { id: string; kind: "payment" | "subscription"; at: number; eventType: string; customerId?: string };
+/** `mode` (audit run 2, finding 5, round 3): the Dodo mode of the event, from the secret that verified it. Missing is test.
+ *  Once Dodo is live, a test mode line is not shown: that payment is not in live Dodo, so there is nothing to refund there. */
+export type RefundNeeded = { id: string; kind: "payment" | "subscription"; at: number; eventType: string; customerId?: string; mode?: DodoMode };
 /** One page of the owner list for the operator's `usage` (M116 step 5 review): `next` is the cursor for the page after, or null. */
 export type OwnerPage = { owners: string[]; next: number | null };
 /** M116 step 5, POST /v1/report/use: one credit spent (or the same one again, for a use id seen before). */
@@ -135,6 +144,19 @@ export type Carry = { day: string; dayUsd: number; month: string; monthUsd: numb
 export const carriedFor = (t: Carry | undefined, now: number): Spent =>
   ({ day: t && t.day === dayKey(now) ? t.dayUsd : 0, month: t && t.month === monthKey(now) ? t.monthUsd : 0 });
 
+/** Audit run 2, finding 4 (re-attack round 1): a deleted line's day and month spend, put onto an owner's carry. For the same
+ *  day (and the same month) the larger amount stays, and a newer day or month wins as it is, as mergeDeletedLines does. So a
+ *  newer line read late (after a carry from an older one) raises the carry, and the same line twice changes nothing. An owner
+ *  that still holds a record from before the line was written does not take it (the line already counts that record); records
+ *  booked after the line never stop it (finding 6, re-attack round 2). */
+export function mergeCarry(was: Carry | undefined, l: Carry): Carry {
+  const c: Carry = { day: l.day, dayUsd: l.dayUsd, month: l.month, monthUsd: l.monthUsd };
+  if (!was) return c;
+  const pick = (a: string, au: number, b: string, bu: number): [string, number] => (a === b ? [a, Math.max(au, bu)] : a > b ? [a, au] : [b, bu]);
+  [c.day, c.dayUsd] = pick(was.day, was.dayUsd, l.day, l.dayUsd);
+  [c.month, c.monthUsd] = pick(was.month, was.monthUsd, l.month, l.monthUsd);
+  return c;
+}
 /** What GET /v1/me reads, in one step and writing nothing: the token's user, what they spent (with holds), and the owner's email. */
 export type Account = { user: User; spent: Spent; email: string | null };
 /** M116 sign in: the email to keep on the owner, and the nonce to mark used in the same write that keeps the token's hash. */
@@ -145,9 +167,12 @@ export type UsageRecord = { userId: string; model: string; usage: Usage; usd: nu
 /** M116 step 3, one step to start a model request: `max` running at once, `usd` its worst case held while it runs, checked
  *  against `limits` (null for a request that costs nothing, which takes only a slot), `id` the request's own id. `need`
  *  (audit run 2, finding 6): the part of `usd` that must fit under the limits with what is spent and held (the prompt). */
-export type StartAsk = { max: number; usd: number; now: number; limits: Plan | null; id: string; need?: number };
+/** `hash`: the token the request was found by; when given, a start for a token no longer on the owner (signed out, or the
+ *  account deleted since it was read) is refused as `gone`. */
+export type StartAsk = { max: number; usd: number; now: number; limits: Plan | null; id: string; need?: number; hash?: string };
 /** Over the limit comes before busy, and either way nothing was taken. `spent` is what the limit was checked against. */
-export type Started = { ok: true } | { ok: false; why: "busy" } | { ok: false; why: "over"; spent: Spent };
+/** `gone`: the owner holds nobody (its account was deleted after the token was read); the person signs in again. */
+export type Started = { ok: true } | { ok: false; why: "busy" } | { ok: false; why: "gone" } | { ok: false; why: "over"; spent: Spent };
 /** One step to finish it: let go of its slot and hold and, with `record`, book what it really cost. */
 export type FinishAsk = { id: string; now: number; record?: UsageRecord };
 
@@ -183,6 +208,11 @@ export interface Store {
   isSuspended(ownerId: string): Promise<boolean>;
   /** The plan the owner already has (from their newest token that still works), or null for someone new. Signing in again keeps it. */
   planOfOwner?(ownerId: string): Promise<string | null>;
+  /** The plan a new sign in token is written with: the newest working token's own plan (one the operator gave with
+   *  issueToken), never the plan a payment gave (that stays only in the owner's plan record, with its Dodo mode). Audit run
+   *  2, finding 5 (re-attack round 2): copying the payment plan's name onto a token dropped its mode, and a delete raced with
+   *  the sign in left that token "pro" with no plan record, so a test card's Pro counted once Dodo was live. Null: none. */
+  grantedPlanOf?(ownerId: string): Promise<string | null>;
   /** Write the plan a payment event gave an owner (every token of theirs that still works). With `at` (the event's time, ms),
    *  an event older than one already applied changes nothing, in the same step, and the answer is false. */
   setOwnerPlan?(ownerId: string, plan: OwnerPlan, at?: number): Promise<boolean>;
@@ -213,7 +243,8 @@ export interface Store {
    *  not seen yet ("unknown"), a marker is kept by payment_id, so the payment's credit, if it comes later, is never given. */
   removeReport(paymentId: string, at?: number): Promise<ReportRemoved>;
   /** M116 step 5, POST /v1/report/use: spend the oldest unused credit, in one step. With `useId`, a use id seen before spends
-   *  nothing more (a retry after a lost answer). With `liveNow` (Dodo is live), only a credit paid in live mode is spent. */
+   *  nothing more (a retry after a lost answer). With `liveNow` (Dodo is live), only a credit paid in live mode is spent, and
+   *  only such a credit's use id answers yes again (a test mode credit's use id replayed after go live is a new use). */
   useReport(ownerId: string, a: { now: number; useId?: string; liveNow?: boolean }): Promise<ReportUse>;
   /** M116 step 5: delete the account. Refused while a subscription could still charge, or a model request runs. Removes the
    *  owner, every token hash, the usage records, the email and the payment links (a link to a Dodo customer, and a report
@@ -231,7 +262,8 @@ export interface Store {
   /** The operator refunded it in Dodo: forget the line. False when there was none. */
   clearRefund(id: string): Promise<boolean>;
   /** M116 step 5, the operator's `usage`. Reads only. */
-  ownerUsage(ownerId: string, a: { month: string; now: number }): Promise<OwnerUsage>;
+  /** `liveNow`: Dodo is live, so only live mode payments count in the plan shown and the subscriptions counted. */
+  ownerUsage(ownerId: string, a: { month: string; now: number; liveNow?: boolean }): Promise<OwnerUsage>;
   /** M116 step 5, the update feed. */
   setRelease(platform: string, r: Release): Promise<void>;
   release(platform: string): Promise<Release | null>;
@@ -279,10 +311,10 @@ export class MemoryStore implements Store {
     const line = o.deletedKey ? this.#deleted.get(o.deletedKey) : undefined;
     for (const [id, until] of line?.nonces ?? []) if (until >= o.now) used.set(id, Math.max(until, used.get(id) ?? 0));
     if (used.has(o.nonceId)) return false;
-    if (line && o.deletedKey) {
-      if (!this.#carry.has(u.id) && !this.records.some((r) => r.userId === u.id)) this.#carry.set(u.id, { day: line.day, dayUsd: line.dayUsd, month: line.month, monthUsd: line.monthUsd });
-      this.#deleted.delete(o.deletedKey);
-    }
+    // The line is not dropped here: it goes at its `until` (audit run 2, finding 4, re-attack round 1). While the owner holds
+    // data it does not count as deleted, and a later delete merges into it.
+    // Finding 6, re-attack round 2: only a record from before the line (or the same moment) stops the carry (the line already counts it).
+    if (line && !this.records.some((r) => r.userId === u.id && r.at <= line.at)) this.#carry.set(u.id, mergeCarry(this.#carry.get(u.id), line));
     used.set(o.nonceId, o.nonceUntil);
     this.#nonces.set(u.id, used);
     this.#emails.set(u.id, o.email);
@@ -309,7 +341,7 @@ export class MemoryStore implements Store {
     const subs = this.#subs.get(ownerId) ?? new Map<string, Sub>();
     const was = subs.get(subscriptionId);
     if (was && at < was.at) return false;
-    subs.set(subscriptionId, keptSub(change, at));
+    subs.set(subscriptionId, keptSub(change, at, was));
     this.#subs.set(ownerId, subs);
     if (change.customerId) this.#customers.set(ownerId, { id: change.customerId, mode: change.customerMode ?? "test" });
     const prev = this.#plans.get(ownerId);
@@ -348,7 +380,8 @@ export class MemoryStore implements Store {
     const list = this.#reports.get(ownerId) ?? new Map<string, ReportCredit>();
     const spendable = (c: ReportCredit) => c.state === "unused" && countsNow(c, a.liveNow === true);
     const unused = () => [...list.values()].filter(spendable).length;
-    if (a.useId && [...list.values()].some((c) => c.useId === a.useId)) return { ok: true, left: unused() };
+    // Audit run 2, finding 5 (re-attack round 2): only a credit that counts now answers its retry key (see owner.useReport).
+    if (a.useId && [...list.values()].some((c) => c.useId === a.useId && countsNow(c, a.liveNow === true))) return { ok: true, left: unused() };
     let pick: ReportCredit | undefined;
     for (const c of list.values()) if (spendable(c) && (!pick || c.at < pick.at)) pick = c;
     if (!pick) return { ok: false };
@@ -388,16 +421,16 @@ export class MemoryStore implements Store {
   }
   async flagRefund(r: RefundNeeded) {
     if (this.#refunds.has(r.id)) return;
-    this.#refunds.set(r.id, { id: r.id, kind: r.kind, at: r.at, eventType: r.eventType, ...(r.customerId ? { customerId: r.customerId } : {}) });
+    this.#refunds.set(r.id, { id: r.id, kind: r.kind, at: r.at, eventType: r.eventType, ...(r.customerId ? { customerId: r.customerId } : {}), ...(r.mode ? { mode: r.mode } : {}) });
   }
   async refundsNeeded() { return [...this.#refunds.values()].map((r) => ({ ...r })); }
   async clearRefund(id: string) { return this.#refunds.delete(id); }
-  async ownerUsage(ownerId: string, a: { month: string; now: number }): Promise<OwnerUsage> {
+  async ownerUsage(ownerId: string, a: { month: string; now: number; liveNow?: boolean }): Promise<OwnerUsage> {
     let tokenPlan: string | null = null;
     for (const u of this.#users.values()) if (u.id === ownerId && u.status !== "revoked") tokenPlan = u.plan;
     return {
-      plan: shownPlan(this.#plans.get(ownerId)?.plan, tokenPlan, a.now), email: this.#emails.get(ownerId) ?? null,
-      liveSubs: liveSubCount([...(this.#subs.get(ownerId) ?? [])], a.now),
+      plan: shownPlan(this.#plans.get(ownerId)?.plan, tokenPlan, a.now, a.liveNow === true), email: this.#emails.get(ownerId) ?? null,
+      liveSubs: liveSubCount([...(this.#subs.get(ownerId) ?? [])], a.now, a.liveNow === true),
       ...usageSummary(this.records.filter((r) => r.userId === ownerId), a.month, a.now),
     };
   }
@@ -412,6 +445,11 @@ export class MemoryStore implements Store {
   async releases() { return [...this.#releases].map(([p, r]): [string, Release] => [p, { ...r }]); }
   async listOwnerIds() { return [...new Set([...[...this.#users.values()].map((u) => u.id), ...this.#emails.keys()])]; }
   async isSuspended(ownerId: string) { return this.#suspended.has(ownerId); }
+  async grantedPlanOf(ownerId: string) {
+    let plan: string | null = null;
+    for (const u of this.#users.values()) if (u.id === ownerId && u.status !== "revoked") plan = u.plan;   // the newest one wins
+    return plan;
+  }
   async planOfOwner(ownerId: string) {
     const paid = this.#plans.get(ownerId);
     if (paid) return paid.plan.plan;
@@ -446,6 +484,8 @@ export class MemoryStore implements Store {
   }
   // No await between the checks and the taking, as in hold.
   async start(userId: string, a: StartAsk): Promise<Started> {
+    // Audit run 2, finding 4 (re-attack round 2): the token the request was found by must still be this owner's.
+    if (a.hash !== undefined && this.#users.get(a.hash)?.id !== userId) return { ok: false, why: "gone" };
     if (a.limits) {
       const spent = this.#spentNow(userId, a.now);
       if (!budgetCheck(a.limits, spent, a.now, a.need ?? 0).ok) return { ok: false, why: "over", spent };
@@ -457,17 +497,22 @@ export class MemoryStore implements Store {
     this.#started.set(a.id, { userId, usd: a.usd });
     return { ok: true };
   }
+  // Audit run 2, finding 4 (re-attack round 2): a request started on this owner books (a delete clears what was started); any
+  // other booking lands only on an owner someone is in, never on a deleted one.
   async finish(userId: string, a: FinishAsk) {
-    const was = this.#started.get(a.id);
-    if (was && was.userId === userId) {
+    const was = this.#started.get(a.id), mine = !!was && was.userId === userId;
+    if (was && mine) {
       this.#started.delete(a.id);
       await this.end(userId);
       if (was.usd > 0) await this.unhold(userId, was.usd);
     }
-    if (a.record) await this.record(a.record);
+    if (a.record && (mine || this.#present(a.record.userId))) this.#book(a.record);
   }
   async unhold(userId: string, usd: number) { this.#held.set(userId, Math.max(0, (this.#held.get(userId) ?? 0) - usd)); }
-  async record(r: UsageRecord) {
+  async record(r: UsageRecord) { this.#book(r); }
+  /** Is anyone here (an email or a token)? A deleted account holds nothing. */
+  #present(ownerId: string) { return this.#emails.has(ownerId) || [...this.#users.values()].some((u) => u.id === ownerId); }
+  #book(r: UsageRecord) {
     this.records.push(r);
     for (const k of [`${r.userId}|d|${dayKey(r.at)}`, `${r.userId}|m|${monthKey(r.at)}`]) this.#spent.set(k, (this.#spent.get(k) ?? 0) + r.usd);
   }

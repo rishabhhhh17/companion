@@ -8,7 +8,7 @@
 // as a subrequest), so the server reads the owners a page at a time (USAGE_PAGE) and answers one page with a cursor. The
 // founder's script (scripts/usage-report.ts) asks for every page and prints the report from all of them (usageLines).
 import { dayKey, monthKey } from "./plans.ts";
-import type { ModelUse, OwnerUsage, RefundNeeded, Store } from "./store.ts";
+import { countsNow, type ModelUse, type OwnerUsage, type RefundNeeded, type Store } from "./store.ts";
 import type { OperatorResult } from "./operator.ts";
 import { PRODUCT_S } from "./names.ts";
 
@@ -61,7 +61,12 @@ const add = (into: ModelUse, u: ModelUse) => { into.requests += u.requests; into
 const zero = (): ModelUse => ({ requests: 0, inputTokens: 0, outputTokens: 0, usd: 0 });
 const byCost = (m: Map<string, ModelUse>) => [...m].sort(([a, x], [b, y]) => y.usd - x.usd || (a < b ? -1 : 1));
 
-export async function runUsage(argv: string[], store: Store, now: () => number): Promise<OperatorResult> {
+/** The refund lines that are money in the Dodo that is running now: once live, only live mode ones (a test card's payment is
+ *  not in live Dodo). Audit run 2, finding 5, round 3. */
+const refundsNow = async (store: Store, liveNow: boolean) => (await store.refundsNeeded()).filter((r) => countsNow(r, liveNow));
+
+/** `liveNow`: Dodo is live, so a plan or subscription from test mode is not counted (audit run 2, finding 5, round 3). */
+export async function runUsage(argv: string[], store: Store, now: () => number, liveNow = false): Promise<OperatorResult> {
   const bad = (why: string): OperatorResult => ({ code: 2, lines: [why, ...USAGE] });
   let month = monthKey(now()), email: string | undefined, after: number | undefined;
   for (let i = 0; i < argv.length; i++) {
@@ -75,10 +80,10 @@ export async function runUsage(argv: string[], store: Store, now: () => number):
   const at = now(), page = await store.ownerPage({ ...(after !== undefined ? { after } : {}), limit: USAGE_PAGE });
   const owners: [string, OwnerUsage][] = [];
   for (const o of page.owners) {
-    const u = await store.ownerUsage(o, { month, now: at });
+    const u = await store.ownerUsage(o, { month, now: at, ...(liveNow ? { liveNow: true } : {}) });
     if (email ? u.email?.toLowerCase() === email : true) owners.push([o, email ? u : { ...u, email: null }]);
   }
-  const refunds = after === undefined ? await store.refundsNeeded() : undefined;
+  const refunds = after === undefined ? await refundsNow(store, liveNow) : undefined;
   const data: UsagePage = { month, today: dayKey(at), owners, next: page.next, ...(refunds ? { refunds } : {}) };
   if (email && owners.length === 0 && page.next === null && after === undefined) return { code: 1, lines: ["No account has that email."], data };
   const lines = usageLines([data], email !== undefined);
@@ -126,9 +131,9 @@ export function usageLines(pages: readonly UsagePage[], email: boolean): string[
 
 const REFUND_ID = /^[A-Za-z0-9_.:-]{1,100}$/;
 /** `refunds`: the refund lines. `refunds done <id>`: the operator refunded it in Dodo, so the line goes. */
-export async function runRefunds(argv: string[], store: Store): Promise<OperatorResult> {
+export async function runRefunds(argv: string[], store: Store, liveNow = false): Promise<OperatorResult> {
   if (argv.length === 0) {
-    const list = await store.refundsNeeded();
+    const list = await refundsNow(store, liveNow);
     if (!list.length) return { code: 0, lines: ["No refund is needed."] };
     return { code: 0, lines: usageLines([{ month: "", today: "", owners: [], next: null, refunds: list }], false).filter((l) => l.startsWith("Refund needed") || l.startsWith("  ")) };
   }

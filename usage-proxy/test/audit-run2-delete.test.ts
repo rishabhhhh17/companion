@@ -145,8 +145,10 @@ describe("finding 4", () => {
     g.release();
     expect(await signing).toBe(true);
     expect((await plain.spent(OWNER_ID, NOW)).month).toBe(4.5);
-    // The line was used up by this sign in, and a later delete keeps the carried spend.
-    expect(fake.storageOf(DIRECTORY)!.data.get(`del:${key}`)).toBeUndefined();
+    // The line stays until its `until` (re-attack round 1), but the owner holds data again so it is not deleted, and a later
+    // delete keeps the carried spend.
+    expect((fake.storageOf(DIRECTORY)!.data.get(`del:${key}`) as DeletedLine).monthUsd).toBe(4.5);
+    expect(await plain.isDeletedOwner(OWNER_ID, key, NOW)).toBe(false);
     expect((await plain.deleteAccount(OWNER_ID, { key, now: NOW + 1000, hash: t2.hash })).ok).toBe(true);
     expect((fake.storageOf(DIRECTORY)!.data.get(`del:${key}`) as DeletedLine).monthUsd).toBe(4.5);
   });
@@ -168,7 +170,7 @@ describe("finding 4", () => {
   });
 });
 
-// ---- Finding 4, re-attack (19 Nov 2026): the drop at the end of a sign in must never take a line a later delete wrote ----
+// ---- Finding 4, re-attack (19 Nov 2026): a sign in racing a newer delete must leave that delete's line as it is ----
 
 function heldAt(fake: FakeNamespace, ops: string[]) {
   const gates = new Map(ops.map((op) => {
@@ -246,20 +248,116 @@ describe("finding 4, re-attack", () => {
     expect((await plain.spent(OWNER_ID, NOW + 2)).month).toBe(4.5);
     expect(await plain.signIn((await newToken()).hash, FREE, { email: "a@x", nonceId: n2.id, nonceUntil: n2.until, now: NOW + 3, deletedKey: key })).toBe(false);
   });
+});
 
-  test("dir.deletedDropIf drops only the very line it is given", async () => {
+// ---- Finding 4, re-attack round 1 (19 Nov 2026): a sign in never takes away a delete's line, and a delete is never undone ----
+
+/** Like heldAt, but holds only the `nth` call (from 1) to `op`; the calls before it go through. */
+function heldNth(fake: FakeNamespace, op: string, nth: number) {
+  let release!: () => void; const gate = new Promise<void>((r) => (release = r));
+  let reached!: () => void; const atGate = new Promise<void>((r) => (reached = r));
+  let seen = 0;
+  const ns: NamespaceLike = {
+    idFromName: (n: string) => fake.idFromName(n),
+    get: (id: unknown) => ({ fetch: async (input: string, init?: RequestInit) => {
+      if (new URL(input).pathname.slice(1) === op && ++seen === nth) { reached(); await gate; }
+      return fake.get(id as never).fetch(input, init);
+    } }),
+  } as unknown as NamespaceLike;
+  return { ns, release, atGate };
+}
+const ownersOf = (store: DurableStore) => store.listOwnerIds();
+
+describe("finding 4, re-attack round 1", () => {
+  // Re-attack round 2: the delete no longer writes its line after the wipe. A sign in between the line write and the wipe
+  // changes the owner (a new nonce), so the wipe is refused, the line is written again with that nonce, and then wiped.
+  test("a sign in between a delete's line write and its wipe: the line is written again before the wipe, and stays", async () => {
     const fake = new FakeNamespace(), plain = new DurableStore(fake, () => NOW);
     const key = await deletedKey(OWNER_ID, SECRET);
     const t1 = await newToken(), n1 = await nonceIds();
     await plain.signIn(t1.hash, FREE, { email: "a@x", nonceId: n1.id, nonceUntil: n1.until, now: NOW, deletedKey: key });
     seedSpend(fake, 4.5);
+    // The delete writes its first line (4.5, n1), then waits before the wipe.
+    const hw = heldAt(fake, ["owner.wipe"]), hp = heldNth(fake, "dir.deletedPut", 2);
+    const both = { idFromName: (n: string) => fake.idFromName(n), get: (id: unknown) => ({ fetch: (u: string, i?: RequestInit) =>
+      (new URL(u).pathname === "/owner.wipe" ? hw.ns : hp.ns).get(id as never).fetch(u, i) }) } as unknown as NamespaceLike;
+    const d = new DurableStore(both, () => NOW).deleteAccount(OWNER_ID, { key, now: NOW, hash: t1.hash });
+    await hw.at("owner.wipe").atGate;
+    // A second device signs in now, reading the delete's first line.
+    const t2 = await newToken(), n2 = await nonceIds();
+    expect(await plain.signIn(t2.hash, FREE, { email: "a@x", nonceId: n2.id, nonceUntil: n2.until, now: NOW, deletedKey: key })).toBe(true);
+    hw.at("owner.wipe").release();
+    await hp.atGate;   // the wipe was refused (the owner changed), the line with the new nonce not written yet
+    expect(lineOf(fake, key)?.monthUsd).toBe(4.5);
+    expect(await plain.isDeletedOwner(OWNER_ID, key, NOW)).toBe(false);   // nothing wiped yet
+    expect(await plain.userByTokenHash(t2.hash)).not.toBeNull();
+    // A replay of the nonce used before the delete is refused, and nothing was reset.
+    expect(await plain.signIn((await newToken()).hash, FREE, { email: "a@x", nonceId: n1.id, nonceUntil: n1.until, now: NOW, deletedKey: key })).toBe(false);
+    hp.release();
+    expect((await d).ok).toBe(true);
+    expect(await plain.isDeletedOwner(OWNER_ID, key, NOW + 1)).toBe(true);
+    expect(lineOf(fake, key)?.monthUsd).toBe(4.5);
+    expect(lineOf(fake, key)?.nonces.map(([id]) => id)).toEqual(expect.arrayContaining([n1.id, n2.id]));
+    expect(await plain.signIn((await newToken()).hash, FREE, { email: "a@x", nonceId: n2.id, nonceUntil: n2.until, now: NOW + 2, deletedKey: key })).toBe(false);
+    expect(await ownersOf(plain)).not.toContain(OWNER_ID);
+  });
+
+  test("a delete that runs whole just before the sign in lists the owner leaves no trace of the owner", async () => {
+    const fake = new FakeNamespace(), plain = new DurableStore(fake, () => NOW);
+    const key = await deletedKey(OWNER_ID, SECRET);
+    const t1 = await newToken(), n1 = await nonceIds();
+    await plain.signIn(t1.hash, FREE, { email: "a@x", nonceId: n1.id, nonceUntil: n1.until, now: NOW, deletedKey: key });
+    seedSpend(fake, 4.5);
+    const h = heldAt(fake, ["dir.addOwner"]), racing = new DurableStore(h.ns, () => NOW);
+    const t2 = await newToken(), n2 = await nonceIds();
+    const s = racing.signIn(t2.hash, FREE, { email: "a@x", nonceId: n2.id, nonceUntil: n2.until, now: NOW, deletedKey: key });
+    await h.at("dir.addOwner").atGate;
     expect((await plain.deleteAccount(OWNER_ID, { key, now: NOW, hash: t1.hash })).ok).toBe(true);
-    const l = lineOf(fake, key)!;
-    const call = (line: DeletedLine) => callObject<boolean>(fake, DIRECTORY, "dir.deletedDropIf", { key, line });
-    expect(await call({ ...l, monthUsd: 0 })).toBe(false);
-    expect(await call({ ...l, nonces: [] })).toBe(false);
-    expect(lineOf(fake, key)).toEqual(l);
-    expect(await call({ ...l, nonces: [...l.nonces].reverse() })).toBe(true);
-    expect(lineOf(fake, key)).toBeUndefined();
+    h.at("dir.addOwner").release();
+    expect(await s).toBe(false);
+    expect(await plain.userByTokenHash(t2.hash)).toBeNull();
+    expect(await ownersOf(plain)).not.toContain(OWNER_ID);
+    expect(await plain.isDeletedOwner(OWNER_ID, key, NOW + 1)).toBe(true);
+  });
+
+  test("a delete's owner list removal never hides an owner who signed in again after its wipe", async () => {
+    const fake = new FakeNamespace(), plain = new DurableStore(fake, () => NOW);
+    const key = await deletedKey(OWNER_ID, SECRET);
+    const t1 = await newToken(), n1 = await nonceIds();
+    await plain.signIn(t1.hash, FREE, { email: "a@x", nonceId: n1.id, nonceUntil: n1.until, now: NOW, deletedKey: key });
+    const h = heldAt(fake, ["dir.removeOwner"]), del = new DurableStore(h.ns, () => NOW);
+    const d = del.deleteAccount(OWNER_ID, { key, now: NOW, hash: t1.hash });
+    await h.at("dir.removeOwner").atGate;   // wiped, the owner still listed
+    const t2 = await newToken(), n2 = await nonceIds();
+    expect(await plain.signIn(t2.hash, FREE, { email: "a@x", nonceId: n2.id, nonceUntil: n2.until, now: NOW, deletedKey: key })).toBe(true);
+    h.at("dir.removeOwner").release();
+    expect((await d).ok).toBe(true);
+    expect(await ownersOf(plain)).toContain(OWNER_ID);
+    expect(await plain.isDeletedOwner(OWNER_ID, key, NOW + 1)).toBe(false);
+  });
+
+  test("a sign in that read an old line, held while another device signs in, spends and deletes, keeps the newer spend", async () => {
+    const fake = new FakeNamespace(), plain = new DurableStore(fake, () => NOW);
+    const key = await deletedKey(OWNER_ID, SECRET);
+    const t1 = await newToken(), n1 = await nonceIds();
+    await plain.signIn(t1.hash, FREE, { email: "a@x", nonceId: n1.id, nonceUntil: n1.until, now: NOW, deletedKey: key });
+    seedSpend(fake, 4.5);
+    expect((await plain.deleteAccount(OWNER_ID, { key, now: NOW, hash: t1.hash })).ok).toBe(true);   // L0 holds 4.5
+    const h = heldAt(fake, ["owner.signIn"]), racing = new DurableStore(h.ns, () => NOW);
+    const t2 = await newToken(), n2 = await nonceIds();
+    const s = racing.signIn(t2.hash, FREE, { email: "a@x", nonceId: n2.id, nonceUntil: n2.until, now: NOW, deletedKey: key });
+    await h.at("owner.signIn").atGate;   // S read L0
+    const t3 = await newToken(), n3 = await nonceIds();
+    expect(await plain.signIn(t3.hash, FREE, { email: "a@x", nonceId: n3.id, nonceUntil: n3.until, now: NOW, deletedKey: key })).toBe(true);
+    seedSpend(fake, 1);   // $1.00 booked after the carried $4.50
+    expect((await plain.spent(OWNER_ID, NOW)).month).toBe(5.5);
+    expect((await plain.deleteAccount(OWNER_ID, { key, now: NOW + 1, hash: t3.hash })).ok).toBe(true);   // L1 holds 5.5
+    expect(lineOf(fake, key)?.monthUsd).toBe(5.5);
+    h.at("owner.signIn").release();
+    expect(await s).toBe(true);
+    expect((await plain.spent(OWNER_ID, NOW + 2)).month).toBe(5.5);
+    expect(lineOf(fake, key)?.monthUsd).toBe(5.5);
+    expect((await plain.deleteAccount(OWNER_ID, { key, now: NOW + 3, hash: t2.hash })).ok).toBe(true);
+    expect(lineOf(fake, key)?.monthUsd).toBe(5.5);
   });
 });

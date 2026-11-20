@@ -401,17 +401,13 @@ for (const kind of TEST_STORES) describe(`${kind.name}: the Dodo webhook sets pl
     expect(b.subs[0][1].customerId).toBeUndefined();
     expect(await links.get("cus_1")).toBe("google:someone-else");
   });
-  test("the customer id is kept with the Dodo mode it came from (test unless the server is on the live address)", async () => {
-    await send(hook(undefined, { mode: () => "live" }), subEvent("subscription.active", "active"), "m1");
+  test("the customer id is kept with the Dodo mode it came from (live only when live mode's webhook secret verified it)", async () => {
+    await send(hook(undefined, { secret: () => "", liveSecret: () => SECRET }), subEvent("subscription.active", "active"), "m1");
     let b = await store.billingOf(OWNER_ID);
     expect([b.customerId, b.customerMode, b.subs[0][1].customerMode]).toEqual(["cus_1", "live", "live"]);
-    await send(hook(), reportPaid("pay_t", { customer: { customer_id: "cus_1" } }), "m2");   // no mode given: test
+    await send(hook(), reportPaid("pay_t", { customer: { customer_id: "cus_1" } }), "m2");   // test mode's secret: test
     b = await store.billingOf(OWNER_ID);
     expect([b.customerId, b.customerMode]).toEqual(["cus_1", "test"]);
-    // An unreadable DODO_API_BASE saves no customer id at all.
-    const fresh = "google:fresh";
-    await send(hook(undefined, { mode: () => null }), reportPaid("pay_n", { metadata: { companion_user_id: fresh }, customer: { customer_id: "cus_n" } }), "m3");
-    expect((await store.billingOf(fresh)).customerId).toBeNull();
   });
   test("an unsigned mock (dodo wh trigger) changes nothing", async () => {
     const h = hook();

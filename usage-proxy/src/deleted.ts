@@ -56,16 +56,6 @@ export async function deletedKey(ownerId: string, secret: string): Promise<strin
   return [...mac].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
-/** Audit run 2, finding 4 (re-attack): is `b` the very line `a` is? Every field, with the nonces in any order. A sign in drops
- *  the kept line only when it still is the one it read and settled: a delete that ran since always writes a different one
- *  (merged with what was kept, and holding that sign in's own nonce). */
-export function sameDeletedLine(a: DeletedLine | undefined | null, b: DeletedLine | undefined | null): boolean {
-  if (!a || !b) return false;
-  if (a.at !== b.at || a.day !== b.day || a.dayUsd !== b.dayUsd || a.month !== b.month || a.monthUsd !== b.monthUsd || a.until !== b.until) return false;
-  const key = (l: DeletedLine) => JSON.stringify([...(l.nonces ?? [])].map(([id, until]) => [id, until]).sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0)));
-  return key(a) === key(b);
-}
-
 /** Two lines for the same key, as one (audit run 2, finding 2). A second delete sent at the same time as the first finds an
  *  empty owner and makes a line with no spend and no nonces: writing it over the real one would hand the allowance back. So
  *  for the same day (and the same month) the larger amount stays, a newer day or month wins as it is, every nonce is kept

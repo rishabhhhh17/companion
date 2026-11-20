@@ -67,6 +67,9 @@ export type AccountDeps = {
   /** Audit run 2, finding 5 re-attack: true once Dodo is live (DODO_API_BASE is the live address). Then a plan, a subscription or
    *  a report credit from test mode counts for nothing: it was paid with a free test card. Missing: not live. */
   paymentsLive?: () => boolean;
+  /** Keeps the server running until the work is done (a Worker's ctx.waitUntil). Audit run 2, finding 4, close round 3: the
+   *  store steps of a sign in, a delete and a sign out run under it, so a client that goes away cannot stop them part way. */
+  waitUntil?: (p: Promise<unknown>) => void;
 };
 
 /** The statuses /v1/me answers. `free` covers a plan whose kept days are over. */
@@ -94,6 +97,14 @@ export function createAccountRoutes(d: AccountDeps): (req: Request, url: URL) =>
   const googleFailed = (reason: string) => refuse(reason, error(401, "authentication_error", "Google sign in did not work. Try signing in again."));
   const secret = () => (secretProblem(d.userIdSecret) ? null : (d.userIdSecret as string));
   const live = () => d.paymentsLive?.() === true;
+  // Audit run 2, finding 4, close round 3: on Cloudflare a Worker's work stops when its client goes away, except work handed
+  // to waitUntil, but each Durable Object write that already landed stays. A sign in and a delete are several store steps whose
+  // later steps make the earlier ones safe: a replayed old ID token that landed on a just wiped owner is taken back only by
+  // the sign in's own second line read and owner.lateLine, and a delete takes the Google id off the list and the token
+  // objects only after its wipe. Stopped in between, the deleted account held its email again and no longer counted as
+  // deleted, or kept its Google id listed. So each route's store steps run as one piece of work the server is told to keep
+  // running, handed over before the first step starts, and the reply waits for that same work.
+  const keepRunning = <T>(work: Promise<T>): Promise<T> => { d.waitUntil?.(work.catch(() => {})); return work; };
 
   async function nonce(): Promise<Response> {
     const s = secret();
@@ -122,9 +133,13 @@ export function createAccountRoutes(d: AccountDeps): (req: Request, url: URL) =>
     const who = checked.identity, now = d.now();
     const n = await checkNonce(who.nonce, s, now);
     if (!n.ok) return googleFailed(`signin_${n.reason}`);
-    const plan = (await d.store.planOfOwner?.(who.ownerId)) ?? "free";
+    // Audit run 2, finding 5 (re-attack round 2): the token gets only a plan the operator gave (grantedPlanOf), never the name of
+    // a paid plan. A paid plan is read from the owner's plan record, which keeps its Dodo mode, so a token can never carry a
+    // test card's Pro without that mode (a delete raced with this sign in left exactly such a token before).
+    const plan = (await d.store.grantedPlanOf?.(who.ownerId)) ?? "free";
     // M116 step 5: the deleted line's key, so a person who deleted their account comes back with this month's spend.
-    const issued = await issueSignInToken(d.store, who.ownerId, plan, { email: who.email, nonceId: n.id, nonceUntil: n.until, now, deletedKey: await deletedKey(who.ownerId, s) });
+    const lineKey = await deletedKey(who.ownerId, s);
+    const issued = await keepRunning(issueSignInToken(d.store, who.ownerId, plan, { email: who.email, nonceId: n.id, nonceUntil: n.until, now, deletedKey: lineKey }));
     if (!issued.ok) return "nonceUsed" in issued ? googleFailed("signin_nonce_used") : refuse("suspended", error(403, "permission_error", issued.message), who.ownerId);
     d.log({ kind: "signin", userId: who.ownerId });
     // The plan in the reply is the one /v1/me would show (planNow): a kept plan whose end has passed reads as Free here too.
@@ -157,11 +172,11 @@ export function createAccountRoutes(d: AccountDeps): (req: Request, url: URL) =>
     // A token that no longer works (revoked by a suspension, or canceled) may only forget itself. It can never stop the owner's
     // other tokens: after a suspension and a restore, a leaked old token must not sign the person out of their new ones.
     if (user.status === "suspended" || user.status === "revoked" || user.status === "canceled") {
-      await d.store.dropToken(hash);
+      await keepRunning(d.store.dropToken(hash));
       if (user.status === "suspended") return refuse("suspended", error(403, "permission_error", `Your ${PRODUCT} account is paused. If you think this is a mistake, you can appeal: see the acceptable use page.`), user.id);
       return signInAgain("inactive");
     }
-    const stopped = all ? await d.store.dropAllTokens(user.id) : (await d.store.dropToken(hash)) ? 1 : 0;
+    const stopped = all ? await keepRunning(d.store.dropAllTokens(user.id)) : (await keepRunning(d.store.dropToken(hash))) ? 1 : 0;
     if (!all && stopped === 0) return signInAgain("unknown_token");
     d.log({ kind: "signout", userId: user.id, reason: all ? "all" : "one" });
     return jsonNoStore({ stopped });
@@ -210,7 +225,8 @@ export function createAccountRoutes(d: AccountDeps): (req: Request, url: URL) =>
     const body = await smallBody(req);
     if (!body || body.confirm !== true) return refuse("delete_bad_body", error(400, "invalid_request_error", "Send {\"confirm\": true} to delete the account."), w.user.id);
     // The asking token goes along: a second delete sent at the same time finds it gone and writes nothing (audit run 2, finding 2).
-    const r = await d.store.deleteAccount(w.user.id, { key: await deletedKey(w.user.id, s), now: w.now, hash: w.hash, ...(live() ? { liveNow: true } : {}) });
+    const key = await deletedKey(w.user.id, s);
+    const r = await keepRunning(d.store.deleteAccount(w.user.id, { key, now: w.now, hash: w.hash, ...(live() ? { liveNow: true } : {}) }));
     if (!r.ok) {
       if (r.why === "gone") return signInAgain("delete_gone");
       if (r.why === "live_sub") return refuse("delete_live_sub", error(409, "invalid_request_error", DELETE_LIVE_SUB_WORDS), w.user.id);

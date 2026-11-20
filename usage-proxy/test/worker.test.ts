@@ -305,5 +305,5 @@ describe("M99 review: a payment event out of date across two server instances", 
 });
 
 test("the secrets a real deploy needs are the ones the Worker reads", () => {
-  expect([...ALL_SECRETS].sort()).toEqual(["ANTHROPIC_API_KEY", "DODO_PAYMENTS_API_KEY", "DODO_PRODUCTS", "DODO_WEBHOOK_SECRET", "GOOGLE_CLIENT_ID", "METADATA_USER_ID_SECRET", "OPERATOR_KEY"]);
+  expect([...ALL_SECRETS].sort()).toEqual(["ANTHROPIC_API_KEY", "DODO_PAYMENTS_API_KEY", "DODO_PRODUCTS", "DODO_WEBHOOK_SECRET", "DODO_WEBHOOK_SECRET_LIVE", "GOOGLE_CLIENT_ID", "METADATA_USER_ID_SECRET", "OPERATOR_KEY"]);
 });

@@ -7,6 +7,7 @@ import type { Store } from "./store.ts";
 import { USER_ID_SECRET_SETTING, findOwnerByUserId, secretProblem } from "./userid.ts";
 import { runRefunds, runUsage } from "./operator-usage.ts";
 import { runRelease } from "./updates.ts";
+import { dodoMode } from "./dodo-api.ts";
 
 /** `data`: for a script that reads the answer (the `usage` pages), never shown as is. */
 export type OperatorResult = { code: number; lines: string[]; data?: unknown };
@@ -23,9 +24,12 @@ const USAGE = [
 const CASE = /^[A-Za-z0-9_-]{1,40}$/;
 
 export async function runOperator(argv: string[], env: Record<string, string | undefined>, store: Store, now: () => number): Promise<OperatorResult> {
-  if (argv[0] === "usage") return runUsage(argv.slice(1), store, now);
+  // Audit run 2, finding 5, round 3: once Dodo is live (its live address, read the way the proxy reads it), the usage view
+  // and the refund lines count only live mode payments. Anything but the live address is test mode, where both count.
+  const liveNow = dodoMode(env.DODO_API_BASE) === "live";
+  if (argv[0] === "usage") return runUsage(argv.slice(1), store, now, liveNow);
   if (argv[0] === "release") return runRelease(argv.slice(1), env, store, now);
-  if (argv[0] === "refunds") return runRefunds(argv.slice(1), store);
+  if (argv[0] === "refunds") return runRefunds(argv.slice(1), store, liveNow);
   const bad = (why: string): OperatorResult => ({ code: 2, lines: [why, ...USAGE] });
   let userId: string | undefined, owner: string | undefined, caseId: string | undefined, apply = false, restore = false;
   for (let i = 0; i < argv.length; i++) {

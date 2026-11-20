@@ -8,7 +8,7 @@ import { checkRequest, MAX_BODY_BYTES } from "./filter.ts";
 import { budgetCheck, nextReset, planOf, type Plan } from "./plans.ts";
 import { paidPlanCounts, type Store, type UsageRecord } from "./store.ts";
 import { hashToken, tokenFromHeaders } from "./tokens.ts";
-import { UsageSniffer, costOf, usageFromJson } from "./usage.ts";
+import { UsageSniffer, costOf, usageFromJson, type Usage } from "./usage.ts";
 import { PRODUCT, PRODUCT_S } from "./names.ts";
 import { deriveUserId, secretProblem } from "./userid.ts";
 import type { GoogleCheck } from "./google.ts";
@@ -110,6 +110,34 @@ function metered(body: ReadableStream<Uint8Array>, sniffer: UsageSniffer, finish
   });
 }
 
+/** Audit run 2, finding 6: what a request is sure to cost (`need`: its prompt, which must fit under the limits) and the most
+ *  it may cost (`worst`: held while it runs). Search re-attack: `worst` also counts every search the request allows, with its
+ *  fee and room for its results as input, and is priced as one request, so results that carry the prompt over a model's long
+ *  prompt line are held at the long rate card. A prompt with a cache marker is priced at the cache write rate. */
+export function holdOf(c: Extract<ReturnType<typeof checkRequest>, { ok: true }>): { need: number; worst: number } {
+  const priced = (input: number, output: number, searches: number) => costOf(c.model, {
+    input_tokens: c.cacheWrite ? 0 : input, cache_creation_input_tokens: c.cacheWrite ? input : 0,
+    output_tokens: output, cache_read_input_tokens: 0, web_search_requests: searches });
+  return { need: priced(c.inputTokens, 0, 0), worst: priced(c.inputTokens + c.searchTokens, c.maxTokens, c.searches) };
+}
+
+/** Audit run 2, finding 6 (re-attack round 3): what a reply cut short is booked at. Anthropic may have written it all (Must fix
+ *  10), so the output is the whole max_tokens and every search the request allowed is counted, with room for its results as
+ *  input. The prompt is Anthropic's own count when message_start reached us (`promptSeen`), and our estimate when it did not
+ *  (the client went away before it, or the body broke), at the cache write rate when the prompt carries a cache marker.
+ *  Without that floor a large prompt cancelled at once was booked as no prompt at all, and its hold was let go. */
+export function cutShortUsage(c: Extract<ReturnType<typeof checkRequest>, { ok: true }>, seen: Usage, promptSeen: boolean): Usage {
+  const prompt = promptSeen ? { input: seen.input_tokens, write: seen.cache_creation_input_tokens }
+    : { input: c.cacheWrite ? 0 : c.inputTokens, write: c.cacheWrite ? c.inputTokens : 0 };
+  return {
+    input_tokens: Math.max(seen.input_tokens, prompt.input + c.searchTokens),
+    cache_creation_input_tokens: Math.max(seen.cache_creation_input_tokens, prompt.write),
+    cache_read_input_tokens: seen.cache_read_input_tokens,
+    output_tokens: Math.max(seen.output_tokens, c.maxTokens),
+    web_search_requests: Math.max(seen.web_search_requests, c.searches),
+  };
+}
+
 export function createProxy(d: Deps): (req: Request) => Promise<Response> {
   const doFetch = d.fetch ?? fetch, upstream = checkUpstream(d.upstream ?? "https://api.anthropic.com"), now = d.now ?? Date.now, log = d.log ?? (() => {}), maxInFlight = d.maxInFlight ?? 4;
   const releaseRetryMs = d.releaseRetryMs ?? RELEASE_RETRY_MS;
@@ -119,7 +147,9 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
   const accountRoute = createAccountRoutes({ store: d.store, userIdSecret: d.userIdSecret, googleSignIn: d.googleSignIn, now, log,
     paymentsOn: d.paymentsOn, loopOn: d.loopOn, signinLimit: d.signinLimit,
     // Live once the Dodo address is the live one (paymentsTestMode answers false); missing: not live.
-    paymentsLive: () => d.paymentsTestMode?.() === false });
+    paymentsLive: () => d.paymentsTestMode?.() === false,
+    // Audit run 2, finding 4, close round 3: a sign in's and a delete's store steps are kept running if the client goes away.
+    ...(d.waitUntil ? { waitUntil: d.waitUntil } : {}) });
 
   const overBudget = (b: ReturnType<typeof budgetCheck>, plan: Plan, userId: string) => {
     // Only reached when the hold did not fit, so a check that now passes (a hold let go meanwhile) still counts as the day.
@@ -146,7 +176,8 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
     if (typeof d.anthropicKey !== "string" || d.anthropicKey.trim() === "") return refuse("no_anthropic_key", error(503, "api_error", NOT_READY_WORDS));
     const token = tokenFromHeaders(req.headers);
     if (!token) return refuse("no_token", error(401, "authentication_error", `Sign in to ${PRODUCT} again.`));
-    const user = await d.store.userByTokenHash(await hashToken(token));
+    const tokenHash = await hashToken(token);
+    const user = await d.store.userByTokenHash(tokenHash);
     if (!user) return refuse("unknown_token", error(401, "authentication_error", `Sign in to ${PRODUCT} again.`));
     if (user.status === "suspended") return refuse("suspended", error(403, "permission_error", `Your ${PRODUCT} account is paused. If you think this is a mistake, you can appeal: see the acceptable use page.`), user.id);
     if (user.status === "canceled" || user.status === "revoked") return refuse("inactive", error(403, "permission_error", `Your ${PRODUCT} plan is not active. Choose a plan in Settings.`), user.id);
@@ -173,11 +204,12 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
     // writes at most 3 rows on Cloudflare's free plan. The hold goes when it ends. Audit run 2, finding 6: the hold covers
     // the prompt too (estimated from the body), and the prompt must fit under the limits with what is spent and held, so
     // large prompts sent at once with a tiny max_tokens cannot all pass at zero spend.
-    const priced = (input: number, output: number) => costOf(checked.model, { input_tokens: input, output_tokens: output, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 });
-    const need = priced(checked.inputTokens, 0), worst = priced(checked.inputTokens, checked.maxTokens);
-    const started = await d.store.start(user.id, { max: maxInFlight, usd: worst, now: now(), limits: plan, id, need });
+    const { need, worst } = holdOf(checked);
+    const started = await d.store.start(user.id, { max: maxInFlight, usd: worst, now: now(), limits: plan, id, need, hash: tokenHash });
     if (!started.ok) {
       if (started.why === "over") return overBudget(budgetCheck(plan, started.spent, now(), need), plan, user.id);
+      // Audit run 2, finding 4 (re-attack round 2): the account was deleted after the token was read. Nothing is sent.
+      if (started.why === "gone") return refuse("unknown_token", error(401, "authentication_error", `Sign in to ${PRODUCT} again.`), user.id);
       return refuse("busy", error(429, "rate_limit_error", BUSY_WORDS), user.id);
     }
 
@@ -215,12 +247,13 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
       const back = new Headers();
       for (const h of PASS_BACK) { const v = res.headers.get(h); if (v) back.set(h, v); }
 
-      const book = async (seen: ReturnType<typeof usageFromJson>, complete: boolean, failedUpstream = false) => {
+      const book = async (seen: Usage, complete: boolean, failedUpstream = false, promptSeen = true) => {
         // Must fix 10: a stream cut short (the client went away, or the connection broke) never told us its output, and
         // Anthropic may have written it all. It is booked as the whole answer the request allowed, so cancelling cannot
-        // get round the budget. A reply Anthropic itself ended with an error event (overloaded_error) is booked from what it
-        // reported: the person does not pay a full answer for Anthropic's failure.
-        const usage = complete || failedUpstream ? seen : { ...seen, output_tokens: Math.max(seen.output_tokens, checked.maxTokens) };
+        // get round the budget. Finding 6 (re-attack round 3): it is booked with its prompt too, our estimate when
+        // message_start never reached us (cutShortUsage). A reply Anthropic itself ended with an error event
+        // (overloaded_error) is booked from what it reported: the person does not pay a full answer for Anthropic's failure.
+        const usage = complete || failedUpstream ? seen : cutShortUsage(checked, seen, promptSeen);
         const usd = costOf(checked.model, usage);
         // Claude has answered and our key has paid by now, so a booking the store cannot finish never costs the person the
         // answer: it is logged (booking_failed, ids and dollars only) and the answer still goes back.
@@ -239,9 +272,13 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
         let booked: () => void = () => {};
         const bookedNow = new Promise<void>((r) => { booked = r; });
         d.waitUntil?.(bookedNow);
-        return new Response(metered(res.body, sniffer, async () => { try { await book(sniffer.usage(), sniffer.complete(), sniffer.failedUpstream()); } finally { try { await release(); } finally { booked(); } } }), { status: res.status, headers: back });
+        return new Response(metered(res.body, sniffer, async () => { try { await book(sniffer.usage(), sniffer.complete(), sniffer.failedUpstream(), sniffer.promptSeen()); } finally { try { await release(); } finally { booked(); } } }), { status: res.status, headers: back });
       }
-      const text = await res.text();
+      // Finding 6 (re-attack round 3): a reply that is not streamed and breaks while it is read has been sent to Anthropic in
+      // full and may have been answered in full, so it is booked as cut short, the same as a stream, before the error goes back.
+      let text: string;
+      try { text = await res.text(); }
+      catch { await book({ input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 }, false, false, false); throw new Error("reply broke"); }
       await book(usageFromJson(text), true);
       await release();
       return new Response(text, { status: res.status, headers: back });

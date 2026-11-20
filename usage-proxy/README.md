@@ -79,7 +79,7 @@ Run the whole server on this Mac, end to end: `sh scripts/verify-dev.sh` (below)
 4. When the founder is ready: `wrangler login` (his own), then `wrangler secret put <NAME>` for each secret the deploy needs (what
    each is: the comment at the top of `wrangler.toml`). Always `METADATA_USER_ID_SECRET`, `OPERATOR_KEY` and `GOOGLE_CLIENT_ID`;
    `ANTHROPIC_API_KEY` only once `PROXY_ON` is set; `DODO_PAYMENTS_API_KEY`, `DODO_WEBHOOK_SECRET` and `DODO_PRODUCTS` only once
-   payments are on. Then `bun run deploy`, which refuses while a needed one is missing, and while `DEV_TOKENS`, `UPSTREAM_BASE` or
+   payments are on (on Dodo's live address `DODO_WEBHOOK_SECRET_LIVE` in place of `DODO_WEBHOOK_SECRET`). Then `bun run deploy`, which refuses while a needed one is missing, and while `DEV_TOKENS`, `UPSTREAM_BASE` or
    `GOOGLE_KEYS_URL` (local only) is set there or written as a var in `wrangler.toml`. It prints plain sentences only; what
    wrangler said goes to `dist/`.
 5. The switches: `wrangler secret put PROXY_ON` and type on. Off: `wrangler secret delete PROXY_ON`. Without it nothing is
@@ -91,6 +91,19 @@ Run the whole server on this Mac, end to end: `sh scripts/verify-dev.sh` (below)
    before modes counts as test). Once Dodo is live, only live ones count: a test card's Pro or report gives nothing there,
    `TEST_PAYERS` no longer applies, and a test subscription blocks neither a real Pro checkout nor an account delete. The deploy
    check reads `PAYMENT_PROVIDER` ignoring case and spaces, and counts it as on when it is a secret.
+   Re-attack round 1: an event's Dodo mode comes only from which webhook secret verified it. `DODO_WEBHOOK_SECRET` is test
+   mode's and always gives test; `DODO_WEBHOOK_SECRET_LIVE` is live mode's and is the only way an event is kept as live
+   (one value in both counts as test). `DODO_API_BASE` plays no part, because it and the secrets never change in one step. A
+   subscription kept as test is never moved up to live by a later event. Go live order: put `DODO_WEBHOOK_SECRET_LIVE`, the
+   live key and the live `DODO_PRODUCTS`; then deploy the live address with `--live-payments`, which refuses without
+   `DODO_WEBHOOK_SECRET_LIVE` and refuses a `DODO_API_BASE` it cannot read for sure (single quotes, a second line in an
+   `[env.*]` section, or set as a secret); then delete the test mode webhook in Dodo and the `DODO_WEBHOOK_SECRET` secret.
+   Re-attack round 3: the deploy check also reads the `DODO_API_BASE` the dry run binds, and refuses when it is not the same
+   as the line in `wrangler.toml` (a line outside `[vars]` binds nothing, which the server reads as test mode). It reads the
+   bindings only from wrangler's bindings table, and refuses the deploy unless every row is one binding with a plain name, so
+   a var name or value with a line break in it cannot print a binding the Worker does not have. Once live, the
+   operator's `usage` view and `refunds` count only live mode payments: a test card's Pro shows as free, a test subscription
+   is never a second live one, and a test card's payment for a deleted account is no refund line.
 
 ### Running the whole server on this Mac (M116 step 6)
 `sh scripts/verify-dev.sh` starts `wrangler dev --local` on 127.0.0.1 with made up settings in a `.dev.vars` file (removed after
@@ -128,7 +141,7 @@ The operator's suspend and restore work on the real store through the Worker: `P
 ## Promises the tests hold it to
 - No prompt, reply, token or Anthropic key is ever in a log event, a stored record or an error message.
 - Squibby's key never reaches the user, and the user's token never reaches Anthropic.
-- A user cannot run past a limit by more than the requests that were already running together (at most 4 at once, `maxInFlight`): the budget is checked before a request starts and booked when it ends, so those few can each pass it. Each request holds its worst case while it runs (its prompt, estimated from the body at about 3 bytes a token with a fixed amount per image, plus its whole `max_tokens` as output), checked and held in one step, on the Durable Object store too, even from two server instances at once. The prompt part must fit under the limits with what is spent and held, so large prompts sent at once cannot all pass at zero spend (audit run 2, finding 6); only the answers can run past. One request is limited in size and in `max_tokens`, so the overshoot is bounded, not zero.
+- A user cannot run past a limit by more than the requests that were already running together (at most 4 at once, `maxInFlight`): the budget is checked before a request starts and booked when it ends, so those few can each pass it. Each request holds its worst case while it runs (its prompt, estimated from the body as it is sent on, not as the client wrote it, at about 3 bytes a token with a fixed amount per image, plus its whole `max_tokens` as output), checked and held in one step, on the Durable Object store too, even from two server instances at once. The prompt part must fit under the limits with what is spent and held, so large prompts sent at once cannot all pass at zero spend (audit run 2, finding 6); only the answers can run past. One request is limited in size and in `max_tokens`, so the overshoot is bounded, not zero. A delete is refused as busy while any request may still be running, including one kept open past its 30 minute lease (for up to a day, `HOLD_BUSY_MS`), and a request that ends after a delete writes nothing on the deleted account (audit run 2, finding 6, re-attack round 2).
 - Only `/v1/messages` is forwarded: `count_tokens` is refused before the store is touched (audit run 2, finding 3; the app never calls it). A `cache_control` at any depth must be `{ type: "ephemeral" }`, with `ttl` absent or `"5m"`: a 1 hour cache costs more than the price table counts (finding 8). No `anthropic-beta` header is forwarded (the runner sends none).
 - The prompt estimate can only price what the body carries, so content that is billed for more than its bytes is refused (audit run 2, finding 6 re-attack). Content blocks are a closed list: `text`, `image`, `tool_result`, `tool_use`, `thinking`, `redacted_thinking`, `server_tool_use`, `web_search_tool_result`, with a tool result holding only text and images. An image must be base64 with an image media type. A document (a PDF is billed per page as an image plus its text, whatever its size in bytes), any `source` of type `url` or `file` (billed in full, a few bytes here), and any other block kind are refused; the runner sends none of them. Only images in real image blocks are priced at the flat image amount. Request fields are a closed list too (`model`, `max_tokens`, `messages`, `system`, `stream`, `metadata`, `tools`, `thinking`, `output_config`, `temperature`, `top_p`, `top_k`, `stop_sequences`), so price changing fields such as `speed`, `service_tier` and `inference_geo` are refused.
 - The address requests are forwarded to must be https (this machine aside), a redirect from it is never followed (our key would travel with it), and a body is read only up to its size limit.
@@ -208,7 +221,7 @@ remote switch, and it stays off until Anthropic confirms in writing (`docs/decis
    fix the table.
 3. Add a webhook in the dashboard that points to `https://<the proxy's own address>/webhooks/dodo` and subscribe it to the
    events `subscription.*`, `payment.succeeded`, `payment.failed`, `refund.succeeded`, `dispute.opened` and `dispute.lost`. Copy its signing secret (it starts with `whsec_`) into
-   the operator's environment as `DODO_WEBHOOK_SECRET`. **The secret goes in the environment or the host's secret store, never in this
+   the operator's environment as `DODO_WEBHOOK_SECRET` (test mode's; live mode's webhook goes in `DODO_WEBHOOK_SECRET_LIVE`). **The secret goes in the environment or the host's secret store, never in this
    repo, never in a log.**
 4. Set `PAYMENT_PROVIDER=dodo`, `PAYMENTS_ON` and `DODO_PAYMENTS_API_KEY` (a `dodo_test_` key while `DODO_API_BASE` in
    `wrangler.toml` is `https://test.dodopayments.com`). The server then serves the webhook, `POST /v1/checkout` and `POST /v1/portal`.
@@ -236,7 +249,7 @@ remote switch, and it stays off until Anthropic confirms in writing (`docs/decis
   way, otherwise it is Free at once, as is `expired`. `past_due` keeps the plan only until `past_due_ends_at`. `on_hold`, `paused` and
   `failed` are Free with status `on_hold` ("payment failed, fix it in billing"). The Dodo customer id is saved from events whose
   metadata names the person, for the billing portal, unless that customer is already linked to someone else (then it is left
-  where it is and `link_conflict` is logged). It is kept with the Dodo mode of `DODO_API_BASE` (test or live): checkout and the
+  where it is and `link_conflict` is logged). It is kept with the Dodo mode of the webhook secret that verified the event (test or live): checkout and the
   portal use only an id from the mode the server is in now, so test ids are never sent to live Dodo. The portal opens the
   customer of the newest live subscription first.
 - **The report (M116):** `payment.succeeded` for the report product adds one credit keyed by `payment_id` (a retry or a repeat never

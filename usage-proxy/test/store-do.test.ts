@@ -125,7 +125,9 @@ describe("one step at a time, even across server instances", () => {
     const booked = w.stores[1].records.reduce((n, r) => n + r.usd, 0);
     expect((await w.stores[1].spent("u1", NOW)).day).toBeCloseTo(PLANS.pro.dailyUsd - worst * 0.5 + booked, 8);   // no hold left behind
   });
-  test("a slot or a hold left by an instance that stopped mid request frees itself after the lease", async () => {
+  // Audit run 2, finding 6 (lease re-attack): the slot frees itself after the lease, the hold does not. It counts as spent
+  // from then on (for that day and month), since the request may have run to its end and been billed.
+  test("a slot left by an instance that stopped mid request frees itself after the lease; its hold counts as spent", async () => {
     let t = NOW;
     const s = new FakeDurableStore(new FakeNamespace(), () => t);
     for (let i = 0; i < 4; i++) expect(await s.begin("u1", 4)).toBe(true);
@@ -135,7 +137,7 @@ describe("one step at a time, even across server instances", () => {
     expect(await s.begin("u1", 4)).toBe(false);
     t = NOW + LEASE_MS + 1;
     expect(await s.begin("u1", 4)).toBe(true);
-    expect((await s.spent("u1", t)).day).toBe(0);
+    expect((await s.spent("u1", t)).day).toBe(PLANS.pro.dailyUsd);
   });
   test("M99 review: a slot whose lease ran out, let go late, does not take a running request's slot", async () => {
     let t = NOW;

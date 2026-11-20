@@ -15,7 +15,11 @@
 #   GOOGLE_CLIENT_ID          Sign in with Google's client id (not secret, but kept with the others).
 #   ANTHROPIC_API_KEY         Squibby's own Anthropic key. Without it nothing is forwarded. Needed to deploy only once PROXY_ON is set.
 #   DODO_PAYMENTS_API_KEY     Dodo's API key (dodo_test_ first), for checkouts and the billing portal. Needed once payments are on.
-#   DODO_WEBHOOK_SECRET       Dodo's webhook signing secret (starts with whsec_). Needed once payments are on.
+#   DODO_WEBHOOK_SECRET       test mode's webhook signing secret (starts with whsec_). Needed once payments are on, in test mode.
+#                             An event it verifies is always kept as test mode, so a test card never counts once Dodo is live.
+#   DODO_WEBHOOK_SECRET_LIVE  live mode's webhook signing secret. Only an event it verifies is kept as live mode. Put it BEFORE
+#                             deploying the live address: `bun run deploy -- --live-payments` refuses without it. Then delete the
+#                             test mode webhook in Dodo and `wrangler secret delete DODO_WEBHOOK_SECRET`.
 #   DODO_PRODUCTS             the product table, as JSON (see dodo-products.example.json): each Dodo product id with its item
 #                             (pro_monthly, pro_yearly, report). Needed once payments are on. Product ids never go in code.
 #   PROXY_ON                  the switch for model requests. Not needed to deploy: without it, or with anything but "on", nothing

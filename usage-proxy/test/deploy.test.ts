@@ -4,7 +4,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ALL_SECRETS, ALWAYS_SECRETS, DEV_ONLY_SETTINGS, FORWARDING_SECRETS, PAYMENT_SECRETS } from "../src/worker.ts";
+import { ALL_SECRETS, ALWAYS_SECRETS, DEV_ONLY_SETTINGS, FORWARDING_SECRETS, LIVE_PAYMENT_SECRETS, PAYMENT_SECRETS } from "../src/worker.ts";
+import { DODO_BASE_BINDING, WRANGLER_TABLE } from "./wrangler-vars-stub.ts";
 
 const ROOT = join(import.meta.dir, "..");
 const SCRIPT = join(ROOT, "scripts", "deploy.sh");
@@ -25,10 +26,12 @@ case "$1 $2" in
     ${o.failDry ? "echo 'build failed'; exit 1" : ""}
     out=""; prev=""; for a in "$@"; do [ "$prev" = "--outdir" ] && out="$a"; prev="$a"; done
     echo "export class StoreObject {}" > "$out/entry.js"
-    echo "Your Worker has access to the following bindings:"
+    {
     ${o.noBinding ? "" : 'echo "env.STORE (StoreObject)      Durable Object"'}
     echo 'env.PAYMENT_PROVIDER ("${o.provider ?? "none"}")      Environment Variable'
+    ${DODO_BASE_BINDING}
     ${(o.vars ?? []).map((v) => `echo 'env.${v} ("http://127.0.0.1:9")      Environment Variable'`).join("\n    ")}
+    } | ${WRANGLER_TABLE}
     echo "--dry-run: exiting now."; exit 0 ;;
   "secret list") ${o.failList ? "echo 'not signed in' >&2; exit 1" : `cat "${join(dir, "names.json")}"; echo "the value is $ANTHROPIC_API_KEY" >&2`}; exit 0 ;;
   "deploy ") echo "Uploaded squibby-usage"; exit 0 ;;
@@ -182,6 +185,7 @@ describe("scripts/deploy.sh", () => {
     expect(list("ALWAYS")).toEqual([...ALWAYS_SECRETS].sort());
     expect(list("FORWARDING")).toEqual([...FORWARDING_SECRETS].sort());
     expect(list("PAYMENTS")).toEqual([...PAYMENT_SECRETS].sort());
+    expect(list("LIVE_PAYMENTS")).toEqual([...LIVE_PAYMENT_SECRETS].sort());
     expect(list("DEV_ONLY")).toEqual([...DEV_ONLY_SETTINGS].sort());
     expect(text).not.toMatch(/^REQUIRED=/m);
   });

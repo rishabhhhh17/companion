@@ -13,7 +13,11 @@
 //                             nonce (nonce.ts). Without it nothing is forwarded and nobody can sign in.
 //   GOOGLE_CLIENT_ID          Sign in with Google. Without it the sign in route answers 503.
 //   PAYMENT_PROVIDER          none (the default, in wrangler.toml), or dodo. Stripe's webhook is not built here.
-//   DODO_WEBHOOK_SECRET, DODO_PRODUCTS   Dodo's signing secret and the product table (dodo.ts).
+//   DODO_WEBHOOK_SECRET       test mode's webhook signing secret. An event it verifies is always kept as test mode.
+//   DODO_WEBHOOK_SECRET_LIVE  live mode's webhook signing secret. Only an event it verifies is kept as live mode (audit run 2,
+//                             finding 5, re-attack round 1): an event's mode comes from the secret that verified it, never from
+//                             DODO_API_BASE, because the address and the secrets change in separate steps at go live.
+//   DODO_PRODUCTS             the product table (dodo.ts).
 //   DODO_PAYMENTS_API_KEY     M116: Dodo's API key, for checkouts and the billing portal. Needed to deploy once payments are on.
 //   DODO_API_BASE             M116: Dodo's address, a plain var in wrangler.toml: https://test.dodopayments.com (the default)
 //                             or https://live.dodopayments.com. It must agree with the key (dodo_test_ or dodo_live_), or no
@@ -62,6 +66,7 @@ export type Env = {
   GOOGLE_CLIENT_ID?: string;
   PAYMENT_PROVIDER?: string;
   DODO_WEBHOOK_SECRET?: string;
+  DODO_WEBHOOK_SECRET_LIVE?: string;
   DODO_PRODUCTS?: string;
   OPERATOR_KEY?: string;
   RELEASES_REPO?: string;
@@ -76,9 +81,13 @@ export type Ctx = { waitUntil(p: Promise<unknown>): void };
 export const ALWAYS_SECRETS = ["METADATA_USER_ID_SECRET", "OPERATOR_KEY", "GOOGLE_CLIENT_ID"] as const;
 /** Only once forwarding is on (PROXY_ON is set): Squibby's Anthropic key. Until then the server holds no Anthropic key at all. */
 export const FORWARDING_SECRETS = ["ANTHROPIC_API_KEY"] as const;
-/** Only once payments are on (PAYMENTS_ON is set, or PAYMENT_PROVIDER is dodo): Dodo's API key and the webhook's secrets. */
+/** Only once payments are on (PAYMENTS_ON is set, or PAYMENT_PROVIDER is dodo) on Dodo's test address: Dodo's API key, test
+ *  mode's webhook secret and the product table. */
 export const PAYMENT_SECRETS = ["DODO_PAYMENTS_API_KEY", "DODO_WEBHOOK_SECRET", "DODO_PRODUCTS"] as const;
-export const ALL_SECRETS = [...ALWAYS_SECRETS, ...FORWARDING_SECRETS, ...PAYMENT_SECRETS] as const;
+/** The same on Dodo's live address (deploy.sh --live-payments): live mode's webhook secret in place of test mode's. Audit run 2,
+ *  finding 5, re-attack round 1: so the live address is never deployed before live mode's secret is set. */
+export const LIVE_PAYMENT_SECRETS = ["DODO_PAYMENTS_API_KEY", "DODO_WEBHOOK_SECRET_LIVE", "DODO_PRODUCTS"] as const;
+export const ALL_SECRETS = [...ALWAYS_SECRETS, ...FORWARDING_SECRETS, ...PAYMENT_SECRETS, "DODO_WEBHOOK_SECRET_LIVE"] as const;
 export const STATUS_PATH = "/v1/status";
 export const OPERATOR_PATH = "/v1/operator";
 /** Settings that exist only for a local run (DEV_TOKENS is retired and kept only so a leftover is refused). A real deploy refuses
@@ -139,7 +148,10 @@ function partsFor(env: Env, ctx: Ctx, now: () => number, url: URL): Parts {
   const catalog = () => { const p = parseDodoCatalog(env.DODO_PRODUCTS ?? ""); return p.ok ? p.catalog : null; };
   const dodoApi = () => { const s = dodoSetup(env.DODO_API_BASE, env.DODO_PAYMENTS_API_KEY); return s.ok ? { base: s.base, key: s.key, fetch } : null; };
   const dodo = createDodoWebhook({
+    // Audit run 2, finding 5, re-attack round 1: an event's Dodo mode is the mode of the secret that verified it. Test mode's
+    // secret only ever gives test, so a test card's event is never kept as live, whatever DODO_API_BASE says when it arrives.
     secret: () => env.DODO_WEBHOOK_SECRET ?? "",
+    liveSecret: () => env.DODO_WEBHOOK_SECRET_LIVE ?? "",
     products: () => catalog()?.plans ?? {},
     reportIds: () => catalog()?.reports ?? [],
     ledger: new DurableDodoLedger(env.STORE, now),
@@ -149,9 +161,6 @@ function partsFor(env: Env, ctx: Ctx, now: () => number, url: URL): Parts {
     // their subscriptions. Report credits are keyed by payment_id.
     ...storeHooks(store, () => env.METADATA_USER_ID_SECRET),
     paymentProducts: async (paymentId) => { const api = dodoApi(); return api ? paymentProducts(api, paymentId) : null; },
-    // Customer ids are kept with the Dodo mode of DODO_API_BASE. The webhook secret and the address are switched to live
-    // together on the go live checklist, so an event's mode is the address's.
-    mode: () => dodoMode(env.DODO_API_BASE),
     now,
     log: logLine,
   });
@@ -176,7 +185,8 @@ async function operatorRoute(req: Request, env: Env, store: DurableStore, now: (
   let argv: unknown;
   try { const text = await req.text(); if (text.length > OPERATOR_MAX_BODY) return json(400, { error: "That request is too big." }); argv = (JSON.parse(text) as { argv?: unknown })?.argv; } catch { argv = undefined; }
   if (!Array.isArray(argv) || !argv.every((a) => typeof a === "string")) return json(400, { error: "Send {\"argv\": [...]} with the same options as scripts/suspend.ts." });
-  const r = await runOperator(argv as string[], { [USER_ID_SECRET_SETTING]: env.METADATA_USER_ID_SECRET, [RELEASES_REPO_SETTING]: env.RELEASES_REPO }, store, now);
+  // DODO_API_BASE (audit run 2, finding 5, round 3): the usage view and the refund lines count only live mode payments once live.
+  const r = await runOperator(argv as string[], { [USER_ID_SECRET_SETTING]: env.METADATA_USER_ID_SECRET, [RELEASES_REPO_SETTING]: env.RELEASES_REPO, DODO_API_BASE: env.DODO_API_BASE }, store, now);
   logLine({ kind: "operator", code: r.code });
   // 200 only when the step happened (or a dry run worked); otherwise 422 with the same body, so a script can tell from the status.
   return json(r.code === 0 ? 200 : 422, r);
@@ -220,7 +230,10 @@ async function route(req: Request, env: Env, ctx: Ctx, now: () => number): Promi
   if (billing) return billing;
   const provider = paymentProviderFromSetting(env.PAYMENT_PROVIDER);
   const hook = webhookRouteFor(provider, req.method, url.pathname);
-  if (hook === "dodo") return parts.dodo(req);
+  // Audit run 2, finding 4, close round 3 (the same pattern): the event's id is claimed before the plan is written, so a resend
+  // reads as a duplicate. A Dodo request that went away in between left the event claimed and never applied. Its work is kept
+  // running, handed over before the first step starts, and the answer waits for that same work.
+  if (hook === "dodo") { const work = parts.dodo(req); ctx.waitUntil(work.catch(() => {})); return work; }
   if (hook === "stripe") return json(503, { outcome: "refused", message: "Stripe's webhook is not built on this server. Dodo Payments is the provider." });
   return parts.proxy(req);
 }

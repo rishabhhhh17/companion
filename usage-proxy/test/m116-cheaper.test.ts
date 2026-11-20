@@ -415,10 +415,13 @@ describe("payment event ids are kept 48 hours (Dodo retries for about 37)", () =
 // S3 review fixes.
 const USAGE = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 };
 const rec = (at: number, usd: number) => ({ userId: "u1", model: "m", usage: USAGE, usd, at, complete: true });
+/** A signed in owner "u1": a booking onto an owner with nobody in it (a deleted account) writes nothing (audit run 2, finding 6,
+ *  re-attack round 2). */
+const withUser = async <S extends TestStore>(s: S): Promise<S> => { await s.addUser((await newToken()).hash, { id: "u1", plan: "free", status: "active" }); return s; };
 
 for (const kind of TEST_STORES) describe(`bookings that arrive out of order at the turn of a day or month: ${kind.name}`, () => {
   test("a day turn: the cost stamped after midnight still counts today, and both count in the month", async () => {
-    const s = kind.make();
+    const s = await withUser(kind.make());
     const midnight = Date.UTC(2026, 10, 20), before = midnight - 100, after = midnight + 100;
     await s.finish("u1", { id: "b", now: after, record: rec(after, 0.3) });   // B, stamped after midnight, lands first
     await s.finish("u1", { id: "a", now: after, record: rec(before, 0.2) });  // A, stamped before, lands second
@@ -427,7 +430,7 @@ for (const kind of TEST_STORES) describe(`bookings that arrive out of order at t
     expect(spent.month).toBeCloseTo(0.5, 10);
   });
   test("a month turn: the new month's cost is not lost to the old month's totals", async () => {
-    const s = kind.make();
+    const s = await withUser(kind.make());
     const first = Date.UTC(2026, 11, 1), before = first - 100, after = first + 100;
     await s.finish("u1", { id: "b", now: after, record: rec(after, 0.3) });
     await s.finish("u1", { id: "a", now: after, record: rec(before, 0.2) });
@@ -470,7 +473,7 @@ describe("the 90 day keep holds for heavy users", () => {
     expect(store.records.every((r) => r.at >= NOW - RECORD_KEEP_MS)).toBe(true);
   });
   test("a tidy that meets only old records, all of them, stops when there are none left", async () => {
-    const store = new FakeDurableStore(new FakeNamespace(), () => NOW);
+    const store = await withUser(new FakeDurableStore(new FakeNamespace(), () => NOW));
     const storage = store.fake.storageFor(OWNER("u1"));
     const oldAt = NOW - RECORD_KEEP_MS - DAY;
     for (let i = 1; i <= PRUNE_BATCH; i++) storage.data.set(`rec:${String(i).padStart(12, "0")}`, { ...rec(oldAt, 0.01), totals: { day: dayKey(oldAt), dayUsd: 1, month: monthKey(oldAt), monthUsd: 1 } });

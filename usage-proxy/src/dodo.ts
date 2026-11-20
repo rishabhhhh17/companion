@@ -354,8 +354,13 @@ export type SafeDodoEvent = {
 };
 export type DodoOutcome = "refused" | "bad_request" | "duplicate" | "stale" | "ignored" | "applied" | "unknown_product" | "unlinked" | "apply_failed";
 export type DodoWebhookDeps = {
-  /** The signing secret, read from the operator's environment. Empty means everything is refused. */
+  /** Test mode's webhook signing secret (DODO_WEBHOOK_SECRET). An event it verifies is always kept as test mode. */
   secret: () => string;
+  /** Audit run 2, finding 5, re-attack round 1: live mode's webhook signing secret (DODO_WEBHOOK_SECRET_LIVE). Only an event
+   *  this secret verifies is kept as live mode. An event's mode comes from which secret verified it, never from DODO_API_BASE:
+   *  the address and the secrets change in separate steps at go live, so the address says nothing about where an event came
+   *  from. When both secrets are set and one value is in both, the event counts as test. Both empty: everything is refused. */
+  liveSecret?: () => string;
   /** Dodo product id to plan name (see parseDodoProducts). */
   products: () => DodoProducts;
   ledger: DodoLedger;
@@ -376,9 +381,6 @@ export type DodoWebhookDeps = {
   /** M116: keep the Dodo customer id on the owner, from a payment.succeeded whose signed checkout metadata names them, with the
    *  mode. It never replaces a customer id already saved for that mode. */
   saveCustomer?: (userId: string, customerId: string, mode: DodoMode) => Promise<void>;
-  /** M116: which Dodo this server talks to, from DODO_API_BASE (see dodoMode). Null: unreadable, so no customer id is saved.
-   *  Missing: test, the default address. */
-  mode?: () => DodoMode | null;
   /** M116 (V4): a payment's product ids read back from Dodo, for a payment event with no product_cart. Null: could not read. */
   paymentProducts?: (paymentId: string) => Promise<string[] | null>;
   /** M116 step 5: true when this owner's account was deleted (and they have not signed in again) as of `now` (ms). Their late
@@ -435,7 +437,19 @@ async function readCapped(req: Request): Promise<string | null> {
 /** The webhook for POST /webhooks/dodo. A Worker serves it only when the provider setting is "dodo". */
 export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise<Response> {
   const now = d.now ?? Date.now, log = d.log ?? (() => {});
-  const modeNow = (): DodoMode | null => (d.mode ? d.mode() : "test");
+  /** The secret that verifies this request, test mode's first, and so the Dodo mode the event was made in. */
+  async function verifyEither(body: string, headers: Headers): Promise<{ ok: true; id: string; mode: DodoMode } | { ok: false; reason: DodoRefusal }> {
+    const nowSec = Math.floor(now() / 1000);
+    const tries: [DodoMode, string][] = [["test", d.secret()], ["live", d.liveSecret?.() ?? ""]];
+    let refusal: DodoRefusal = "bad_secret";
+    for (const [mode, secret] of tries) {
+      if (typeof secret !== "string" || secret.length === 0) continue;
+      const v = await verifyDodoWebhook(body, headers, secret, nowSec);
+      if (v.ok) return { ok: true, id: v.id, mode };
+      if (refusal === "bad_secret") refusal = v.reason;
+    }
+    return { ok: false, reason: refusal };
+  }
   const ownerSecret = (): string | undefined => d.ownerSecret?.();
   // One person's events are applied one after the other here, so an older event that is slower to save cannot land after a newer one.
   // (Across several server instances the store must do the same in one atomic step, as the README says.)
@@ -448,10 +462,10 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
     try { return await mine; } finally { if (queue.get(key) === tail) queue.delete(key); }
   };
   /** M116: a payment, refund or dispute event. Only the report credit changes here; everything else is noted or ignored. */
-  async function paymentEvent(event: Record<string, unknown>, eventType: string | undefined, webhookId: string | undefined): Promise<Response> {
+  async function paymentEvent(event: Record<string, unknown>, eventType: string | undefined, webhookId: string | undefined, mode: DodoMode): Promise<Response> {
     const reports = d.reports as ReportBook, reportIds = d.reportIds?.() ?? [], planIds = Object.keys(d.products());
-    const data = obj(event.data), mode = modeNow(), secret = ownerSecret();
-    if (event.type === "payment.succeeded" && data && d.saveCustomer && mode) {
+    const data = obj(event.data), secret = ownerSecret();
+    if (event.type === "payment.succeeded" && data && d.saveCustomer) {
       const userId = await signedOwner(data, secret), customerId = safeOrUndefined(obj(data.customer)?.customer_id);
       // Never onto a second person: a customer the link book gives to someone else is left where it is (learnLink logged it).
       if (userId && customerId && (await customerIsTheirs(customerId, userId, d.links))) await d.saveCustomer(userId, customerId, mode);
@@ -479,7 +493,7 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
         log({ kind: decision.note === "partial_refund" ? "refund_logged" : "dispute_logged", eventType, webhookId, reason: decision.note, paymentId: decision.paymentId });
         return answer(200, "ignored");
       case "report_add": {
-        const r = await reports.add(decision.userId, decision.paymentId, Date.parse(String(event.timestamp)), mode ?? "test");
+        const r = await reports.add(decision.userId, decision.paymentId, Date.parse(String(event.timestamp)), mode);
         log({ kind: r === "added" ? "report_added" : "report_known", eventType, webhookId, userId: safeOrUndefined(decision.userId), paymentId: decision.paymentId });
         return answer(200, r === "added" ? "applied" : "duplicate");
       }
@@ -499,9 +513,9 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
     if (req.method !== "POST") return new Response("Method not allowed", { status: 405, headers: { allow: "POST" } });
     const body = await readCapped(req);
     if (body === null) { log({ kind: "bad_request", reason: "too_big" }); return answer(413, "bad_request", "That request is too big."); }
-    const verified = await verifyDodoWebhook(body, req.headers, d.secret(), Math.floor(now() / 1000));
+    const verified = await verifyEither(body, req.headers);
     if (!verified.ok) { log({ kind: "refused", reason: verified.reason }); return answer(401, "refused", "This request could not be verified."); }
-    const webhookId = safeOrUndefined(verified.id);
+    const webhookId = safeOrUndefined(verified.id), mode = verified.mode;
 
     let event: Record<string, unknown> | null = null;
     try { event = obj(JSON.parse(body)); } catch { event = null; }
@@ -517,18 +531,20 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
       if (owner && (isDeletedMarker(owner) || (d.deleted && (await d.deleted(owner, now()))))) {
         // Money for a deleted account (a checkout opened before the delete and paid after it): nothing is granted, so the
         // operator is told to refund it. The line is kept before the 200, so a failure here makes Dodo deliver it again.
-        const money = moneyForDeleted(event, at);
+        // Audit run 2, finding 5, round 3: the line keeps the event's mode (from the secret that verified it), so once Dodo is
+        // live a test card's payment is never shown as money to refund in live Dodo.
+        const found = moneyForDeleted(event, at), money = found ? { ...found, mode } : null;
         if (money && d.refundNeeded) await d.refundNeeded(money);
         log({ kind: money ? "refund_needed" : "ignored", eventType, webhookId, reason: "deleted_account", ...(money?.kind === "payment" ? { paymentId: money.id } : {}) });
         return answer(200, "ignored");
       }
       await learnLink(event, d.links, log, eventType, webhookId, ownerSecret());
       if (d.reports && !eventType?.startsWith("subscription.")) {
-        const paid = await paymentEvent(event, eventType, webhookId);
+        const paid = await paymentEvent(event, eventType, webhookId, mode);
         if (paid.status !== 200) await d.ledger.release(verified.id);   // not done: Dodo's retry gets another go
         return paid;
       }
-      const decision = await decideDodoEvent(event, d.products(), d.links, modeNow(), ownerSecret());
+      const decision = await decideDodoEvent(event, d.products(), d.links, mode, ownerSecret());
       if (decision.kind === "ignore") { log({ kind: "ignored", eventType, webhookId }); return answer(200, "ignored"); }
       if (decision.kind === "unlinked") {
         await d.ledger.release(verified.id);
@@ -542,7 +558,7 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
         outcome = await oneAtATime(scope ? `${entitlement.userId}\u0000${scope}` : entitlement.userId, async () => {
           const last = await d.ledger.lastAppliedAt(entitlement.userId, scope);
           if (last !== null && at < last) return "stale" as const;
-          if ((await d.apply(entitlement, at, detail, modeNow() ?? "test")) === false) return "stale" as const;
+          if ((await d.apply(entitlement, at, detail, mode)) === false) return "stale" as const;
           await d.ledger.setLastAppliedAt(entitlement.userId, at, scope);
           return "applied" as const;
         });
