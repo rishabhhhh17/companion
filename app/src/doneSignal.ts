@@ -3,15 +3,17 @@
 import { S } from "./strings.ts";
 
 /** M80: Cursor, the VS Code agent (GitHub Copilot) and Antigravity have the done signal and the guard too. */
-export const DONE_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf"] as const;
+/** M115: and every tool Squibby reaches now (protocol DONE_SIGNAL_TOOLS, the same order). */
+export const DONE_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf", "copilotcli", "opencode", "amp", "cline", "kiro", "zed", "junie", "jetbrains", "xcode", "any"] as const;
 export type DoneTool = (typeof DONE_TOOLS)[number];
 /** M77: which hook a row is: the done signal (M75), or Claude Code's guard (a snapshot before a destructive command) and
  *  waiting (Claude is waiting for you) hooks. M78: start (Claude Code is given the start block of notes as a session
  *  starts). Absent in an older engine's event means done. */
 /** M113: feed, the live feed after each edit (Claude Code, Codex, Cursor, the VS Code agent and Gemini CLI). */
 /** M114: approve (Claude Code's and Codex's permission requests) and answer (Claude Code's questions), from the notch. */
-export type HookKind = "done" | "guard" | "waiting" | "start" | "feed" | "approve" | "answer";
-const HOOK_KINDS: readonly unknown[] = ["done", "guard", "waiting", "start", "feed", "approve", "answer"];
+/** M115: watch, a tool with no hooks whose changes show live from the folder (nothing is written in the project). */
+export type HookKind = "done" | "guard" | "waiting" | "start" | "feed" | "approve" | "answer" | "watch";
+const HOOK_KINDS: readonly unknown[] = ["done", "guard", "waiting", "start", "feed", "approve", "answer", "watch"];
 /** M85: stale, Squibby's line is there but older than today's (a guard written before it could ask): Update shows the
  *  same card with today's lines, and only the yes writes them. */
 export type DoneRow = { tool: DoneTool; hook: HookKind; on: boolean; file: string; adds: string; creates: boolean; problem?: string; stale?: boolean };
@@ -31,11 +33,13 @@ export function doneStateFrom(e: unknown, project: string): DoneState | null {
 /** M85: the tools whose guard hook can have the tool ask the person first (each tool's own hook docs, read 14 Nov 2026). */
 const CAN_ASK: readonly string[] = ["claude", "cursor", "copilot", "antigravity"];
 /** M103: the other tools whose guard hook also hands over a file read tool's file name (runner donesignal.ts matchers). */
-const READS: readonly string[] = ["copilot", "antigravity", "gemini"];
+const READS: readonly string[] = ["copilot", "antigravity", "gemini", "copilotcli"];
 export function doneAsk(row: DoneRow): { title: string; where: string; what: string; notes: string[]; yes: string } {
   const tool = S.doneSignal.tool[row.tool];
   // M85 review: Update on an older line of Squibby's says it replaces that line, and what the new one does.
   if (row.on && row.stale) return { title: S.doneSignal.updateTitle(row.file), where: S.doneSignal.updateWhere(row.file), what: row.adds, notes: [row.hook !== "guard" ? S.doneSignal.updatePlain : CAN_ASK.includes(row.tool) ? S.doneSignal.updateAsks(tool) : S.doneSignal.updateSame(tool), S.doneSignal.askGit], yes: S.doneSignal.updateYes };
+  // M115: a watch row writes nothing in the project: its own card says so.
+  if (row.hook === "watch") return { title: S.m115.watchTitle(tool), where: S.m115.watchWhere, what: "", notes: [S.m115.watchWhat(tool)], yes: S.doneSignal.yes };
   // M114: approve and answer from the notch: their own cards (Squibby answers only on the person's press).
   if (row.hook === "approve") return { title: S.m114.askTitle(tool), where: S.doneSignal.askWhere(row.file, row.creates), what: row.adds, notes: [S.m114.askWhat(tool), S.doneSignal.askGit, ...(row.tool === "codex" ? [S.doneSignal.askCodex] : [])], yes: S.doneSignal.yes };
   if (row.hook === "answer") return { title: S.m114.answerTitle, where: S.doneSignal.askWhere(row.file, row.creates), what: row.adds, notes: [S.m114.answerWhat, S.doneSignal.askGit], yes: S.doneSignal.yes };
@@ -58,6 +62,7 @@ export function removedLine(row: Pick<DoneRow, "tool" | "hook">): string {
   const tool = S.doneSignal.tool[row.tool];
   if (row.hook === "waiting" && row.tool !== "claude") return S.m105.removed(tool);
   if (row.hook === "feed") return S.m113.removed(tool);
+  if (row.hook === "watch") return S.m115.watchRemoved(tool);
   if (row.hook === "approve" || row.hook === "answer") return S.m114.removed(tool);
   return row.hook === "done" ? S.doneSignal.removed(tool) : row.hook === "guard" ? S.doneSignal.removedGuard(tool) : S.doneSignal.removedOther;
 }
@@ -73,5 +78,7 @@ export function hookLabel(row: Pick<DoneRow, "tool" | "hook">): { label: string;
   // M114: the notch's answer rows.
   if (row.hook === "approve") return { label: S.m114.rowTitle(S.doneSignal.tool[row.tool]), line: S.m114.rowLine(S.doneSignal.tool[row.tool]) };
   if (row.hook === "answer") return { label: S.m114.answerRowTitle, line: S.m114.answerRowLine };
+  // M115: a tool with no hooks.
+  if (row.hook === "watch") return { label: S.m115.watchRow(S.doneSignal.tool[row.tool]), line: S.m115.watchWhat(S.doneSignal.tool[row.tool]) };
   return { label: S.doneSignal.hookTitle[row.hook], line: S.doneSignal.hookLine[row.hook] };
 }

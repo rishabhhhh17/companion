@@ -3,6 +3,8 @@
 // read, so a rename is one edit. Plain words, no cute talk (rule 16).
 import names from "../../protocol/names.json";
 /** M87: what a Why is live broken? part may carry (protocol LivePart), for its words. Never a value. */
+/** M115: every AI tool's id (protocol DONE_SIGNAL_TOOLS), so each list of names names every tool. */
+type ToolKey = "claude" | "codex" | "cursor" | "copilot" | "antigravity" | "gemini" | "windsurf" | "copilotcli" | "opencode" | "amp" | "cline" | "kiro" | "zed" | "junie" | "jetbrains" | "xcode" | "any";
 type WhyPart = { names?: string[]; more?: string[]; count?: number; at?: string; mode?: "live" | "test"; detail?: string };
 const WHY_MODE = (p: WhyPart): string => (p.mode === "test" ? "test mode" : "live mode");
 /** A time from the engine, as a person says it: "13 Nov, 21:04" in this Mac's own time. */
@@ -677,6 +679,8 @@ export const S = {
     "notch.liveFeed": "Pointing at the notch lists the files your AI tool edits and the commands it runs, while it works.",
     // M114
     "notch.askWait": "How long a question from your AI tool waits in the notch before the tool asks in its own window.",
+    // M115
+    "notch.jumpTab": "Go to brings the exact Terminal or iTerm tab of your AI tool to the front, not only the app.",
     "talk.accuracy": "Best understands more words. It is a one time download of 574 MB, kept on this Mac.",
   } as Record<string, string>,
   // Short words for a choice drawn side by side (a Segmented control never wraps: the spec, 2.3). The full words stay in a
@@ -2169,8 +2173,9 @@ export const S = {
       waiting: `When Claude Code waits for you, it hands its own short notice to ${PRODUCT_S} own folder. Only that notice travels. Nothing is blocked.`,
       start: `As a session starts, Claude Code shows Claude a file of notes ${PRODUCT} keeps in its own folder: the same lines the Memory page shows under What Claude Code is told at the start. Nothing is read from Claude Code and nothing is sent anywhere. It works while ${PRODUCT} is closed too.`,
     } as Record<"guard" | "waiting" | "start", string>,
-    line: `${PRODUCT} can start a review the moment your AI tool finishes (Claude Code, Codex, Cursor, the VS Code agent, Antigravity, Gemini CLI or Windsurf), instead of waiting for your files to be quiet. It can also save a copy of the project before your AI tool runs a command that throws work away: the command still runs as your tool decides, and Undo in History brings the files back. Each adds one line to that tool's own settings in this project, only after you say yes.`,
-    tool: { claude: "Claude Code", codex: "Codex", cursor: "Cursor", copilot: "VS Code (Copilot)", antigravity: "Antigravity", gemini: "Gemini CLI", windsurf: "Windsurf" } as Record<"claude" | "codex" | "cursor" | "copilot" | "antigravity" | "gemini" | "windsurf", string>,
+    line: `${PRODUCT} can start a review the moment your AI tool finishes (Claude Code, Codex, Cursor, Copilot, OpenCode, Kiro and the others in Your AI tools), instead of waiting for your files to be quiet. It can also save a copy of the project before your AI tool runs a command that throws work away: the command still runs as your tool decides, and Undo in History brings the files back. Connecting a tool adds one line to its own settings in this project, or one small file of ${PRODUCT_S} own for a tool that reads such files. A tool that cannot tell ${PRODUCT} anything gets nothing written: ${PRODUCT} watches the folder instead. Nothing is added until you say yes.`,
+    // M115: and every tool Squibby reaches now (their own names; any is the open tag any tool can run).
+    tool: { claude: "Claude Code", codex: "Codex", cursor: "Cursor", copilot: "VS Code (Copilot)", antigravity: "Antigravity", gemini: "Gemini CLI", windsurf: "Windsurf", copilotcli: "Copilot CLI", opencode: "OpenCode", amp: "Amp", cline: "Cline", kiro: "Kiro", zed: "Zed", junie: "Junie", jetbrains: "JetBrains AI Assistant", xcode: "Xcode", any: "Another tool" } as Record<ToolKey, string>,
     // M80: the saved copy before a destructive command, for the other tools, named by tool.
     guardOther: {
       title: (tool: string) => `${tool}: save a copy before a destructive command`,
@@ -2190,7 +2195,14 @@ export const S = {
       antigravity: "Antigravity lists it in its Customizations settings, where you can also turn it off.",
       gemini: "Gemini CLI asks you to trust a new line in a project's settings before it runs it. Gemini CLI is now part of Antigravity; if you moved there, use the Antigravity rows.",
       windsurf: "This is for Windsurf as part of Devin, which keeps these settings in a .devin folder. It does not run while the folder is open in Restricted Mode.",
-    } as Record<"cursor" | "copilot" | "antigravity" | "gemini" | "windsurf", string>,
+      // M115: each new tool's own note on the card before the yes.
+      copilotcli: "This is for GitHub Copilot in the terminal. It sits in its own file beside the VS Code agent's, in the project's .github/hooks folder.",
+      opencode: `This is a small plugin of ${PRODUCT_S} own in the project's .opencode/plugins folder. OpenCode loads it the next time it starts here.`,
+      amp: `This is a small plugin of ${PRODUCT_S} own in the project's .amp/plugins folder. Amp loads it the next time it starts here.`,
+      cline: `This is a small file of ${PRODUCT_S} own in the project's .clinerules folder. Cline runs it when a task is done, once that is turned on in Cline's settings.`,
+      kiro: `This is a small file of ${PRODUCT_S} own in the project's .kiro folder. Kiro lists it in its own settings, where you can also turn it off.`,
+      zed: "", junie: "", jetbrains: "", xcode: "", any: "",
+    } as Record<Exclude<ToolKey, "claude" | "codex">, string>,
     on: "On",
     off: "Not set up",
     setUp: "Set up",
@@ -2667,6 +2679,8 @@ export const S = {
     "you.buildsWith": { label: "The AI you build with", help: "Your answer to the first run's question. It only picks which tip you see first. It is kept on this Mac and never sent anywhere. Not set forgets it.", also: ["lovable", "bolt", "replit", "cursor", "claude code", "ai tool", "builder", "tip", "first run"], options: { unset: "Not set", lovable: "Lovable", bolt: "Bolt", replit: "Replit", cursor: "Cursor", claudeCode: "Claude Code", other: "Something else" } },
     // M114: approve and answer from the notch.
     "notch.askWait": { label: "Give me this long to answer in the notch", help: `When Claude Code or Codex asks for permission, the notch shows Allow and Don't allow. Claude Code's questions show with their choices. Press nothing for this long and the tool asks in its own window, as it always does. Answer in the tool works at any time. Each tool needs its notch answers row on (Fixing, Start reviews sooner).`, also: ["approve", "allow", "deny", "permission", "question", "answer", "notch", "wait", "timeout", "Claude Code", "Codex"], options: { "30": "30 seconds", "60": "1 minute", "120": "2 minutes" } },
+    // M115: Go to the session that needs you.
+    "notch.jumpTab": { label: "Go to the exact tab", help: `Go to, on a card or the live feed in the notch, brings the app your AI tool runs in to the front. With this on, it also picks the exact Terminal or iTerm tab of that session. The first time, the Mac asks whether ${PRODUCT} may control Terminal or iTerm; say no and only the app comes to the front. Off, nothing is asked and only the app comes to the front.`, also: ["terminal", "iterm", "tab", "jump", "go to", "window", "automation"] },
     // M113: the live feed in the notch.
     "notch.liveFeed": { label: "Show what your AI tools are doing", help: `While a connected AI tool works, pointing at the notch lists the files it edited and the commands it ran, newest first. Each file shows how many lines were added and taken away. A press on a line opens the review in Home. Only file names, counts and short commands are shown, and nothing is kept once the tool is done. For a tool you connected before, press Show edits live on its row in Settings, Fixing, Your AI tools.`, also: ["live", "feed", "ticker", "edits", "diff", "lines", "commands", "notch", "activity", "Claude Code", "Codex", "Cursor", "Gemini"] },
     "island.showStep": { label: "Show the step on the notch", help: "Only with Show wings at rest on. While a job works, the notch shows its step, such as Fixing, and a thin line of the four steps. Off, it shows only its marks. Home's work card always shows the step.", also: ["progress", "step", "notch", "working", "live", "line"] },
@@ -3935,7 +3949,7 @@ export const S = {
   /** M82: Connect your AI tools (aiTools.ts, aiToolsScreen.tsx), and hand Squibby the job (handoff.ts, handoffCard.tsx). */
   m82: {
     title: "Your AI tools",
-    line: `The AI tools ${PRODUCT} found on this Mac. Connect one and ${PRODUCT} saves a copy before it runs a destructive command, and starts a review the moment it is done.`,
+    line: `The AI tools ${PRODUCT} found on this Mac. Connect one and ${PRODUCT} does what that tool allows: each row says what.`,
     toolLine: "Saves a copy before it runs a destructive command, and starts a review when it is done.",
     toolLineClaude: "Saves a copy before it runs a destructive command, starts a review when it is done, and the notch says when it waits for you.",
     looking: "Looking for AI tools on this Mac",
@@ -3962,7 +3976,9 @@ export const S = {
       // M114: approve and answer from the notch.
       approve: (tool: string) => `Answer ${tool}'s permission requests from the notch`,
       answer: () => "Answer Claude Code's questions from the notch",
-    } as Record<"done" | "guard" | "waiting" | "start" | "feed" | "approve" | "answer", (tool: string) => string>,
+      // M115: a tool with no hooks.
+      watch: (tool: string) => `Show ${tool}'s changes live in the notch`,
+    } as Record<"done" | "guard" | "waiting" | "start" | "feed" | "approve" | "answer" | "watch", (tool: string) => string>,
     // M113: with the live feed, the line also tells which file it just edited and how many lines changed.
     connectWhat: (tool: string, feed = false) => `Each line only tells ${PRODUCT} that ${tool} is done, ${feed ? "about to run a destructive command or read saved logins, or which file it just edited and how many lines changed" : "or about to run a destructive command or read saved logins"}. Nothing is blocked unless you choose that in Settings, and nothing ${tool} says is kept.`,
     yes: "Connect",
@@ -4017,7 +4033,7 @@ export const S = {
   // Now's calm timeline of today use the same words.
   m84: {
     // A tool's small mark: two letters, drawn in a grey tile (never a logo: names are the tools' own, marks are ours).
-    mark: { claude: "CC", codex: "Cx", cursor: "Cu", copilot: "Co", antigravity: "Ag", gemini: "Ge", windsurf: "Ws" } as Record<"claude" | "codex" | "cursor" | "copilot" | "antigravity" | "gemini" | "windsurf", string>,
+    mark: { claude: "CC", codex: "Cx", cursor: "Cu", copilot: "Co", antigravity: "Ag", gemini: "Ge", windsurf: "Ws", copilotcli: "Cp", opencode: "Oc", amp: "Am", cline: "Cl", kiro: "Ki", zed: "Ze", junie: "Ju", jetbrains: "Jb", xcode: "Xc", any: "AI" } as Record<ToolKey, string>,
     // What each AI tool is doing now, as far as its hooks say.
     toolState: {
       waiting: "Waiting on you",
@@ -4476,6 +4492,49 @@ export const S = {
     showLive: "Show edits live",
     showLiveLabel: (tool: string) => `Show ${tool}'s edits live in the notch`,
     liveSaid: (tool: string) => `${tool}'s edits will show live in the notch.`,
+  },
+  // M115: every tool Squibby can reach (aiTools.ts), and Go to the session that needs you (goTo.ts).
+  m115: {
+    // One plain line per kind of tool, on its row in Your AI tools: what Squibby does with it.
+    supports: {
+      // Showing edits live is said by the row itself once it is on (S.m113.liveOn).
+      claude: "Saves a copy before a destructive command, starts a review when it is done, and lets you answer it from the notch.",
+      codex: "Saves a copy before a destructive command, starts a review when it is done, and lets you allow or deny it from the notch.",
+      doneGuard: "Saves a copy before a destructive command and starts a review when it is done.",
+      done: "Starts a review the moment it is done.",
+      watch: `Shows its changes live from the folder. It has no way to tell ${PRODUCT} more, so nothing is written in your project.`,
+    } as Record<"claude" | "codex" | "doneGuard" | "done" | "watch", string>,
+    // Tools that run through another one's connection.
+    via: { claudedesktop: "Claude Desktop" } as Record<"claudedesktop", string>,
+    viaLine: (tool: string, via: string) => `${tool} runs ${via}, so connecting ${via} here covers ${tool} too.`,
+    viaConnectLabel: (tool: string, via: string) => `Connect ${via}, which covers ${tool}`,
+    connectDoneOnly: (tool: string) => `This only tells ${PRODUCT} that ${tool} is done, so the review starts at once. Nothing is blocked, and nothing ${tool} says is read or kept.`,
+    // The watch rows (Zed, Junie, the JetBrains AI Assistant, Xcode).
+    watchTitle: (tool: string) => `Show ${tool}'s changes live?`,
+    watchWhere: "Nothing is written in your project.",
+    watchWhat: (tool: string) => `${tool} has no way to tell ${PRODUCT} what it does, so ${PRODUCT} shows the files that change in this folder while ${tool} works, marked as seen in the folder. Only file names are shown, and nothing is kept.`,
+    watchRemoved: (tool: string) => `${tool}'s changes no longer show live here.`,
+    watchRow: (tool: string) => `${tool}: show its changes live`,
+    // M115 review: the folder is watched only while reviews run (review.mode) and Fix (flow.on) is on.
+    watchOff: { reviews: "Shows nothing while reviews are Off for this project. Turn them on in Settings, Fixing.", flow: "Shows nothing while Fix is off. Turn it on in Settings, General, Tools." } as Record<"reviews" | "flow", string>,
+    // The open tag (docs/any-tool-hook.md).
+    anyTitle: "Any other tool",
+    anyLine: `Have your tool run this line when it is done, and ${PRODUCT} starts a review at once. It only touches an empty file in ${PRODUCT_S} own folder.`,
+    anyLoading: "Getting the line for this project",
+    anyCopy: "Copy the line",
+    anyCopied: "Copied. Put it where your tool runs a command when it finishes.",
+    anyCopyFailed: "It could not be copied. Select the line and copy it yourself.",
+    // Go to the session.
+    goTo: (app: string) => `Go to ${app}`,
+    goToSay: (tool: string, app: string) => `Go to ${tool} in ${app}`,
+    // M115 review: a tool that is an app of its own, before any of its sessions was seen: Go to opens it on the project.
+    goToOpenSay: (tool: string) => `Open ${tool} on this project`,
+    // Between a feed block's state and its Go to, so the two read as a state and a button.
+    goSep: "·",
+    answerIn: (app: string) => `Answer in ${app}`,
+    answerInSay: (tool: string, app: string) => `Answer in ${tool} instead. The notch lets go and ${app} comes to the front, where ${tool} asks you itself.`,
+    jumpUnknown: (tool: string) => `${PRODUCT} has not seen where ${tool} runs yet. It knows once ${tool} runs a command or asks you something.`,
+    jumpFailed: (tool: string) => `The Mac did not bring ${tool}'s window to the front. Open it from the Dock instead.`,
   },
   // M114: approve and answer from the notch (notchAsk.ts). A card for the person's own AI tool's ask: what it wants, Allow
   // and Don't allow (and Always allow, with its rule shown first), or its question's choices; Answer in the tool always works.

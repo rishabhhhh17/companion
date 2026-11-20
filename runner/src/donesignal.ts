@@ -60,14 +60,19 @@ import { randomBytes } from "node:crypto";
 import { writeAtomic } from "./atomic.ts";
 import { PRODUCT } from "./names.ts";
 
-export const DONE_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf"] as const;
+/** M115: and Copilot CLI (its own hook file), OpenCode, Amp, Cline and Kiro (one file of Squibby's own each: OWN_FILE_TOOLS),
+ *  Zed, Junie, the JetBrains AI Assistant and Xcode (no hooks: the folder is watched, WATCH_TOOLS), and any, the open tag any
+ *  tool can run (no row: anyLine). The first seven keep their place, so their markers and rows are unchanged. */
+export const DONE_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf", "copilotcli", "opencode", "amp", "cline", "kiro", "zed", "junie", "jetbrains", "xcode", "any"] as const;
 export type DoneTool = (typeof DONE_TOOLS)[number];
 /** M77: the kinds of hook. done: the Stop hook (both tools). guard and waiting: Claude Code only. M78: start, Claude Code
  *  only: the start block (memory/startblock.ts) printed as a session starts. */
-export const HOOK_KINDS = ["done", "guard", "waiting", "start", "feed", "approve", "answer"] as const;
+/** M115: watch, for a tool with no hooks: nothing is written in the project; Squibby's own index keeps the yes, and the live
+ *  feed fills in from the folder for that project. */
+export const HOOK_KINDS = ["done", "guard", "waiting", "start", "feed", "approve", "answer", "watch"] as const;
 export type HookKind = (typeof HOOK_KINDS)[number];
 /** The event each kind sits under in the tool's hooks file. */
-export const HOOK_EVENT: Readonly<Record<HookKind, string>> = { done: "Stop", guard: "PreToolUse", waiting: "Notification", start: "SessionStart", feed: "PostToolUse", approve: "PermissionRequest", answer: "PreToolUse" };
+export const HOOK_EVENT: Readonly<Record<HookKind, string>> = { done: "Stop", guard: "PreToolUse", waiting: "Notification", start: "SessionStart", feed: "PostToolUse", approve: "PermissionRequest", answer: "PreToolUse", watch: "" };
 /** M105: Codex's waiting hook sits under PermissionRequest (learn.chatgpt.com/docs/hooks, seen 15 Nov 2026). */
 export const CODEX_WAITING_EVENT = "PermissionRequest";
 /** The matcher of each kind (Stop has none). */
@@ -80,26 +85,43 @@ export const HOOK_MATCHER: Readonly<Partial<Record<HookKind, string>>> = { guard
  *  the VS Code agent's PostToolUse has no matcher, so the engine reads only its edit tools). Codex's apply_patch is its edit
  *  tool ([verify] that Codex hands it to PostToolUse on a real Mac). */
 export const FEED_MATCHER: Readonly<Partial<Record<DoneTool, string>>> = { claude: "Edit|Write|MultiEdit|NotebookEdit", codex: "apply_patch|Edit|Write", gemini: "write_file|replace" };
+/** M115: how long Copilot CLI gives the done hook, in seconds (it only touches a file). */
+export const DONE_TIMEOUT_S = 5;
 /** M113: how long a tool gives the feed hook, in seconds (it never waits, so it ends in a moment). */
 export const FEED_TIMEOUT_S = 5;
 /** The hooks each tool may have. M80: the other tools have the done signal and the guard (their waiting and start contracts
  *  differ or are missing, so those stay Claude Code's). */
 /** M113: the feed for the tools with an after edit event; Antigravity and Windsurf are covered by the folder watcher. */
 /** M114: approve for Claude Code and Codex (their PermissionRequest), answer for Claude Code (AskUserQuestion). */
-export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting", "start", "feed", "approve", "answer"], codex: ["done", "guard", "waiting", "feed", "approve"], cursor: ["done", "guard", "feed"], copilot: ["done", "guard", "feed"], antigravity: ["done", "guard"], gemini: ["done", "guard", "feed"], windsurf: ["done", "guard"] };
+export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting", "start", "feed", "approve", "answer"], codex: ["done", "guard", "waiting", "feed", "approve"], cursor: ["done", "guard", "feed"], copilot: ["done", "guard", "feed"], antigravity: ["done", "guard"], gemini: ["done", "guard", "feed"], windsurf: ["done", "guard"],
+  // M115: Copilot CLI's hooks (docs.github.com, Copilot CLI hooks: agentStop and preToolUse, which can deny but not ask).
+  copilotcli: ["done", "guard"], opencode: ["done"], amp: ["done"], cline: ["done"], kiro: ["done"], zed: ["watch"], junie: ["watch"], jetbrains: ["watch"], xcode: ["watch"], any: [] };
+/** M115: the tools whose done signal is one whole file of Squibby's own in the tool's own folder (its plugin or hook file),
+ *  written and removed whole, and only when it is Squibby's. */
+export const OWN_FILE_TOOLS = ["opencode", "amp", "cline", "kiro"] as const satisfies readonly DoneTool[];
+export type OwnFileTool = (typeof OWN_FILE_TOOLS)[number];
+export const isOwnFile = (t: DoneTool): t is OwnFileTool => (OWN_FILE_TOOLS as readonly string[]).includes(t);
+/** M115: the tools with no hooks at all: their changes show live from the folder once the person says yes for the project. */
+export const WATCH_TOOLS = ["zed", "junie", "jetbrains", "xcode"] as const satisfies readonly DoneTool[];
 /** M80: the event a hook sits under in each tool. Cursor names its own; the rest use Claude Code's names. */
 export const eventOf = (tool: DoneTool, hook: HookKind): string =>
   tool === "cursor" ? (hook === "guard" ? "beforeShellExecution" : hook === "feed" ? "afterFileEdit" : "stop")
   : tool === "gemini" ? (hook === "guard" ? "BeforeTool" : hook === "feed" ? "AfterTool" : "AfterAgent")
   : tool === "codex" && hook === "waiting" ? CODEX_WAITING_EVENT
+  // M115: Copilot CLI names its events in camelCase.
+  : tool === "copilotcli" ? (hook === "guard" ? "preToolUse" : "agentStop")
   : HOOK_EVENT[hook];
 /** M80: Antigravity's file holds named hooks at the top level; Squibby's are named with the internal name (never the product
  *  name, which changes: protocol/names.json). */
 export const ANTIGRAVITY_KEY: Readonly<Record<"done" | "guard", string>> = { done: "companion-done", guard: "companion-guard" };
 /** Where each tool's project hook file lives, from the project folder down. */
-export const HOOK_FILE: Readonly<Record<DoneTool, string>> = { claude: ".claude/settings.local.json", codex: ".codex/hooks.json", cursor: ".cursor/hooks.json", copilot: ".github/hooks/companion.json", antigravity: ".agents/hooks.json", gemini: ".gemini/settings.json", windsurf: ".devin/hooks.v1.json" };
+export const HOOK_FILE: Readonly<Record<DoneTool, string>> = { claude: ".claude/settings.local.json", codex: ".codex/hooks.json", cursor: ".cursor/hooks.json", copilot: ".github/hooks/companion.json", antigravity: ".agents/hooks.json", gemini: ".gemini/settings.json", windsurf: ".devin/hooks.v1.json",
+  // M115: Copilot CLI reads every file in .github/hooks, so its own file sits beside the VS Code agent's ([verify] that the VS
+  // Code agent, which reads that folder too, does not also run it).
+  copilotcli: ".github/hooks/companion-cli.json", opencode: ".opencode/plugins/companion.js", amp: ".amp/plugins/companion.ts", cline: ".clinerules/hooks/TaskComplete", kiro: ".kiro/hooks/companion-done.kiro.hook",
+  zed: "", junie: "", jetbrains: "", xcode: "", any: "" };
 /** M80: the files that start with a version line when Squibby makes them (Cursor needs it; the Copilot format has it). */
-const VERSIONED: ReadonlySet<DoneTool> = new Set(["cursor", "copilot"]);
+const VERSIONED: ReadonlySet<DoneTool> = new Set(["cursor", "copilot", "copilotcli"]);
 /** The folder in Squibby's data folder the hooks touch, and the file that names each project's token. */
 export const DONE_DIR = "done";
 export const DONE_INDEX = "done-signals.json";
@@ -145,7 +167,9 @@ export const waitTouchEntry = (marker: string) => ({ hooks: [{ type: "command", 
  *  Remove finds Squibby's entries by this opening. */
 const guardOpening = (guardDir: string, go = "exit 0") => `d=${shQuote(guardDir)}; p=$(cat "$d/${GUARD_PID}" 2>/dev/null) && kill -0 "$p" 2>/dev/null || { ${go}; };`;
 /** M80: how each tool's guard ends, on every path: the tool's own "go on", never a block and never an approval. */
-export const GUARD_GO: Readonly<Record<DoneTool, string>> = { claude: "exit 0", codex: "exit 0", copilot: "exit 0", cursor: "exit 1", antigravity: `printf '{"decision":"allow"}'; exit 0`, gemini: "exit 0", windsurf: "exit 0" };
+export const GUARD_GO: Readonly<Record<DoneTool, string>> = { claude: "exit 0", codex: "exit 0", copilot: "exit 0", cursor: "exit 1", antigravity: `printf '{"decision":"allow"}'; exit 0`, gemini: "exit 0", windsurf: "exit 0",
+  // M115: Copilot CLI goes on with no output (only a deny is read). The tools with no guard never run one.
+  copilotcli: "exit 0", opencode: "exit 0", amp: "exit 0", cline: "exit 0", kiro: "exit 0", zed: "exit 0", junie: "exit 0", jetbrains: "exit 0", xcode: "exit 0", any: "exit 0" };
 /** M85: how each tool's guard says "ask the person first", from each tool's own hook docs, with %s standing for Squibby's
  *  reason (a JSON string the engine wrote). Only tools whose documented hook answer can ask are here:
  *  - Claude Code: hookSpecificOutput.permissionDecision "ask" with permissionDecisionReason (code.claude.com/docs/en/hooks).
@@ -176,6 +200,8 @@ export const GUARD_BLOCK: Readonly<Partial<Record<DoneTool, string>>> = {
   codex: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}`,
   gemini: `{"decision":"deny","reason":%s}`,
   windsurf: `{"decision":"block","reason":%s}`,
+  // M115: Copilot CLI's preToolUse reads permissionDecision deny with its reason (docs.github.com, Copilot CLI hooks; [verify]).
+  copilotcli: `{"permissionDecision":"deny","permissionDecisionReason":%s}`,
 };
 /** M103: the tools whose guard can block, when the person chose it. */
 export const canBlock = (tool: DoneTool): boolean => GUARD_BLOCK[tool] !== undefined;
@@ -240,6 +266,8 @@ export const guardEntryFor = (tool: DoneTool, guardDir: string, token: string): 
   const command = guardCommand(guardDir, token, tool);
   if (tool === "cursor") return { command, timeout: GUARD_TIMEOUT_S };
   if (tool === "copilot") return { type: "command", command, timeoutSec: GUARD_TIMEOUT_S };
+  // M115: Copilot CLI's entries hold a bash line (and could hold a powershell one), with timeoutSec; no matcher.
+  if (tool === "copilotcli") return { type: "command", bash: command, timeoutSec: GUARD_TIMEOUT_S };
   // M103: the file read tools too, so a read of saved logins can be asked about ([verify] Antigravity's view_file name).
   if (tool === "antigravity") return { matcher: "run_command|view_file", hooks: [{ type: "command", command, timeout: GUARD_TIMEOUT_S }] };
   // M81: Gemini CLI names each hook (its /hooks panel lists them by name) and counts the timeout in milliseconds.
@@ -254,22 +282,47 @@ export const doneEntryFor = (tool: DoneTool, marker: string): Json => {
   const command = hookCommand(marker);
   if (tool === "cursor") return { command };
   if (tool === "copilot" || tool === "antigravity") return { type: "command", command };
+  if (tool === "copilotcli") return { type: "command", bash: command, timeoutSec: DONE_TIMEOUT_S };
   if (tool === "gemini") return { hooks: [{ name: "companion-done", type: "command", command }] };
   return hookEntry(marker);
 };
 
+/** M115: the words every own file of Squibby's carries on its first lines, so only Squibby's own file is ever changed or
+ *  removed (with the done folder's path in it too). An internal name, never the product's (protocol/names.json). */
+export const OWN_TAG = "companion-done-signal";
+/** M115: the whole of a tool's own file: when the tool is done it touches the marker (an empty file in Squibby's own done
+ *  folder), and it reads nothing: not the tool's event, its words, its input or its environment.
+ *  - OpenCode: a plugin in .opencode/plugins (opencode.ai/docs/plugins: a module whose export returns hooks; event is called
+ *    with each event, and session.idle means the session finished).
+ *  - Amp: a plugin in .amp/plugins (a default export given the plugin API; agent.end when the agent finishes). [verify] that
+ *    Amp reads a project's own plugin folder (Coucou writes the user wide ~/.config/amp/plugins).
+ *  - Cline: .clinerules/hooks/TaskComplete, a program Cline runs when a task completes; it prints {"cancel":false}.
+ *  - Kiro: an agent hook in .kiro/hooks, when agentStop then runCommand. [verify] both names on a real Mac. */
+export function ownFileBody(tool: OwnFileTool, marker: string): string {
+  const said = `${OWN_TAG}: ${PRODUCT}'s done signal. When the AI tool finishes it touches one empty file in ${PRODUCT}'s own folder, and it reads nothing. Remove it from ${PRODUCT}'s Settings.`;
+  const m = JSON.stringify(marker);
+  if (tool === "opencode") return `// ${said}\nimport { writeFileSync } from "node:fs";\nconst MARK = ${m};\nexport const CompanionDone = async () => ({\n  event: async ({ event }) => {\n    if (event?.type === "session.idle") { try { writeFileSync(MARK, ""); } catch { /* ${PRODUCT} is not there */ } }\n  },\n});\n`;
+  if (tool === "amp") return `// ${said}\nimport { writeFileSync } from "node:fs";\nconst MARK = ${m};\nexport default function (amp: { on(event: string, handler: () => void): void }): void {\n  amp.on("agent.end", () => { try { writeFileSync(MARK, ""); } catch { /* ${PRODUCT} is not there */ } });\n}\n`;
+  if (tool === "cline") return `#!/bin/sh\n# ${said}\n/usr/bin/touch -- ${shQuote(marker)} 2>/dev/null\nprintf '{"cancel":false}'\nexit 0\n`;
+  return JSON.stringify({ enabled: true, name: `${PRODUCT} done signal`, description: said, version: "1", when: { type: "agentStop" }, then: { type: "runCommand", command: `/usr/bin/touch -- ${shQuote(marker)}` } }, null, 2) + "\n";
+}
+/** M115: a file there that is not Squibby's own. */
+export const NOT_OURS = (file: string) => `${file} is already there and is not ${PRODUCT}'s, so nothing was written. Nothing in it was changed.`;
+
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === "object" && !Array.isArray(v);
 /** The objects of an entry that hold a command: its hooks list, or (Cursor and the VS Code agent) the entry itself. */
+/** M115: Copilot CLI's entries hold their line under bash. */
+const lineOf = (h: Json): string | null => (typeof h.command === "string" ? h.command : typeof h.bash === "string" ? h.bash : null);
 const holdersOf = (entry: unknown): Json[] =>
-  !isObj(entry) ? [] : Array.isArray(entry.hooks) ? entry.hooks.filter(isObj) : typeof entry.command === "string" ? [entry] : [];
-const commandsOf = (entry: unknown): string[] => holdersOf(entry).flatMap((h) => (typeof h.command === "string" ? [h.command] : []));
+  !isObj(entry) ? [] : Array.isArray(entry.hooks) ? entry.hooks.filter(isObj) : lineOf(entry) !== null ? [entry] : [];
+const commandsOf = (entry: unknown): string[] => holdersOf(entry).flatMap((h) => { const c = lineOf(h); return c === null ? [] : [c]; });
 /** Whether a Stop entry is Squibby's own: one of its commands names this marker. */
 const ours = (entry: unknown, marker: string): boolean => commandsOf(entry).some((c) => c.includes(marker));
 /** Whether an entry is any Squibby signal of this data folder (any marker in it), for a token that changed: a done touch of
  *  the done folder, or a guard or waiting command that opens with the guard folder. */
 const anyOurs = (entry: unknown, dir: string, guardDir: string, startDir: string): boolean =>
-  holdersOf(entry).some((h) => typeof h.command === "string" && ((h.command.includes(`${dir}/`) && h.command.startsWith("/usr/bin/touch -- ")) || h.command.startsWith(`d=${shQuote(guardDir)};`) || h.command.startsWith(`s=${shQuote(startDir)};`)));
+  commandsOf(entry).some((c) => (c.includes(`${dir}/`) && c.startsWith("/usr/bin/touch -- ")) || c.startsWith(`d=${shQuote(guardDir)};`) || c.startsWith(`s=${shQuote(startDir)};`));
 
 /** M114: which of Squibby's kinds a command is, by its opening and the name it hands over: the start block, a touch (done,
  *  or Codex's waiting signal with .wait), or one of the guard folder's (.feed, .perm, .question, .note; anything else is
@@ -300,7 +353,8 @@ function readHooks(file: string): Json | null | "bad" {
 
 /** M80: dirs names, for each tool, the highest folder Squibby made for its file (".github/hooks" when .github was there), so
  *  Remove takes away only folders Squibby made. An older record has only folders (the file's top folder). */
-type Rec = { token: string; made?: DoneTool[]; folders?: DoneTool[]; dirs?: Partial<Record<DoneTool, string>> };
+/** M115: watch, the tools with no hooks the person said yes to for this project (nothing is written in the project). */
+type Rec = { token: string; made?: DoneTool[]; folders?: DoneTool[]; dirs?: Partial<Record<DoneTool, string>>; watch?: DoneTool[] };
 /** M85: stale, Squibby's entry is there but older than today's (turn it off and on again for the new one). */
 export type DonePlan = { tool: DoneTool; hook: HookKind; file: string; rel: string; on: boolean; creates: boolean; adds: string; problem?: string; stale?: boolean };
 
@@ -395,6 +449,9 @@ export class DoneSignals {
 
   /** What would be written, or what is there, for one tool and hook: the exact entry the card shows before the yes. */
   plan(project: string, tool: DoneTool, hook: HookKind = "done"): DonePlan {
+    // M115: a watch tool's rows, and a watch asked of any other tool, are the watch plan (with its problem when unknown).
+    if (hook === "watch" || TOOL_HOOKS[tool].includes("watch")) return this.watchPlan(project, tool, hook);
+    if (isOwnFile(tool) && hook === "done") return this.ownPlan(project, tool);
     const p = resolve(project), rel = HOOK_FILE[tool], file = join(p, rel);
     const token = this.tokenFor(p, false);
     const known = TOOL_HOOKS[tool].includes(hook);
@@ -425,6 +482,8 @@ export class DoneSignals {
     const p = resolve(project);
     if (!TOOL_HOOKS[tool].includes(hook)) return { ...this.plan(p, tool, hook), problem: NOT_FOR_TOOL };
     try { if (!statSync(p).isDirectory()) return { ...this.plan(p, tool, hook), problem: NOT_A_FOLDER }; } catch { return { ...this.plan(p, tool, hook), problem: NOT_A_FOLDER }; }
+    if (hook === "watch") return this.setWatch(p, tool, true);
+    if (isOwnFile(tool)) return this.ownAdd(p, tool);
     const rel = HOOK_FILE[tool], file = join(p, rel), event = eventOf(tool, hook);
     const now = readHooks(file);
     if (now === "bad") return { ...this.plan(p, tool, hook), problem: NOT_JSON(rel) };
@@ -466,6 +525,8 @@ export class DoneSignals {
   /** Removes only Squibby's own entry of this kind. A file Squibby made and that is now empty is removed, and the folders
    *  it made for it once they are empty. */
   remove(project: string, tool: DoneTool, hook: HookKind = "done"): DonePlan {
+    if (hook === "watch") return TOOL_HOOKS[tool].includes("watch") ? this.setWatch(resolve(project), tool, false) : this.plan(project, tool, hook);
+    if (isOwnFile(tool) && hook === "done") return this.ownRemove(resolve(project), tool);
     const p = resolve(project), rel = HOOK_FILE[tool], file = join(p, rel), event = eventOf(tool, hook);
     const now = readHooks(file);
     if (now === "bad") return { ...this.plan(p, tool, hook), problem: NOT_JSON(rel) };
@@ -497,6 +558,79 @@ export class DoneSignals {
     return this.plan(p, tool, hook);
   }
 
+
+  /** M115: a watch row: nothing in the project, only whether the person said yes here. */
+  private watchPlan(project: string, tool: DoneTool, hook: HookKind): DonePlan {
+    const p = resolve(project), known = hook === "watch" && TOOL_HOOKS[tool].includes("watch");
+    const on = known && (this.read()[p]?.watch ?? []).includes(tool);
+    return { tool, hook, file: p, rel: "", on, creates: false, adds: "", ...(known ? {} : { problem: NOT_FOR_TOOL }) };
+  }
+  private setWatch(p: string, tool: DoneTool, on: boolean): DonePlan {
+    if (on) this.tokenFor(p);
+    const all = this.read(), rec = all[p];
+    if (rec) {
+      const now = (rec.watch ?? []).filter((t) => t !== tool);
+      all[p] = { ...rec, watch: on ? [...now, tool] : now };
+      this.save(all);
+    }
+    return this.watchPlan(p, tool, "watch");
+  }
+  /** M115: the tools with no hooks the person turned on for this project, in the list's order. */
+  watching(project: string): DoneTool[] {
+    const on = this.read()[resolve(project)]?.watch ?? [];
+    return WATCH_TOOLS.filter((t) => on.includes(t));
+  }
+  /** M115: the open tag: the one line any tool can run when it is done, for this project (its token made if needed). */
+  anyLine(project: string): string {
+    const t = this.tokenFor(resolve(project))!;
+    try { mkdirSync(this.dir, { recursive: true, mode: 0o700 }); } catch { /* start() makes it too */ }
+    return `/usr/bin/touch -- ${shQuote(join(this.dir, markerName(t, "any")))}`;
+  }
+  /** M115: an own file's text, if it is Squibby's: a plain file (never a link) that carries the tag and the done folder. */
+  private ownText(file: string): string | null | "theirs" {
+    let text: string;
+    try { if (!lstatSync(file).isFile()) return "theirs"; text = readFileSync(file, "utf8"); } catch (e) { return (e as NodeJS.ErrnoException).code === "ENOENT" ? null : "theirs"; }
+    return text.includes(OWN_TAG) && text.includes(`${this.dir}/`) ? text : "theirs";
+  }
+  private ownPlan(project: string, tool: OwnFileTool): DonePlan {
+    const p = resolve(project), rel = HOOK_FILE[tool], file = join(p, rel), token = this.tokenFor(p, false);
+    const adds = ownFileBody(tool, join(this.dir, markerName(token ?? "<made when you say yes>", tool)));
+    const now = this.ownText(file);
+    const base: DonePlan = { tool, hook: "done", file, rel, on: typeof now === "string" && now !== "theirs", creates: now === null, adds };
+    if (now === "theirs") return { ...base, on: false, problem: NOT_OURS(rel) };
+    return typeof now === "string" && now !== adds ? { ...base, stale: true } : base;
+  }
+  private ownAdd(p: string, tool: OwnFileTool): DonePlan {
+    const rel = HOOK_FILE[tool], file = join(p, rel), now = this.ownText(file);
+    if (now === "theirs") return this.ownPlan(p, tool);
+    const token = this.tokenFor(p)!;
+    try { mkdirSync(this.dir, { recursive: true, mode: 0o700 }); } catch { /* start() makes it too */ }
+    const body = ownFileBody(tool, join(this.dir, markerName(token, tool)));
+    if (now === body) return this.ownPlan(p, tool);
+    const parts = rel.split("/").slice(0, -1);
+    let madeDir: string | null = null;
+    for (let i = 1; i <= parts.length; i++) { const d = parts.slice(0, i).join("/"); if (!existsSync(join(p, d))) { madeDir = d; break; } }
+    mkdirSync(join(p, ...parts), { recursive: true });
+    // Cline runs its hook as a program.
+    writeAtomic(file, body, tool === "cline" ? 0o755 : 0o644);
+    const all = this.read(), rec = all[p]!;
+    all[p] = { ...rec, made: [...new Set([...(rec.made ?? []), tool])], ...(madeDir || rec.dirs ? { dirs: { ...(rec.dirs ?? {}), ...(madeDir ? { [tool]: madeDir } : {}) } } : {}) };
+    this.save(all);
+    return this.ownPlan(p, tool);
+  }
+  private ownRemove(p: string, tool: OwnFileTool): DonePlan {
+    const rel = HOOK_FILE[tool], file = join(p, rel), now = this.ownText(file);
+    if (typeof now !== "string" || now === "theirs") return this.ownPlan(p, tool);
+    rmSync(file, { force: true });
+    const all = this.read(), rec = all[p];
+    const top = rec?.dirs?.[tool];
+    if (top) {
+      const parts = rel.split("/").slice(0, -1);
+      for (let i = parts.length; i >= top.split("/").length; i--) { try { const d = join(p, ...parts.slice(0, i)); if (readdirSync(d).length === 0) rmdirSync(d); else break; } catch { break; } }
+    }
+    if (rec) { const dirs = { ...(rec.dirs ?? {}) }; delete dirs[tool]; all[p] = { ...rec, made: (rec.made ?? []).filter((t) => t !== tool), ...(rec.dirs ? { dirs } : {}) }; this.save(all); }
+    return this.ownPlan(p, tool);
+  }
   /** Every tool's and hook's state for a project, for the Settings rows. M80: tool by tool, each tool's hooks together
    *  (its done signal first), so the page can show one group per tool. */
   state(project: string): DonePlan[] {

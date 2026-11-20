@@ -11,7 +11,8 @@ import { S } from "./strings.ts";
 export type ToolId = DoneTool;
 /** What the shell found: installed bundle ids, program names, and the project's tool folders. */
 export type Found = { apps: string[]; programs: string[]; folders: string[] };
-type ListTool = { id: string; apps: string[]; programs: string[]; folders: string[] };
+/** M115: via names the tool whose connection covers this one (Claude Desktop runs Claude Code). */
+type ListTool = { id: string; via?: string; apps: string[]; programs: string[]; folders: string[] };
 export const LIST: readonly ListTool[] = (list as { tools: ListTool[] }).tools;
 
 /** The hooks Connect adds for each tool, in the order they are added. The start block stays its own row in Settings. */
@@ -22,7 +23,33 @@ export const LIST: readonly ListTool[] = (list as { tools: ListTool[] }).tools;
 /** M114: and the notch's answers (approve for Claude Code and Codex, answer for Claude Code), optional the same way. */
 export const CONNECT_HOOKS: Readonly<Record<ToolId, readonly HookKind[]>> = {
   claude: ["done", "guard", "waiting", "feed", "approve", "answer"], codex: ["done", "guard", "waiting", "feed", "approve"], cursor: ["done", "guard", "feed"], copilot: ["done", "guard", "feed"], antigravity: ["done", "guard"], gemini: ["done", "guard", "feed"], windsurf: ["done", "guard"],
+  // M115: Copilot CLI's own hook file, one file of Squibby's own for OpenCode, Amp, Cline and Kiro, and the folder for the tools
+  // with no hooks. The open tag (any) has nothing to connect: Your AI tools shows its line instead.
+  copilotcli: ["done", "guard"], opencode: ["done"], amp: ["done"], cline: ["done"], kiro: ["done"], zed: ["watch"], junie: ["watch"], jetbrains: ["watch"], xcode: ["watch"], any: [],
 };
+/** M115: the tools listed through another tool's connection (aitools.json via): their row shows that tool's state, and its
+ *  Connect connects that tool. */
+export type ViaTool = { id: string; via: ToolId; name: string };
+export const VIA_TOOLS: readonly ViaTool[] = LIST.flatMap((t) => (t.via && (DONE_TOOLS as readonly string[]).includes(t.via) && Object.hasOwn(S.m115.via, t.id) ? [{ id: t.id, via: t.via as ToolId, name: S.m115.via[t.id as keyof typeof S.m115.via] }] : []));
+/** M115: one plain line of what Squibby does with this tool, by what its hooks can do. */
+export function supportsLine(tool: ToolId): string {
+  if (tool === "claude" || tool === "codex") return S.m115.supports[tool];
+  const k = CONNECT_HOOKS[tool];
+  if (k.includes("watch")) return S.m115.supports.watch;
+  return k.includes("guard") ? S.m115.supports.doneGuard : S.m115.supports.done;
+}
+/** M115 review: a watch tool's changes come only from the review's folder watch (runner/src/review/service.ts), which runs
+ *  only while reviews are not Off for the project and Fix (flow.on) is on. Its row and card say so then; null otherwise. */
+export function watchNote(tool: ToolId, reviewMode: string, flowOn: unknown): string | null {
+  if (!CONNECT_HOOKS[tool].includes("watch")) return null;
+  if (flowOn === false) return S.m115.watchOff.flow;
+  return reviewMode === "off" ? S.m115.watchOff.reviews : null;
+}
+/** M115: the open tag's line for this project (donesignal.anyLine), only as the touch line; null for anything else. */
+export function anyLineFrom(e: unknown, project: string): string | null {
+  const o = e as { type?: unknown; project?: unknown; line?: unknown } | null;
+  return o && o.type === "donesignal.anyLine" && o.project === project && typeof o.line === "string" && o.line.startsWith("/usr/bin/touch -- '") && !o.line.includes("\n") ? o.line : null;
+}
 
 /** The tool's name as people know it. */
 export const toolName = (t: ToolId): string => S.doneSignal.tool[t];
@@ -37,14 +64,15 @@ export function foundFrom(v: unknown): Found {
 
 /** The tools on this Mac, in the list's order, each once, and the rest ("Not on this Mac"). A tool counts as here when its
  *  app is installed, its program was found, or the project has its own folder. Only tools of the done signal are listed. */
-export function findTools(found: Found): { here: ToolId[]; notHere: ToolId[] } {
+/** M115: also the tools listed through another one (Claude Desktop), found the same way. The open tag is never listed. */
+export function findTools(found: Found): { here: ToolId[]; notHere: ToolId[]; via: ViaTool[] } {
   const here: ToolId[] = [], notHere: ToolId[] = [];
+  const isHere = (t: ListTool | undefined) => !!t && (t.apps.some((a) => found.apps.includes(a)) || t.programs.some((p) => found.programs.includes(p)) || t.folders.some((f) => found.folders.includes(f)));
   for (const id of DONE_TOOLS) {
-    const t = LIST.find((x) => x.id === id);
-    const on = !!t && (t.apps.some((a) => found.apps.includes(a)) || t.programs.some((p) => found.programs.includes(p)) || t.folders.some((f) => found.folders.includes(f)));
-    (on ? here : notHere).push(id);
+    if (id === "any") continue;
+    (isHere(LIST.find((x) => x.id === id)) ? here : notHere).push(id);
   }
-  return { here, notHere };
+  return { here, notHere, via: VIA_TOOLS.filter((v) => isHere(LIST.find((x) => x.id === v.id))) };
 }
 
 /** The rows of one tool that Connect owns, from the engine's state. */
@@ -79,12 +107,15 @@ export function connectAsk(st: DoneState | null, tool: ToolId): ConnectAsk | nul
   const rows = connectRows(st, tool).filter((r) => !r.on);
   if (rows.length === 0) return null;
   const name = toolName(tool);
-  const toolNote = tool === "codex" ? S.doneSignal.askCodex : tool === "claude" ? null : S.doneSignal.askTool[tool];
+  const toolNote = tool === "codex" ? S.doneSignal.askCodex : tool === "claude" ? null : S.doneSignal.askTool[tool] || null;
+  // M115: a tool with no hooks: one part that writes nothing, and its own words.
+  if (CONNECT_HOOKS[tool].includes("watch")) return { title: S.m82.connectTitle(name), parts: rows.map((r) => ({ hook: r.hook, label: S.m82.partLabel[r.hook](name), where: S.m115.watchWhere, what: "" })), notes: [S.m115.watchWhat(name)] };
   return {
     title: S.m82.connectTitle(name),
     parts: CONNECT_HOOKS[tool].flatMap((h) => { const r = rows.find((x) => x.hook === h); return r ? [{ hook: h, label: S.m82.partLabel[h](name), where: S.doneSignal.askWhere(r.file, r.creates), what: r.adds }] : []; }),
     // M114: with the notch's answers, the card also says the tool waits a moment for a press, and that it never answers alone.
-    notes: [S.m82.connectWhat(name, rows.some((r) => r.hook === "feed")), ...(rows.some((r) => r.hook === "approve" || r.hook === "answer") ? [S.m114.connectNote(name)] : []), S.doneSignal.askGit, ...(toolNote ? [toolNote] : [])],
+    // M115: a tool with only the done signal says only that.
+    notes: [CONNECT_HOOKS[tool].includes("guard") ? S.m82.connectWhat(name, rows.some((r) => r.hook === "feed")) : S.m115.connectDoneOnly(name), ...(rows.some((r) => r.hook === "approve" || r.hook === "answer") ? [S.m114.connectNote(name)] : []), S.doneSignal.askGit, ...(toolNote ? [toolNote] : [])],
   };
 }
 

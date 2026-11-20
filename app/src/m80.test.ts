@@ -5,7 +5,7 @@ import { S } from "./strings.ts";
 
 const row = (tool: string, hook: string, file: string) => ({ tool, hook, on: false, file, adds: "{}", creates: true });
 describe("the other tools' rows", () => {
-  const st = doneStateFrom({ type: "donesignal.state", project: "/p", tools: [row("cursor", "guard", ".cursor/hooks.json"), row("copilot", "done", ".github/hooks/companion.json"), row("antigravity", "guard", ".agents/hooks.json"), row("zed", "done", "x")] }, "/p")!;
+  const st = doneStateFrom({ type: "donesignal.state", project: "/p", tools: [row("cursor", "guard", ".cursor/hooks.json"), row("copilot", "done", ".github/hooks/companion.json"), row("antigravity", "guard", ".agents/hooks.json"), row("lovable", "done", "x")] }, "/p")!;
   test("every known tool is read, and an unknown one is dropped", () => {
     expect(st.tools.map((t) => t.tool)).toEqual(["cursor", "copilot", "antigravity"]);
   });

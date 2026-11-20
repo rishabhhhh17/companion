@@ -67,7 +67,8 @@ describe("one done marker per tool", () => {
     expect(markerOf(t)).toEqual({ token: t, tool: null, wait: false });
     expect(markerOf(`${t}.codex`)).toEqual({ token: t, tool: "codex", wait: false });
     expect(markerOf(`${t}.codex.wait`)).toEqual({ token: t, tool: "codex", wait: true });
-    for (const bad of [`${t}.zed`, `${t}.wait`, `${t}.codex.wait.x`, `${t}x`, "notes.txt", `${t}.Codex`, `../${t}.codex`]) expect(markerOf(bad)).toBeNull();
+    // M115 (changed on purpose): Zed is one of the tools now, so a tool that is not on the list stands in for it.
+    for (const bad of [`${t}.lovable`, `${t}.wait`, `${t}.codex.wait.x`, `${t}x`, "notes.txt", `${t}.Codex`, `../${t}.codex`]) expect(markerOf(bad)).toBeNull();
   });
   test("a stray file in the done folder and a marker of an unknown project say nothing", async () => {
     const data = tmp("data"), p = tmp("proj");
@@ -320,9 +321,10 @@ describe("the protocol (shared fixtures, read by the shell's suite and the pages
     expect(fx.map((e) => e.by ?? e.tool)).toEqual(["codex", "codex", "cursor", "codex"]);
   });
   test("an unknown tool, and words on another tool's waiting signal, are refused", () => {
-    expect(parseEvent(JSON.stringify({ ...fx[0], by: "zed" })).ok).toBe(false);
+    // M115 (changed on purpose): Zed is one of the tools now; a tool that is not on the list is still refused.
+    expect(parseEvent(JSON.stringify({ ...fx[0], by: "lovable" })).ok).toBe(false);
     expect(parseEvent(JSON.stringify({ ...fx[1], by: "Codex" })).ok).toBe(false);
-    expect(parseEvent(JSON.stringify({ ...fx[3], tool: "zed" })).ok).toBe(false);
+    expect(parseEvent(JSON.stringify({ ...fx[3], tool: "lovable" })).ok).toBe(false);
     expect(parseEvent(JSON.stringify({ ...fx[3], message: "Codex wants to run rm" })).ok).toBe(false);
     // Claude Code's own waiting line keeps its short notice.
     expect(parseEvent(JSON.stringify({ ...fx[3], tool: "claude", message: "Claude needs your permission" })).ok).toBe(true);

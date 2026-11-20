@@ -4,7 +4,7 @@
 // tool, Disconnect takes them out again, and a file that is not plain JSON is refused for both and left as it was. No git,
 // no model.
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DONE_TOOLS, DoneSignals, HOOK_FILE, TOOL_HOOKS, type DonePlan } from "../src/donesignal.ts";
@@ -46,7 +46,8 @@ describe("Connect and Disconnect, through the engine's own hooks", () => {
       const cmds = connectCommands(p, stateOf(s, p), tool);
       expect(cmds.map((c) => (c as { hook?: string }).hook ?? "done")).toEqual([...CONNECT_HOOKS[tool]]);
       // Nothing is written before the commands run (the yes).
-      expect(existsSync(join(p, HOOK_FILE[tool]))).toBe(false);
+      // M115 (changed on purpose): a tool with no hooks (watch) and the open tag have no file in the project at all.
+      if (HOOK_FILE[tool]) expect(existsSync(join(p, HOOK_FILE[tool]))).toBe(false);
       for (const c of cmds) run(s, c as never);
       expect(onHooks(s, p).sort()).toEqual(CONNECT_HOOKS[tool].map((h) => `${tool}:${h}`).sort());
       // Connected: a second Connect has nothing left to send.
@@ -54,7 +55,8 @@ describe("Connect and Disconnect, through the engine's own hooks", () => {
       for (const c of disconnectCommands(p, stateOf(s, p), tool)) run(s, c as never);
       expect(onHooks(s, p)).toEqual([]);
       // A file only Squibby made is gone again.
-      expect(existsSync(join(p, HOOK_FILE[tool]))).toBe(false);
+      if (HOOK_FILE[tool]) expect(existsSync(join(p, HOOK_FILE[tool]))).toBe(false);
+      else expect(readdirSync(p)).toEqual([]);
     }
   });
 

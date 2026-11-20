@@ -27,16 +27,18 @@ case "${1:-}" in
 esac
 
 # The entitlements the app's own program carries, and why. Each one is checked, nothing more is allowed:
+#   com.apple.security.automation.apple-events   Go to (M115): one osascript that selects the Terminal or iTerm tab where an
+#     AI tool runs, only on the person's press and only with notch.jumpTab on; macOS asks its Automation question first.
 #   com.apple.security.device.audio-input   the talk keys: the hardened runtime blocks the microphone without it.
 # Not needed, on purpose:
 #   allow-jit and allow-unsigned-executable-memory: the pages run in WebKit, whose JavaScript runs in Apple's own web
 #     content process, not in ours; Bun (the engine) is its own program and carries its own JIT entitlements in its maker's
 #     signature, which we never touch.
 #   camera: the camera check is switched off (presentation.rs CAMERA_CHECK_ON) and never opens a camera.
-#   apple-events: every osascript use is one of the Mac's own dialogs (choose folder, save, delete everything), shown by
-#     osascript itself; nothing sends events to another app.
 #   screen capture and Accessibility have no entitlement: macOS asks the person itself the first time (rule 8).
-EXPECTED_ENTITLEMENTS="com.apple.security.device.audio-input"
+EXPECTED_ENTITLEMENTS="com.apple.security.automation.apple-events
+com.apple.security.device.audio-input"   # sorted, one per line, as plist_keys prints them
+EXPECTED_SHOWN="$(echo "$EXPECTED_ENTITLEMENTS" | tr '\n' ' ' | sed 's/ $//')"
 PIN="$ROOT/protocol/claude-pin.json"
 pin() { python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$PIN" "$1"; }
 CLAUDE_TEAM="$(pin team)"; CLAUDE_IDENTIFIER="$(pin identifier)"; CLAUDE_VERSION="$(pin version)"
@@ -69,8 +71,8 @@ print("\n".join(sorted(k for k,v in d.items() if v is True)))'; }
 
 check_entitlements_file() {
   GOT="$(plist_keys < src-tauri/Entitlements.plist)"
-  [ "$GOT" = "$EXPECTED_ENTITLEMENTS" ] || { echo "FAIL: Entitlements.plist must hold exactly $EXPECTED_ENTITLEMENTS, but holds: $(echo "$GOT" | tr '\n' ' ')"; return 1; }
-  echo "  entitlements: exactly $EXPECTED_ENTITLEMENTS (the talk keys); no JIT, camera or library validation switch"
+  [ "$GOT" = "$EXPECTED_ENTITLEMENTS" ] || { echo "FAIL: Entitlements.plist must hold exactly $EXPECTED_SHOWN, but holds: $(echo "$GOT" | tr '\n' ' ')"; return 1; }
+  echo "  entitlements: exactly $EXPECTED_SHOWN (Go to and the talk keys); no JIT, camera or library validation switch"
   plutil -extract NSMicrophoneUsageDescription raw src-tauri/Info.plist >/dev/null 2>&1 || { echo "FAIL: Info.plist has no microphone sentence"; return 1; }
   echo "  Info.plist: the microphone sentence is there (macOS has no such sentence for screen recording; it asks itself)"
 }
@@ -140,8 +142,8 @@ verify_app() {
   echo "$INFO" | grep -q "^Timestamp=" || { echo "FAIL: the app has no secure timestamp"; return 1; }
   echo "  Developer ID, hardened runtime and a secure timestamp"
   GOT="$(codesign -d --entitlements - --xml "$APP" 2>/dev/null | plist_keys)"
-  [ "$GOT" = "$EXPECTED_ENTITLEMENTS" ] || { echo "FAIL: the signed app carries these entitlements: $(echo "$GOT" | tr '\n' ' '), not exactly $EXPECTED_ENTITLEMENTS"; return 1; }
-  echo "  the signed app's entitlements: exactly $EXPECTED_ENTITLEMENTS"
+  [ "$GOT" = "$EXPECTED_ENTITLEMENTS" ] || { echo "FAIL: the signed app carries these entitlements: $(echo "$GOT" | tr '\n' ' '), not exactly $EXPECTED_SHOWN"; return 1; }
+  echo "  the signed app's entitlements: exactly $EXPECTED_SHOWN"
   B="$APP/Contents/Resources/engine/bin/bun"
   if [ -f "$B" ]; then
     codesign --verify --strict "$B" 2>/dev/null || { echo "FAIL: Bun inside the app no longer verifies"; return 1; }

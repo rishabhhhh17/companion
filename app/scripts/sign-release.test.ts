@@ -54,7 +54,7 @@ describe("sign-release.sh (M92)", () => {
   test("the dry run checks the entitlements, the Claude copy and the repo, and says why there is no JIT entitlement", () => {
     const r = run(["--dry-run"], GOOD);
     expect(r.code).toBe(0);
-    expect(r.out).toContain("entitlements: exactly com.apple.security.device.audio-input");
+    expect(r.out).toContain("entitlements: exactly com.apple.security.automation.apple-events com.apple.security.device.audio-input");
     expect(r.out).toContain("no signing files in the repo");
     expect(r.out).toMatch(/allow-jit/);
     if (existsSync(sdkClaude)) expect(r.out).toContain("Claude in the SDK package: signed by Anthropic PBC (Q6L2SF6YDW)");
@@ -129,9 +129,9 @@ describe("sign-release.sh (M92)", () => {
     expect(code).not.toMatch(/codesign[^\n]*--sign[^\n]*claude/i);
   });
 
-  test("the entitlements are exactly the microphone: no JIT, no camera, no library validation switched off", () => {
+  test("the entitlements are exactly Go to's Apple Events (M115) and the microphone: no JIT, no camera, no library validation switched off", () => {
     const p = Bun.spawnSync(["plutil", "-convert", "json", "-o", "-", join(appDir, "src-tauri/Entitlements.plist")]);
-    expect(Object.keys(JSON.parse(p.stdout.toString()))).toEqual(["com.apple.security.device.audio-input"]);
+    expect(Object.keys(JSON.parse(p.stdout.toString()))).toEqual(["com.apple.security.automation.apple-events", "com.apple.security.device.audio-input"]);
   });
 
   test("--verify-only refuses an app with any Claude binary inside it (M22), before the signature checks", () => {

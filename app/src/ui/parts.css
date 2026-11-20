@@ -511,3 +511,6 @@ button.ui-mrow-main:active { background: var(--surface-2); transform: scale(var(
 /* 15. An empty list's example row: exactly what will appear, at 40 percent; a picture only, hidden from VoiceOver. */
 .ui-mrow[data-ghost] { opacity: var(--ghost); animation-name: ui-ghost-in; }
 @keyframes ui-ghost-in { from { opacity: 0; translate: 0 var(--rise-row); } to { opacity: var(--ghost); translate: 0 0; } }
+/* M115: the bodies of Your AI tools' folds (Not on this Mac, Any other tool) line up with the rows above them. */
+.ai-tools .ui-disc-body { padding: 0 var(--space-4) var(--space-3); }
+.ai-tools .ui-disc-body .set-buttons { margin-top: var(--space-2); }

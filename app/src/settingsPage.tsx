@@ -797,7 +797,8 @@ function DoneSignalRows() {
       <ConfirmStep className="set-confirm done-ask" label={w.title} back={rowId(ask)} onCancel={() => setAsking(null)}>
         <p><b>{w.title}</b></p>
         <p>{w.where}</p>
-        <div className="ask-what" role="group" aria-label={S.approval.what}><code>{w.what}</code></div>
+        {/* M115: a watch row writes nothing, so it shows no lines. */}
+        {w.what && <div className="ask-what" role="group" aria-label={S.approval.what}><code>{w.what}</code></div>}
         {w.notes.map((n) => <p key={n}>{n}</p>)}
         <div className="set-buttons"><Button kind="primary" onClick={() => { const t = ask.tool, h = ask.hook; setAsking(null); void send(addDoneSignal(project, t, h)); }}>{w.yes}</Button><Button cancel onClick={() => setAsking(null)}>{S.doneSignal.no}</Button></div>
       </ConfirmStep>

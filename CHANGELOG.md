@@ -2,6 +2,16 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Every AI tool, and Go to it: 20 Nov 2026
+
+- **More AI tools.** Squibby now reaches Copilot CLI, OpenCode, Amp, Cline and Kiro, so a review starts the moment any of them finishes (Copilot CLI also gets the safety copy before a destructive command). Zed, Junie, the JetBrains AI Assistant and Xcode have no hooks, so Squibby shows their changes live from the folder and writes nothing in your project. Claude Desktop runs Claude Code, so connecting Claude Code covers it.
+- **Every tool says what it does.** Your AI tools now has one plain line under each tool: what Squibby does with it, and nothing more.
+- **Any other tool.** Open Any other tool in Your AI tools and copy one line. Have your tool run it when it finishes, and the review starts at once.
+- **Go to the session.** When a card shows in the notch, Answer in Claude Code now says Answer in iTerm (or Terminal, VS Code, Cursor, Claude) once Squibby has seen where it runs. One press hands the question back and brings that window to the front, and in Terminal and iTerm the exact tab. A working tool in the live feed has Go to as well.
+- **Your choice.** Settings, General, Notch: Go to the exact tab. The first time, the Mac asks whether Squibby may control Terminal or iTerm; say no, or turn the setting off, and only the app comes to the front.
+- **When Go to cannot go, it says so.** If the Mac does not bring the window forward, or Squibby has not seen where the tool runs yet, a short line in the notch says what to do instead. Editor tools such as Cursor, Zed and Xcode get Go to straight away, and Go to never slows down the rest of Squibby while the Mac answers.
+- **Honest rows.** A tool Squibby watches from the folder now says when it shows nothing because reviews or Fix are off, and where to turn them on.
+
 ## Answer your AI tool from the notch: 20 Nov 2026
 
 - **Allow or don't, right in the notch.** When Claude Code or Codex stops to ask permission, the notch opens with what it wants in plain words ("Claude Code wants to run a command", then `npm test`) and Allow and Don't allow. No need to find the terminal.

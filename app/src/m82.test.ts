@@ -12,16 +12,19 @@ const state = (tools: unknown[]) => doneStateFrom({ type: "donesignal.state", pr
 
 describe("finding the tools", () => {
   test("the one list is the done signal's tools, in its order", () => {
-    expect(list.tools.map((t) => t.id)).toEqual([...DONE_TOOLS]);
+    // M115 (changed on purpose): the open tag (any) has no app to find, and Claude Desktop is listed through Claude Code.
+    expect(list.tools.map((t) => t.id)).toEqual([...DONE_TOOLS.filter((t) => t !== "any"), "claudedesktop"]);
   });
   test("nothing found: every tool is not on this Mac", () => {
-    expect(findTools(none)).toEqual({ here: [], notHere: [...DONE_TOOLS] });
+    // M115 (changed on purpose): the open tag is never listed, and nothing is listed through another tool.
+    expect(findTools(none)).toEqual({ here: [], notHere: DONE_TOOLS.filter((t) => t !== "any"), via: [] });
   });
   test("an app, a program or a project folder each counts, each tool once, in the list's order", () => {
     const f = findTools({ apps: ["com.todesktop.230313mzl4w4u92", "com.example.unknown"], programs: ["claude", "gemini", "rm"], folders: [".codex", ".claude"] });
     expect(f.here).toEqual(["claude", "codex", "cursor", "gemini"]);
-    expect(f.notHere).toEqual(["copilot", "antigravity", "windsurf"]);
-    expect(new Set([...f.here, ...f.notHere]).size).toBe(DONE_TOOLS.length);
+    // M115 (changed on purpose): the new tools are not on this Mac here either.
+    expect(f.notHere.slice(0, 3)).toEqual(["copilot", "antigravity", "windsurf"]);
+    expect(new Set([...f.here, ...f.notHere]).size).toBe(DONE_TOOLS.length - 1);
     // Windsurf by its Devin program, Antigravity by its agy program, VS Code by its app.
     expect(findTools({ apps: ["com.microsoft.VSCode"], programs: ["devin", "agy"], folders: [] }).here).toEqual(["copilot", "antigravity", "windsurf"]);
   });

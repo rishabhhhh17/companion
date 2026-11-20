@@ -28,6 +28,7 @@ import type { SavedJobView } from "../../protocol/index.ts";
 import { DONE_SIGNAL_TOOLS, LOGIN_OUTCOMES, type DoneSignalTool, type LoginOutcome } from "../../protocol/index.ts";
 import { feedFrom, type FeedSession } from "./notchFeed.ts";
 import { ASKS_KEPT, toolAskFrom, type ToolAsk } from "./notchAsk.ts";
+import { whereFrom, whereKey } from "./goTo.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
@@ -338,6 +339,11 @@ export type Model = {
   /** M114: the asks of the person's own AI tools waiting for a press in the notch (toolask.request, notchAsk.ts), oldest
    *  first. In memory only; resolved, pressed, Stop everything and the engine going each take them away. */
   toolAsks?: ToolAsk[] | null;
+  /** M115: where each session of the person's own AI tools runs (tool.where, goTo.ts), by project and tool: the app's name and
+   *  whether its exact tab can be found. Only for Go to; gone with the engine. */
+  toolWhere?: Record<string, { app: string; tab: boolean }> | null;
+  /** M115: what the last Go to said when it could not go (tool.jumped), for its short line. */
+  jumpSaid?: { project: string; tool: DoneSignalTool; why: "unknown" | "failed"; at: number } | null;
   /** M77: a saved copy was just taken before a destructive command (guard.saved): the notch's line for a few seconds. */
   guardSaved?: { project: string; at: number } | null;
   /** M85 review: the person's own AI tool was just told to ask them first (guard.asked), in any project: the notch's line
@@ -804,7 +810,7 @@ function reduceRest(m: Model, e: Ev): Model {
     // The shell's reason is already one plain sentence (runner.rs HELPER_DOWN and the others); it is shown as it is, and
     // cleared when the helper says hello again.
     // M114: the engine going takes every ask with it (its hooks stop waiting the moment it is gone, and the tools ask themselves).
-    case "app.runner_down": { const down = typeof e.reason === "string" && e.reason ? plainError(e.reason) : S.helperStopped; return { ...withAgents({ ...m, runnerUp: false, toolAsks: null }, m.agents), error: down, downError: down }; }
+    case "app.runner_down": { const down = typeof e.reason === "string" && e.reason ? plainError(e.reason) : S.helperStopped; return { ...withAgents({ ...m, runnerUp: false, toolAsks: null, toolWhere: null, jumpSaid: null }, m.agents), error: down, downError: down }; }
     case "runner.hello": return { ...withAgents({ ...m, runnerUp: true, helloSeen: true }, m.agents), error: m.error && m.error === m.downError ? null : m.error, downError: undefined };
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
     // The new engine keeps no conversation either: the last task can no longer be followed up or tried again (gone). A check
@@ -1024,6 +1030,15 @@ function reduceRest(m: Model, e: Ev): Model {
     // M113: the live feed, only when the protocol allows it (names, counts and short commands); anything else leaves it.
     case "feed.update": { const f = feedFrom(e.sessions); return f === null ? m : { ...m, feed: f.length ? f : null }; }
     // M114: an ask of the person's own AI tool, only when the protocol allows it; once each, at most ASKS_KEPT.
+    // M115: where a session runs, only as the protocol allows it (an app's name, a tool of the list).
+    case "tool.where": {
+      const w = whereFrom(e);
+      return w ? { ...m, toolWhere: { ...(m.toolWhere ?? {}), [whereKey(w.project, w.tool)]: { app: w.app, tab: w.tab } } } : m;
+    }
+    case "tool.jumped": {
+      if (typeof e.project !== "string" || !(DONE_SIGNAL_TOOLS as readonly unknown[]).includes(e.tool)) return m;
+      return e.ok === true ? { ...m, jumpSaid: null } : e.why === "unknown" || e.why === "failed" ? { ...m, jumpSaid: { project: e.project, tool: e.tool as DoneSignalTool, why: e.why, at: Date.now() } } : m;
+    }
     case "toolask.request": {
       const a = toolAskFrom(e);
       const was = m.toolAsks ?? [];

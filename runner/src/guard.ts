@@ -176,6 +176,9 @@ export type GuardDeps = {
   feed?: (project: string, tool: DoneTool | null, text: string) => void;
   /** M113: a guard request, for the feed's run line (livefeed.ts reads only the short redacted command). */
   ran?: (project: string, tool: DoneTool | null, text: string) => void;
+  /** M115: a request of this tool's hook, with the hook's process id, told before it is answered (the hook is still
+   *  running), so the engine can find where the session runs (jump.ts). `always` for a permission request or a question. */
+  seen?: (project: string, tool: DoneTool, pid: number, always: boolean) => void;
   /** M114: an ask request (toolask.ts ToolAsks.take): the asks write its answer file. Without it, it is answered empty. */
   toolAsk?: (project: string, tool: DoneTool, ext: AskExt, file: string, pid: number, text: string) => void;
   snapshotWaitMs?: number;
@@ -273,6 +276,8 @@ export class HookGuard {
     const token = m[1];
     const project = this.o.projectOf(token);
     const tool = m[3] as DoneTool | undefined, kind = m[4];
+    // M115: where this session runs, read while its hook still waits (a note and a feed hook exit at once, so they may be gone).
+    if (project && tool) { try { this.o.seen?.(project, tool, Number(m[2]), kind === ".perm" || kind === ".question"); } catch { /* a nicety */ } }
     if (kind === ".note") { if (project) this.note(project, text); return; }
     if (kind === ".perm" || kind === ".question") {
       // M114: the hook waits for <file>.ok. Only the asks answer it, on the person's press; anything else gets an empty

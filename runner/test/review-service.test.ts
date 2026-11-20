@@ -23,7 +23,7 @@ const KEY = "sk_live_51HabcdefghijklmnopQRSTUVwx";
 const ENV_VALUE = "very-private-database-password-42";
 
 type Ev = Record<string, any>;
-function setup(o: { files?: Record<string, string>; mode?: string; flow?: boolean; room?: number; words?: string; check?: ReviewDeps["check"]; busy?: () => boolean; cheap?: boolean; strong?: boolean; modelTimeoutMs?: number; replayAnswer?: (signal: AbortSignal) => Promise<{ text: string; costUsd: number }> } = {}) {
+function setup(o: { files?: Record<string, string>; mode?: string; flow?: boolean; room?: number; words?: string; check?: ReviewDeps["check"]; busy?: () => boolean; cheap?: boolean; strong?: boolean; modelTimeoutMs?: number; seen?: (project: string, rel: string) => void; replayAnswer?: (signal: AbortSignal) => Promise<{ text: string; costUsd: number }> } = {}) {
   const project = tmp("proj"), shadow = tmp("shadow");
   write(project, o.files ?? { "src/App.tsx": "export const title = 'Hello';\n", "package.json": '{ "name": "site", "dependencies": { "react": "^19.0.0" } }\n' });
   const real = new CheckpointStore(join(shadow, "p.git"), project);
@@ -47,7 +47,7 @@ function setup(o: { files?: Record<string, string>; mode?: string; flow?: boolea
     emit: (e) => events.push(e), setting: (k) => values[k], store: () => store,
     cheap: o.cheap === false ? null : lane("cheap"), strong: o.strong === false ? null : lane("strong"),
     spend: { room: () => room, book: (_p, usd) => { booked.push(usd); room -= usd; } },
-    check: o.check, busy: o.busy, fix: (cmd) => { fixes.push(cmd); }, watch, graceMs: 20, quietMs: () => 30, modelTimeoutMs: o.modelTimeoutMs,
+    check: o.check, busy: o.busy, fix: (cmd) => { fixes.push(cmd); }, watch, graceMs: 20, quietMs: () => 30, modelTimeoutMs: o.modelTimeoutMs, ...(o.seen ? { seen: o.seen } : {}),
   });
   services.push(svc);
   const fire = (...rels: string[]) => { for (const r of rels) send?.(r); };
@@ -397,6 +397,26 @@ describe("how often (review.mode)", () => {
     t.values["review.mode"] = "off";
     t.svc.sync();
     expect(t.watching()).toBe(false);
+  });
+  // M115 review: the live feed's folder rows for a watch tool (Zed, Junie, the JetBrains AI Assistant, Xcode) come only from
+  // this watch, so with reviews Off or Fix off they never come: Your AI tools says so on the row (aiTools.ts watchNote).
+  test("off or Fix off: no folder change reaches the live feed; back on, it does", async () => {
+    const seen: string[] = [];
+    const t = setup({ mode: "off", seen: (_p, rel) => seen.push(rel) });
+    await started(t);
+    t.change({ "src/App.tsx": "export const title = 'Off';\n" });
+    await sleep(100);
+    expect(seen).toEqual([]);
+    t.values["review.mode"] = "ask"; t.values["flow.on"] = false;
+    t.svc.sync();
+    t.change({ "src/App.tsx": "export const title = 'Fix off';\n" });
+    await sleep(100);
+    expect(seen).toEqual([]);
+    t.values["flow.on"] = true;
+    t.svc.sync();
+    await t.svc.ready();
+    t.change({ "src/App.tsx": "export const title = 'On';\n" });
+    await t.until(() => seen.includes("src/App.tsx"));
   });
   test("no project open, or the stand in, watches nothing", async () => {
     const t = setup();

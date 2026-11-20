@@ -31,7 +31,8 @@ describe("the card and the model carry the tool that finished", () => {
     const { by: _x, ...noBy } = fixture("m105e2");
     expect(reviewReduce(b, noBy)?.by).toBe("codex");
     // An unknown tool is left out, never shown.
-    expect(reviewReduce(null, { ...fixture("m105e1"), by: "zed" })?.by).toBeUndefined();
+    // M115 (changed on purpose): Zed is a known tool now, so a tool that is not on the list stands in.
+    expect(reviewReduce(null, { ...fixture("m105e1"), by: "lovable" })?.by).toBeUndefined();
   });
   test("the model remembers which tool finished and when, only for the card's own result", () => {
     const m = codexProblems();

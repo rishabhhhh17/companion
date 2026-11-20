@@ -218,7 +218,11 @@ export const warmEngine = (): Command => ({ v: 1, id: id(), type: "engine.warm" 
 export const practiceKey = (project: string, step: "write" | "fix"): Command => ({ v: 1, id: id(), type: "practice.key", project, step });
 // M75: the other tool's done signal (the add only after the card's yes), the cost pause's answer and the sign in handover's.
 export const showDoneSignal = (project: string): Command => ({ v: 1, id: id(), type: "donesignal.show", project });
-export const addDoneSignal = (project: string, tool: DoneTool, hook: "done" | "guard" | "waiting" | "start" | "feed" | "approve" | "answer" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.add", project, tool, confirm: true, ...(hook !== "done" ? { hook } : {}) });
-export const removeDoneSignal = (project: string, tool: DoneTool, hook: "done" | "guard" | "waiting" | "start" | "feed" | "approve" | "answer" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.remove", project, tool, ...(hook !== "done" ? { hook } : {}) });
+/** M115: Go to the session of this tool in this project (the engine knows the app; nothing else is named). */
+export const jumpTo = (project: string, tool: DoneTool): Command => ({ v: 1, id: id(), type: "tool.jump", project, tool });
+/** M115: the open tag's line for this project. */
+export const askAnyLine = (project: string): Command => ({ v: 1, id: id(), type: "donesignal.anyLine", project });
+export const addDoneSignal = (project: string, tool: DoneTool, hook: "done" | "guard" | "waiting" | "start" | "feed" | "approve" | "answer" | "watch" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.add", project, tool, confirm: true, ...(hook !== "done" ? { hook } : {}) });
+export const removeDoneSignal = (project: string, tool: DoneTool, hook: "done" | "guard" | "waiting" | "start" | "feed" | "approve" | "answer" | "watch" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.remove", project, tool, ...(hook !== "done" ? { hook } : {}) });
 export const chooseCost = (agent: string, choice: "keep" | "stop" | "undo"): Command => ({ v: 1, id: id(), type: "cost.choose", agent, choice });
 export const answerSignIn = (agent: string, choice: "open" | "continue" | "skip" | "getBrowser"): Command => ({ v: 1, id: id(), type: "proof.signIn", agent, choice });

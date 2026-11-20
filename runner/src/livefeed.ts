@@ -11,14 +11,16 @@
 // Everything lives in memory and goes with the session: nothing is written anywhere (rule 15). Nothing here runs git.
 import { createHash } from "node:crypto";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
-import type { DoneTool } from "./donesignal.ts";
+import { DONE_TOOLS, TOOL_HOOKS, type DoneTool } from "./donesignal.ts";
 import { parseRequest, shortCommand } from "./guard.ts";
 import { redact } from "./redact.ts";
 
 /** The tools with an after edit event the feed hook sits under (donesignal.ts TOOL_HOOKS has "feed" for exactly these). */
 export const FEED_TOOLS: readonly DoneTool[] = ["claude", "codex", "cursor", "copilot", "gemini"];
 /** M113 review: the tools with no after edit event: only for a project with one of these connected does the folder fill in. */
-export const HOOKLESS_TOOLS: readonly DoneTool[] = ["antigravity", "windsurf"];
+/** M115: every tool with no feed hook: also Copilot CLI, OpenCode, Amp, Cline and Kiro (their done line or guard on), and the
+ *  watch tools (their watch row on, through DoneSignals.watching in main.ts). */
+export const HOOKLESS_TOOLS: readonly DoneTool[] = DONE_TOOLS.filter((t) => !TOOL_HOOKS[t].includes("feed"));
 /** At most this many lines in one session's block, and this many blocks said at once. */
 export const FEED_MAX_ITEMS = 4;
 export const FEED_MAX_SESSIONS = 3;
@@ -206,6 +208,8 @@ export type LiveFeedDeps = {
   hookless?: (project: string) => boolean;
   /** For tests: FEED_FOLDER_HOLD_MS. */
   folderHoldMs?: number;
+  /** M115: the tool the folder's changes are credited to (the one watched tool of the project, main.ts), or null. */
+  credit?: (project: string) => DoneTool | null;
 };
 
 /** The feed: sessions in memory, said as feed.update. */
@@ -279,7 +283,9 @@ export class LiveFeed {
       if (this.hookFresh(h.project, t)) continue;
       const path = shownPath(h.project, h.rel);
       if (!path) continue;
-      this.putEdit(this.session(h.project, null, "folder", ""), { kind: "edit", path, n: 1 });
+      let by: DoneTool | null = null;
+      try { by = this.o.credit?.(h.project) ?? null; } catch { by = null; }
+      this.putEdit(this.session(h.project, by, "folder", ""), { kind: "edit", path, n: 1 });
       any = true;
     }
     if (any) this.changed();

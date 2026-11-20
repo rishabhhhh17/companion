@@ -23,7 +23,8 @@ const commandsIn = (v: unknown): string[] => {
 
 describe("every tool's own file, event and shape", () => {
   test("the tools and their files", () => {
-    expect([...DONE_TOOLS]).toEqual(["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf"]);
+    // M115 (changed on purpose): the first seven keep their place; the tools added after them are tested in m115.
+    expect(DONE_TOOLS.slice(0, 7)).toEqual(["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf"]);
     expect(HOOK_FILE.cursor).toBe(".cursor/hooks.json");
     expect(HOOK_FILE.copilot).toBe(".github/hooks/companion.json");
     expect(HOOK_FILE.antigravity).toBe(".agents/hooks.json");

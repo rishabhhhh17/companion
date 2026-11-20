@@ -16,7 +16,8 @@ import { FlowMini } from "./flowflowMini.tsx";
 import type { IslandLineKind } from "./home.ts";
 import { ARM_MS, answerHere, armed, cardReady, islandJobs, panelNote, panelView, PANEL_DO, type JobCard } from "./islandPanel.ts";
 import { keycaps, keyHint, keysFrom, keysNow, setKeysNow } from "./keys.ts";
-import { answerApproval, answerToolAsk, stopAgent } from "./commands.ts";
+import { answerApproval, answerToolAsk, jumpTo, stopAgent } from "./commands.ts";
+import { whereFor } from "./goTo.ts";
 import type { Model } from "./model.ts";
 import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
@@ -29,7 +30,7 @@ import { Button } from "./ui/parts.tsx";
 import { Icon } from "./icons.tsx";
 import { useDragOut } from "./tuck.ts";
 import { characterName } from "./companion.ts";
-import { NotchFeed, feedGo } from "./notchFeed.tsx";
+import { NotchFeed, feedGo, feedHasBlock, useJumpSaid } from "./notchFeed.tsx";
 import { feedBlocks } from "./notchFeed.ts";
 import { askKey, NotchAsks, type AskChoice } from "./notchAsk.tsx";
 import { waitingAsks } from "./notchAsk.ts";
@@ -136,7 +137,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
         </li>
       ))}
       {/* M114: the person's own AI tool's ask (notchAsk.tsx), after Squibby's own questions. */}
-      <NotchAsks asks={asks} tabIndex={tab} armedNow={askArmed} canPress={askPress} onAnswer={toolAnswer} />
+      <NotchAsks asks={asks} tabIndex={tab} armedNow={askArmed} canPress={askPress} onAnswer={toolAnswer} whereOf={(a) => whereFor(m, a.project, a.tool)} onJump={(a) => { void invoke("send_command", { cmd: jumpTo(a.project, a.tool) }).catch(() => {}); }} />
     </ul>;
   const live = view.kind === "questions" ? list
     : view.kind === "result" ? (
@@ -189,6 +190,10 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   // stays inside the notch's room). The panel's height then follows its words (notch.css data-feed).
   const feedOn = useSetting("notch.liveFeed") !== false;
   const feed = feedOn && !briefNow && !hello && full && !hasLive && feedBlocks(m.feed).length > 0;
+  // M115 review: a Go to that did not go (often Answer in the tool from a card, which is gone by then) says so here, unless
+  // the feed draws that tool's block, which says it under the block (notchFeed.tsx).
+  const jumped = useJumpSaid(m);
+  const jumpOut = jumped && !(feed && feedHasBlock(m, jumped.project, jumped.tool)) ? <p className="lf-said ip-jump-said" role="status">{jumped.text}</p> : null;
   return (
     <div className="island-panel" ref={ref} data-layout={!briefNow && !hello && full ? layout : undefined} data-feed={feed ? "" : undefined} data-shown={shown ? "yes" : undefined} data-size={compact ? "compact" : undefined} data-brief={briefNow ? "yes" : undefined} data-armed={ready() ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
       {hello ? <div className="ip-hello" role="status" aria-label={hello.say}>
@@ -197,7 +202,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
         <p className="ip-hello-line" aria-hidden="true"><b>{hello.greet}</b>{hello.fact && <span>{hello.fact}</span>}</p>
       </div> : briefNow ? (
         // Opened by itself, only a question or a result that matters (island.tsx); never the greeting or a button.
-        live
+        <>{live}{jumpOut}</>
       ) : <>
       {/* M96: one row out of the notch. The face and the hello are one button that opens the small chat; the one pill does
           the moment's one action. The line M93 drew (hoverLine) is what VoiceOver hears and the pill's tooltip, never a row. */}
@@ -222,6 +227,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
       </div>
       {/* Round 2: a question or a result in the panel stays pressable here too, under the row. */}
       {hasLive && live}
+      {jumpOut}
       {/* M113: what the person's own AI tools are doing, newest first; a press opens the review in Home. */}
       {feed && <NotchFeed m={m} project={project} where="notch" tabIndex={tab} onOpen={(key) => { if (ready()) void invoke("island_go", { then: feedGo(key) }).catch(() => {}); }} />}
       </>}

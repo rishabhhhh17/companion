@@ -455,7 +455,8 @@ describe("the protocol", () => {
     expect(bad((e) => { (e.sessions[0]!.items as Record<string, unknown>[])[0]!.added = -1; })).toBe(false);
     expect(bad((e) => { e.sessions[0]!.session_id = "abc"; })).toBe(false);
     expect(bad((e) => { e.sessions[0]!.key = "not-a-key"; })).toBe(false);
-    expect(bad((e) => { e.sessions[0]!.tool = "zed"; })).toBe(false);
+    // M115 (changed on purpose): Zed is one of the tools now; a tool that is not on the list is still refused.
+    expect(bad((e) => { e.sessions[0]!.tool = "lovable"; })).toBe(false);
     expect(bad((e) => { e.sessions.push(e.sessions[0]!, e.sessions[0]!); })).toBe(false);
     expect(bad((e) => { const it = e.sessions[0]!.items as unknown[]; it.push(it[0], it[0], it[0]); })).toBe(false);
   });

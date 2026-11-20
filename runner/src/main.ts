@@ -2,7 +2,7 @@
 // stdout, one JSON line each. stderr is for logs only and never carries secrets.
 import { setGoogleAccounts } from "./google/state.ts";
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROTOCOL_VERSION, serialize, type Command, type Event } from "../../protocol/index.ts";
 import { AgentRunner } from "./agent.ts";
@@ -48,7 +48,8 @@ import { OWN_WORK, ReviewService } from "./review/service.ts";
 import { OsvClient } from "./review/osv.ts";
 import { setOwnSecretPatterns } from "./secretfiles.ts";
 import { isKeyPractice, practiceKeyStep } from "./practicekey.ts";
-import { DoneSignals, type DonePlan } from "./donesignal.ts";
+import { DoneSignals, TOOL_HOOKS, type DonePlan } from "./donesignal.ts";
+import { SessionWhere, toolBundleOf, type JumpResult } from "./jump.ts";
 import { ToolBusy } from "./toolbusy.ts";
 import { HOOKLESS_TOOLS, LiveFeed } from "./livefeed.ts";
 import { HookGuard, SAVED_LABEL, waitingMinutesOf } from "./guard.ts";
@@ -116,7 +117,11 @@ const projectLines = (p: string): string[] => { try { return new MemoryStore({ p
 // M113: the live feed in the notch (livefeed.ts): the tool's feed notes and guard requests, and the review watcher's paths for
 // a tool with no hooks. In memory only; said as feed.update.
 // M113 review: the folder fills in only for a project with a tool that has no feed hook connected (its done or guard line on).
-const liveFeed = new LiveFeed({ emit: (e) => say(e), hookless: (p) => HOOKLESS_TOOLS.some((t) => (["done", "guard"] as const).some((h) => doneSignals.plan(p, t, h).on)) });
+// M115: also for a project where the person turned on a tool with no hooks (Zed, Junie, the AI Assistant, Xcode), whose
+// changes are credited to it when it is the only one.
+const liveFeed = new LiveFeed({ emit: (e) => say(e), hookless: (p) => doneSignals.watching(p).length > 0 || HOOKLESS_TOOLS.some((t) => (["done", "guard"] as const).some((h) => TOOL_HOOKS[t].includes(h) && doneSignals.plan(p, t, h).on)), credit: (p) => { const w = doneSignals.watching(p); return w.length === 1 ? w[0]! : null; } });
+// M115: where each session of the person's own tools runs, from the process table as its hook runs (jump.ts), and Go to.
+const sessionWhere = new SessionWhere({ emit: (e) => say(e), tab: () => runnerSettings.get("notch.jumpTab") !== false, bundleOf: (t) => toolBundleOf(t) });
 const review = new ReviewService({
   emit: (e) => say(e), seen: (p, rel) => liveFeed.folder(p, rel), setting: (k, p) => runnerSettings.get(k, p), store: (p) => runner.checkpointsFor(p),
   cheap: lanes && !settings.assistStub ? lanes.fast : null, strong: strongLane,
@@ -181,6 +186,8 @@ const guard = new HookGuard(doneSignals.guardFolder, {
   ran: (p, tool, text) => liveFeed.ran(p, tool, text),
   // M114: a permission request or a question of the person's own tool, for its card in the notch.
   toolAsk: (p, tool, ext, file, pid, text) => toolAsks.take(p, tool, ext, file, pid, text),
+  // M115: where the session runs, read while its hook is still there.
+  seen: (p, tool, pid, always) => { void sessionWhere.seen(p, tool, pid, always); },
 });
 guard.start();
 const doneState = (project: string, tools: DonePlan[], problem?: string) =>
@@ -303,6 +310,19 @@ function dispatch(cmd: Command) {
   // M114: the person's press on a card for their own AI tool's ask. A press that cannot be honoured leaves the ask waiting
   // (the card stays, and the tool still asks in its own window when the wait ends).
   if (cmd.type === "toolask.answer") { toolAsks.answer(cmd); return; }
+  // M115: Go to, only on the person's press; the engine already knows the app (the page names none).
+  // M115 review: never awaited here, so hooks, asks and the feed go on while the Mac brings the app forward (or asks its
+  // Automation question on the first press).
+  if (cmd.type === "tool.jump") {
+    const c = cmd;
+    const p = sessionWhere.jump(resolve(c.project), c.tool).catch((): JumpResult => ({ ok: false, why: "failed" })).then((r) => say({ type: "tool.jumped", project: c.project, tool: c.tool, ...r })).finally(() => inflight.delete(p));
+    inflight.add(p);
+    return;
+  }
+  if (cmd.type === "donesignal.anyLine") {
+    try { say({ type: "donesignal.anyLine", project: cmd.project, line: doneSignals.anyLine(cmd.project) }); } catch (e) { say({ type: "protocol.error", ...failure(e as Error, cmd.type) }); }
+    return;
+  }
   if (cmd.type === "donesignal.show" || cmd.type === "donesignal.add" || cmd.type === "donesignal.remove") {
     try {
       const done = cmd.type === "donesignal.add" ? doneSignals.add(cmd.project, cmd.tool, cmd.hook ?? "done") : cmd.type === "donesignal.remove" ? doneSignals.remove(cmd.project, cmd.tool, cmd.hook ?? "done") : null;

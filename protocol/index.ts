@@ -177,19 +177,30 @@ export type PracticeKey = Envelope & { type: "practice.key"; project: string; st
 /** M75 (roadmap 19, F30): the done signal of another AI tool in this project (runner/src/donesignal.ts). show: what is set
  *  up and what would be written; add: the person said yes on the card that showed exactly that (confirm must be true);
  *  remove: one press takes Squibby's own entry out again. */
-export const DONE_SIGNAL_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf"] as const;
+/** M115: and Copilot CLI, OpenCode, Amp, Cline, Kiro, Zed, Junie, the JetBrains AI Assistant, Xcode and any (the open tag). */
+export const DONE_SIGNAL_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf", "copilotcli", "opencode", "amp", "cline", "kiro", "zed", "junie", "jetbrains", "xcode", "any"] as const;
 export type DoneSignalTool = (typeof DONE_SIGNAL_TOOLS)[number];
+/** M115 review: the tools that are an app of their own (an editor). With no session seen yet, Go to opens that app on the
+ *  project by its bundle id (protocol/aitools.json apps[0]; runner/src/jump.ts), so the notch offers Go to for them at once
+ *  (app/src/goTo.ts). A tool that runs in a terminal has no app to guess: its Go to waits for one of its hooks. */
+export const OWN_APP_TOOLS: readonly DoneSignalTool[] = ["cursor", "copilot", "windsurf", "antigravity", "kiro", "zed", "xcode"];
 /** M77 (the safety net): which hook. done: the Stop hook (M75). guard: Claude Code's PreToolUse hook on Bash, so Squibby can
  *  take a snapshot before a destructive command (runner/src/guard.ts). waiting: Claude Code's Notification hook, so the
  *  notch can say Claude is waiting for the person. Absent means done. */
 /** M113: feed, the live feed hook after an edit (runner/src/donesignal.ts). */
 /** M114: approve (Claude Code's and Codex's PermissionRequest) and answer (Claude Code's AskUserQuestion), so the person
  *  can answer from the notch (runner/src/toolask.ts). */
-export const HOOK_KINDS = ["done", "guard", "waiting", "start", "feed", "approve", "answer"] as const;
+/** M115: watch, for a tool with no hooks (nothing is written in the project; the live feed fills in from the folder). */
+export const HOOK_KINDS = ["done", "guard", "waiting", "start", "feed", "approve", "answer", "watch"] as const;
 export type HookKind = (typeof HOOK_KINDS)[number];
 export type DoneSignalShow = Envelope & { type: "donesignal.show"; project: string };
 export type DoneSignalAdd = Envelope & { type: "donesignal.add"; project: string; tool: DoneSignalTool; confirm: true; hook?: HookKind };
 export type DoneSignalRemove = Envelope & { type: "donesignal.remove"; project: string; tool: DoneSignalTool; hook?: HookKind };
+/** M115: the open tag's one line for this project (runner/src/donesignal.ts anyLine), for Your AI tools' Copy. */
+export type DoneSignalAnyLine = Envelope & { type: "donesignal.anyLine"; project: string };
+/** M115: the person's press on Go to: the engine brings the app the tool's session runs in to the front (runner/src/jump.ts).
+ *  Names no app and no path: the engine already knows where the session runs. */
+export type ToolJump = Envelope & { type: "tool.jump"; project: string; tool: DoneSignalTool };
 /** M114: the person's press on a card in the notch for their own AI tool's ask (runner/src/toolask.ts). allow, always and
  *  deny answer a permission request (always only where the card showed a rule); answer picks a choice of each question by
  *  its place (picks[i] for question i); tool hands the ask back to the tool's own window. Names no folder. */
@@ -373,7 +384,7 @@ export type ReviewFix = Envelope & { type: "review.fix"; project: string; batch:
 // put back too (their version is kept in the recovery folder first). Never the whole project, never a .env file, never git.
 export type ReviewUndoPlan = Envelope & { type: "review.undoPlan"; project: string; batch: string };
 export type ReviewUndo = Envelope & { type: "review.undo"; project: string; batch: string; confirm: true; overwrite?: string[] };
-export type Command = ReviewNow | ReviewDismiss | ReviewFix | ReviewUndoPlan | ReviewUndo | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | ToolAskAnswer | CostChoose | ProofSignIn | WeekShow | ShipWhyLive | JobsSave | JobsList | JobsDrop | TutorList | TutorNote | TutorForget;
+export type Command = ReviewNow | ReviewDismiss | ReviewFix | ReviewUndoPlan | ReviewUndo | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | DoneSignalAnyLine | ToolJump | ToolAskAnswer | CostChoose | ProofSignIn | WeekShow | ShipWhyLive | JobsSave | JobsList | JobsDrop | TutorList | TutorNote | TutorForget;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -657,6 +668,15 @@ export const TOOL_ASK_OUTCOMES = ["allowed", "always", "denied", "answered", "in
 export type ToolAskQuestion = { header?: string; question: string; multi: boolean; options: { label: string; about?: string }[] };
 export type ToolAskRequest = Envelope & { type: "toolask.request"; ask: string; project: string; tool: (typeof TOOL_ASK_TOOLS)[number]; kind: (typeof TOOL_ASK_KINDS)[number]; action?: (typeof TOOL_ASK_ACTIONS)[number]; target?: string; always?: string; questions?: ToolAskQuestion[]; expiresAt: string };
 export type ToolAskResolved = Envelope & { type: "toolask.resolved"; ask: string; outcome: (typeof TOOL_ASK_OUTCOMES)[number] };
+/** M115: where a tool's session runs, said when it changes (runner/src/jump.ts): the app's own name and whether its exact tab
+ *  can be found (Terminal and iTerm). Never the app's path, the terminal's name or a process id. */
+export type ToolWhere = Envelope & { type: "tool.where"; project: string; tool: DoneSignalTool; app: string; tab: boolean };
+/** M115: what Go to did: ok with the app's name, or why not (unknown: no session seen and no app of the tool's own; failed:
+ *  the Mac did not open it). */
+export const JUMP_WHY = ["unknown", "failed"] as const;
+export type ToolJumped = Envelope & { type: "tool.jumped"; project: string; tool: DoneSignalTool; ok: boolean; app?: string; why?: (typeof JUMP_WHY)[number] };
+/** M115: the open tag's line for this project. */
+export type DoneSignalAnyLineEvent = Envelope & { type: "donesignal.anyLine"; project: string; line: string };
 export const FEED_SESSIONS_MAX = 3;
 export const FEED_LINES_MAX = 4;
 /** M75: a task has used far more than a usual task here, and waits for the person. No amount (F29, M69). */
@@ -820,7 +840,7 @@ export type ReviewReplay = {
   checks: { label: string; status: "passed" | "failed" | "skipped"; exit?: number }[]; shot?: string;
 };
 export type ReviewUntold = { beyond: string[]; beyondMore: number; todos: number; checks: ReviewChecks };
-export type Event = ToolAskRequest | ToolAskResolved | GuardSaved | GuardAsked | HookWaiting | HookBusy | FeedUpdate | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewUndoPlanEvent | ReviewUndone | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved | TutorLearned;
+export type Event = ToolAskRequest | ToolAskResolved | ToolWhere | ToolJumped | DoneSignalAnyLineEvent | GuardSaved | GuardAsked | HookWaiting | HookBusy | FeedUpdate | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewUndoPlanEvent | ReviewUndone | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved | TutorLearned;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -1225,6 +1245,8 @@ const COMMANDS: Record<string, Check[]> = {
   "donesignal.show": [str("project")],
   "donesignal.add": [str("project"), oneOf("tool", [...DONE_SIGNAL_TOOLS]), (m) => (m.confirm === true ? null : 'adding a hook needs the person\'s yes, "confirm": true'), opt("hook", oneOf("hook", [...HOOK_KINDS]))],
   "donesignal.remove": [str("project"), oneOf("tool", [...DONE_SIGNAL_TOOLS]), opt("hook", oneOf("hook", [...HOOK_KINDS]))],
+  "donesignal.anyLine": [str("project")],
+  "tool.jump": [str("project"), oneOf("tool", [...DONE_SIGNAL_TOOLS])],
   // M114: the person's press on a card for their own AI tool's ask.
   "toolask.answer": [(m) => (typeof m.ask === "string" && ASK_ID.test(m.ask) ? null : '"ask" must be the id of an ask'), oneOf("choice", [...TOOL_ASK_CHOICES]), picksOk],
   "cost.choose": [str("agent"), oneOf("choice", [...COST_CHOICES])],
@@ -1353,6 +1375,9 @@ const EVENTS: Record<string, Check[]> = {
   "hook.busy": [str("project"), bool("busy")],
   // M114: an ask of the person's own AI tool, for its card in the notch, and how it ended.
   "toolask.request": [str("project"), oneOf("tool", [...TOOL_ASK_TOOLS]), oneOf("kind", [...TOOL_ASK_KINDS]), toolAskOk],
+  "tool.where": [str("project"), oneOf("tool", [...DONE_SIGNAL_TOOLS]), (m) => (typeof m.app === "string" && m.app.trim().length > 0 && Array.from(m.app).length <= 80 ? null : '"app" must be an app\'s name, at most 80 characters'), bool("tab")],
+  "tool.jumped": [str("project"), oneOf("tool", [...DONE_SIGNAL_TOOLS]), bool("ok"), opt("app", str("app")), opt("why", oneOf("why", [...JUMP_WHY]))],
+  "donesignal.anyLine": [str("project"), (m) => (typeof m.line === "string" && m.line.startsWith("/usr/bin/touch -- '") && !m.line.includes("\n") ? null : '"line" must be the touch line')],
   "toolask.resolved": [(m) => (typeof m.ask === "string" && ASK_ID.test(m.ask) ? null : '"ask" must be the id of an ask'), oneOf("outcome", [...TOOL_ASK_OUTCOMES])],
   // M113: names, counts and short commands only (feedOk).
   "feed.update": [(m) => feedOk(m.sessions)],

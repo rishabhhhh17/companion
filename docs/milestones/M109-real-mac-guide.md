@@ -4,6 +4,17 @@ The one place for the checks that only a real Mac, real AI tools and the founder
 
 How each step is recorded: the tool and its version, the date, PASS or FAIL, and what was seen. Results go in `docs/status/` as a dated RESULTS file, and the matching milestone doc and section 20 item are updated (AGENTS.md rule 18).
 
+## M115: every tool we can reach, and Go to
+
+Script: `scripts/m115-check-tools.sh <copilotcli|opencode|amp|cline|kiro>` makes a practice folder with a `hello.txt` and writes that tool's done line (Copilot CLI also its guard) exactly as Squibby does, with a throwaway data folder inside the practice folder. `scripts/m115-check-tools.sh check <folder>` says which tools touched their done marker. `scripts/m115-check-tools.sh where` prints the app and tab Go to would find for the terminal it runs in; `scripts/m115-check-tools.sh go` waits 3 seconds (switch to another app), then runs Go to's own commands. Record the tool and its version, PASS or FAIL.
+
+1. **Copilot CLI**: ask it to change `world` to `there`. check names `copilotcli`. Then open the same folder in VS Code with the Copilot agent and ask again: note whether the VS Code agent also ran Copilot CLI's file (check would name `copilotcli` with no CLI open).
+2. **OpenCode, Amp, Cline, Kiro**: one folder each, the same ask. check names the tool once per finished task. Note anything the tool asked before loading the file.
+3. **Go to from Terminal and iTerm**: in a second tab run `where` (expect the app and `exact tab: yes`), then `go`, switch to another tab within 3 seconds: the first time the Mac asks about Automation; with yes the tab comes back, with no only the app comes forward. Also `go notab`.
+4. **Other terminals and editors**: `where` and `go` in Ghostty, Warp, kitty or WezTerm (the app comes forward) and in VS Code's and Cursor's own terminal (that window comes forward).
+5. **In Squibby itself**: connect Claude Code on a practice folder, ask for a command so a permission card shows: it says Answer in iTerm (or your terminal); one press hands it back and that tab comes forward. While it edits, the live feed's block says Go to iTerm.
+6. **Watch tools**: connect Zed (or Xcode) for the practice folder, edit in it: the notch's live feed lists the files as seen in the folder, credited to Zed.
+
 ## M114: approve and answer from the notch
 
 Script: `scripts/m114-capture-asks.sh <claude|codex> <mode>` makes a practice folder with a `hello.txt` and writes one capture hook (PermissionRequest, and for Claude Code also AskUserQuestion) into that folder's own hook file. The mode stands in for a press: `watch` prints nothing (the tool asks as usual), `allow`, `deny`, `always` (Claude Code's first suggested allow rule) or `answer` (the first choice of each question). `scripts/m114-capture-asks.sh check <folder>` prints, for each request, its keys and what the notch's card would show. Record the tool and its version, the mode, PASS or FAIL.

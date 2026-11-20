@@ -14,6 +14,7 @@ import { ARM_MS, armed as armedSince } from "./islandPanel.ts";
 import { S } from "./strings.ts";
 import { Button } from "./ui/parts.tsx";
 import { Icon } from "./icons.tsx";
+import { inToolButton, type SessionWhere } from "./goTo.ts";
 
 /** Up to this many choices, each shows its own words under its label; more share one line under them. */
 const ABOUT_INLINE_MAX = 3;
@@ -33,22 +34,27 @@ type Props = {
   armedNow: (key: string) => boolean;
   canPress: (key: string) => boolean;
   onAnswer: (ask: string, choice: AskChoice, picks?: number[][]) => void;
+  /** M115: where the ask's session runs (goTo.ts), and Go to it. With one, Answer in the tool also brings that tab forward. */
+  whereOf?: (a: ToolAsk) => SessionWhere | null;
+  onJump?: (a: ToolAsk) => void;
 };
 
 /** The key the notch keeps each card's first sight under (islandPanel.tsx seen). */
 export const askKey = (a: Pick<ToolAsk, "ask">) => `ta:${a.ask}`;
 
-export function NotchAsks({ asks, tabIndex, armedNow, canPress, onAnswer }: Props) {
+export function NotchAsks({ asks, tabIndex, armedNow, canPress, onAnswer, whereOf, onJump }: Props) {
   if (!asks.length) return null;
   const shown = asks.slice(0, ASKS_SHOWN), more = asks.length - shown.length;
   return <>
-    {shown.map((a) => <li key={a.ask}><AskCardView a={a} tabIndex={tabIndex} armed={armedNow(askKey(a))} canPress={() => canPress(askKey(a))} onAnswer={onAnswer} /></li>)}
+    {shown.map((a) => <li key={a.ask}><AskCardView a={a} tabIndex={tabIndex} armed={armedNow(askKey(a))} canPress={() => canPress(askKey(a))} onAnswer={onAnswer} where={whereOf?.(a) ?? null} onJump={onJump} /></li>)}
     {more > 0 && <li className="ta-more" role="status">{S.m114.more(more)}</li>}
   </>;
 }
 
-function AskCardView({ a, tabIndex, armed, canPress, onAnswer }: { a: ToolAsk; tabIndex: number; armed: boolean; canPress: () => boolean; onAnswer: Props["onAnswer"] }) {
+function AskCardView({ a, tabIndex, armed, canPress, onAnswer, where, onJump }: { a: ToolAsk; tabIndex: number; armed: boolean; canPress: () => boolean; onAnswer: Props["onAnswer"]; where: SessionWhere | null; onJump: Props["onJump"] }) {
   const c = askCard(a);
+  // M115: Answer in the tool, and with a session seen, in its app: one press hands the ask back and brings that tab forward.
+  const inTool = inToolButton(S.doneSignal.tool[a.tool], where);
   const [step, setStep] = useState<AskStep>(ASK_START);
   // M114 review: when the question shown now came up (null for the first, which waits on the card's own arming).
   const [stepAt, setStepAt] = useState<number | null>(null);
@@ -117,7 +123,7 @@ function AskCardView({ a, tabIndex, armed, canPress, onAnswer }: { a: ToolAsk; t
           {c.buttons.map((b) => <Button key={b} size="sm" kind={b === "allow" ? "primary" : "secondary"} className={b === "allow" ? "ip-yes" : "ip-no"} tabIndex={tabIndex} label={`${c.labels[b]}: ${c.say}`} onClick={() => go(b)}>{c.labels[b]}</Button>)}
         </span>
       </>}
-      <button type="button" className="ta-intool" tabIndex={tabIndex} aria-label={c.inToolSay} onClick={() => go("tool")}>{c.inTool}</button>
+      <button type="button" className="ta-intool" tabIndex={tabIndex} aria-label={where ? inTool.say : c.inToolSay} title={where ? inTool.say : undefined} onClick={() => { if (!ok()) return; onAnswer(a.ask, "tool"); if (inTool.jump) onJump?.(a); }}>{where ? inTool.text : c.inTool}</button>
     </div>
   );
 }

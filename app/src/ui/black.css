@@ -535,6 +535,11 @@
 .notch-chat .lf-who { min-width: 0; overflow-wrap: anywhere; }
 .notch-chat .lf-state { margin-left: auto; color: var(--chat-when); }
 .notch-chat .lf-block[data-state="done"] .lf-state { color: var(--notch-ok); }
+/* M115: Go to, the chat's quiet text button. */
+.notch-chat .lf-sep { color: var(--chat-when); }
+.notch-chat .lf-go { min-width: 0; overflow-wrap: anywhere; text-align: end; margin: 0 0 0 -4px; padding: 0 4px; border: 0; border-radius: 6px; background: transparent; color: var(--notch-fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); cursor: pointer; transition: color var(--dur-hover) var(--ease-out), background-color var(--dur-hover) var(--ease-out); }
+.notch-chat .lf-go:hover { color: var(--notch-ink); background: var(--chat-icon-bg); }
+.notch-chat .lf-go:focus-visible { outline: 2px solid var(--notch-ink); outline-offset: -2px; }
 .notch-chat .lf-rows { list-style: none; margin: 0; padding: 0; display: grid; }
 .notch-chat .lf-rows > li { min-width: 0; animation: nc-in var(--dur-notch-row) var(--ease-out) both; }
 @media (prefers-reduced-motion: reduce) { .notch-chat .lf-rows > li { animation-name: nc-fade; } }

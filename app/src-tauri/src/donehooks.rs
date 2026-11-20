@@ -18,11 +18,21 @@ pub const HOOK_FILES: &[(&str, &str)] = &[
     ("cursor", ".cursor/hooks.json"), ("copilot", ".github/hooks/companion.json"), ("antigravity", ".agents/hooks.json"),
     // M81: Gemini CLI (its settings file, under hooks) and Windsurf as part of Devin (the events at the top of the file).
     ("gemini", ".gemini/settings.json"), ("windsurf", ".devin/hooks.v1.json"),
+    // M115: Copilot CLI's own file beside the VS Code agent's (camelCase events, its lines under `bash`).
+    ("copilotcli", ".github/hooks/companion-cli.json"),
 ];
+/// M115: the tools whose done signal is one whole file of Squibby's own (donesignal.ts OWN_FILE_TOOLS and HOOK_FILE). Such a
+/// file goes only when it is Squibby's: a plain file that carries OWN_TAG and names Squibby's own done folder.
+pub const OWN_FILES: &[(&str, &str)] = &[
+    ("opencode", ".opencode/plugins/companion.js"), ("amp", ".amp/plugins/companion.ts"),
+    ("cline", ".clinerules/hooks/TaskComplete"), ("kiro", ".kiro/hooks/companion-done.kiro.hook"),
+];
+/// M115: the words every own file of Squibby's carries (donesignal.ts OWN_TAG).
+pub const OWN_TAG: &str = "companion-done-signal";
 /// M80: Antigravity's file holds named hooks at the top level; these are Squibby's (donesignal.ts ANTIGRAVITY_KEY).
 pub const ANTIGRAVITY_KEYS: &[&str] = &["companion-done", "companion-guard"];
 /// M80: the files whose version line does not count as content (donesignal.ts VERSIONED).
-const VERSIONED: &[&str] = &["cursor", "copilot"];
+const VERSIONED: &[&str] = &["cursor", "copilot", "copilotcli"];
 /// The index of tokens and what Squibby made, in the engine's data folder (donesignal.ts DONE_INDEX).
 pub const INDEX: &str = "done-signals.json";
 /// The events Squibby's hooks sit under (donesignal.ts HOOK_EVENT): the done signal, the guard and the waiting hook (M77),
@@ -30,7 +40,7 @@ pub const INDEX: &str = "done-signals.json";
 /// done signal, so it is found the same way).
 /// M113: the live feed hook under PostToolUse (Claude Code, Codex, the VS Code agent), afterFileEdit (Cursor) and AfterTool
 /// (Gemini CLI); it opens with the guard folder, like the guard, so it is found the same way.
-pub const EVENTS: &[&str] = &["Stop", "PreToolUse", "Notification", "SessionStart", "stop", "beforeShellExecution", "BeforeTool", "AfterAgent", "PermissionRequest", "PostToolUse", "afterFileEdit", "AfterTool"];
+pub const EVENTS: &[&str] = &["Stop", "PreToolUse", "Notification", "SessionStart", "stop", "beforeShellExecution", "BeforeTool", "AfterAgent", "PermissionRequest", "PostToolUse", "afterFileEdit", "AfterTool", "agentStop", "preToolUse"];
 
 // ---------- a small JSON reader and writer that keeps the order of keys ----------
 // The app's serde_json sorts the keys of an object, which would reorder the person's file. This keeps them as written.
@@ -116,7 +126,9 @@ fn ours(entry: &J, done_dir: &str, guard_dir: &str, start_dir: &str) -> bool {
     let J::Obj(o) = entry else { return false };
     let guard_open = format!("d={};", sh_quote(guard_dir));
     let start_open = format!("s={};", sh_quote(start_dir));
-    let is_ours = |h: &J| matches!(h, J::Obj(ho) if matches!(get(ho, "command"), Some(J::Str(c)) if (c.starts_with("/usr/bin/touch -- ") && c.contains(&format!("{done_dir}/"))) || c.starts_with(&guard_open) || c.starts_with(&start_open)));
+    // M115: Copilot CLI's entries hold their line under `bash`.
+    let line = |ho: &[(String, J)]| -> Option<String> { match get(ho, "command").or_else(|| get(ho, "bash")) { Some(J::Str(c)) => Some(c.clone()), _ => None } };
+    let is_ours = |h: &J| matches!(h, J::Obj(ho) if line(ho).is_some_and(|c| (c.starts_with("/usr/bin/touch -- ") && c.contains(&format!("{done_dir}/"))) || c.starts_with(&guard_open) || c.starts_with(&start_open)));
     match get(o, "hooks") {
         Some(J::Arr(hooks)) => hooks.iter().any(is_ours),
         // M80: Cursor's and the VS Code agent's entries hold the command themselves.
@@ -209,6 +221,26 @@ pub fn remove(project: &Path, runner_data: &Path) -> Vec<String> {
             }
         } else if crate::wipe::replace_file(&file, format!("{}\n", write(&J::Obj(top))).as_bytes()).is_ok() {
             said.push(rel.to_string());
+        }
+    }
+    // M115: an own file of Squibby's goes whole, then the folders Squibby made for it, each only when empty. A file of the
+    // person's own with that name (no tag, or another folder's path) and a link are left exactly as they are.
+    for (tool, rel) in OWN_FILES {
+        let file = project.join(rel);
+        if !fs::symlink_metadata(&file).is_ok_and(|m| m.is_file()) { continue; }
+        let Ok(text) = fs::read_to_string(&file) else { continue };
+        if !(text.contains(OWN_TAG) && text.contains(&format!("{done_dir}/"))) { continue; }
+        if fs::remove_file(&file).is_err() { continue; }
+        said.push(rel.to_string());
+        if let Some((_, top_dir)) = rec.dirs.iter().find(|(t, _)| t == tool) {
+            let parts: Vec<&str> = rel.split('/').collect();
+            let parts = &parts[..parts.len() - 1];
+            let stop = top_dir.split('/').count();
+            let mut i = parts.len();
+            while i >= stop && i > 0 {
+                if fs::remove_dir(project.join(parts[..i].join("/"))).is_err() { break; }   // only if empty
+                i -= 1;
+            }
         }
     }
     said
@@ -384,7 +416,7 @@ mod tests {
         let ag: serde_json::Value = serde_json::from_str(&fs::read_to_string(t.project.join(".agents/hooks.json")).unwrap()).unwrap();
         assert_eq!(ag.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["my-linter"]);
         let ts = include_str!("../../../runner/src/donesignal.ts");
-        assert!(ts.contains("cursor: \".cursor/hooks.json\", copilot: \".github/hooks/companion.json\", antigravity: \".agents/hooks.json\"") && ts.contains("{ done: \"companion-done\", guard: \"companion-guard\" }") && ts.contains("new Set([\"cursor\", \"copilot\"])"), "the runner writes the same files and keys");
+        assert!(ts.contains("cursor: \".cursor/hooks.json\", copilot: \".github/hooks/companion.json\", antigravity: \".agents/hooks.json\"") && ts.contains("{ done: \"companion-done\", guard: \"companion-guard\" }") && ts.contains("new Set([\"cursor\", \"copilot\", \"copilotcli\"])"), "the runner writes the same files and keys");   // M115 (changed on purpose): and Copilot CLI's file
     }
     #[test]
     fn m81_gemini_cli_and_windsurf_lose_only_squibbys_lines() {
@@ -465,16 +497,46 @@ mod tests {
         assert!(EVENTS.contains(&"PermissionRequest") && EVENTS.contains(&"PreToolUse"));
     }
     #[test]
+    fn m115_copilot_cli_lines_and_squibbys_own_files_go_and_the_persons_own_stay() {
+        let t = t("m115");
+        // Copilot CLI: Squibby's done line under agentStop (its line under bash), beside the person's own sessionStart.
+        create_dir_all(t.project.join(".github/hooks")).unwrap();
+        let done = format!("/usr/bin/touch -- '{}/done/0123456789abcdef01234567.copilotcli' 2>/dev/null; printf '{{}}'", t.data.display());
+        fwrite(t.project.join(".github/hooks/companion-cli.json"), format!("{{ \"version\": 1, \"hooks\": {{ \"sessionStart\": [ {{ \"type\": \"command\", \"bash\": \"echo hi\" }} ], \"agentStop\": [ {{ \"type\": \"command\", \"bash\": {}, \"timeoutSec\": 5 }} ] }} }}", serde_json::to_string(&done).unwrap())).unwrap();
+        // Squibby's own files: OpenCode's plugin (in a folder Squibby made) and Cline's hook (in the person's own folder).
+        create_dir_all(t.project.join(".opencode/plugins")).unwrap();
+        create_dir_all(t.project.join(".clinerules/hooks")).unwrap();
+        let body = |m: &str| format!("// {OWN_TAG}: done signal\nconst MARK = \"{}/done/0123456789abcdef01234567.{m}\";\n", t.data.display());
+        fwrite(t.project.join(".opencode/plugins/companion.js"), body("opencode")).unwrap();
+        fwrite(t.project.join(".clinerules/hooks/TaskComplete"), body("cline")).unwrap();
+        // The person's own Kiro hook with Squibby's name, but none of Squibby's words: kept.
+        create_dir_all(t.project.join(".kiro/hooks")).unwrap();
+        fwrite(t.project.join(".kiro/hooks/companion-done.kiro.hook"), "{ \"name\": \"mine\" }").unwrap();
+        fwrite(t.data.join(INDEX), format!("{{ {}: {{ \"token\": \"0123456789abcdef01234567\", \"made\": [\"opencode\", \"cline\"], \"dirs\": {{ \"opencode\": \".opencode\" }} }} }}", serde_json::to_string(&t.project.to_string_lossy()).unwrap())).unwrap();
+        assert_eq!(remove(&t.project, &t.data), vec![".github/hooks/companion-cli.json", ".opencode/plugins/companion.js", ".clinerules/hooks/TaskComplete"]);
+        let cli: serde_json::Value = serde_json::from_str(&fs::read_to_string(t.project.join(".github/hooks/companion-cli.json")).unwrap()).unwrap();
+        assert_eq!(cli, serde_json::json!({ "version": 1, "hooks": { "sessionStart": [ { "type": "command", "bash": "echo hi" } ] } }));
+        assert!(!t.project.join(".opencode").exists(), "the file and the folders Squibby made go");
+        assert!(t.project.join(".clinerules/hooks").is_dir(), "a folder the person had stays");
+        assert_eq!(fs::read_to_string(t.project.join(".kiro/hooks/companion-done.kiro.hook")).unwrap(), "{ \"name\": \"mine\" }");
+        // The runner writes the same files and tag.
+        let ts = include_str!("../../../runner/src/donesignal.ts");
+        for (tool, rel) in OWN_FILES { assert!(ts.contains(&format!("{tool}: \"{rel}\"")), "{tool}"); }
+        assert!(ts.contains("copilotcli: \".github/hooks/companion-cli.json\""));
+        assert!(ts.contains(&format!("OWN_TAG = \"{OWN_TAG}\"")));
+    }
+    #[test]
     fn this_file_never_runs_git_and_the_runners_rule_is_the_same() {
         let src = include_str!("donehooks.rs");
         let code = &src[..src.find("#[cfg(test)]").unwrap()];
         assert!(!code.contains("Command::new"), "nothing is run");
         let ts = include_str!("../../../runner/src/donesignal.ts");
-        assert!(ts.contains("h.command.startsWith(\"/usr/bin/touch -- \")") && ts.contains("`${dir}/`"), "the runner finds its entries the same way");
+        // M115 (changed on purpose): the runner reads each line (command, or Copilot CLI's bash) first, then checks it the same way.
+        assert!(ts.contains("c.startsWith(\"/usr/bin/touch -- \")") && ts.contains("`${dir}/`"), "the runner finds its entries the same way");
         assert!(ts.contains("claude: \".claude/settings.local.json\", codex: \".codex/hooks.json\"") && ts.contains("DONE_INDEX = \"done-signals.json\""));
         // M77: the same three events and the same guard folder opening on both sides.
-        assert!(ts.contains("done: \"Stop\", guard: \"PreToolUse\", waiting: \"Notification\"") && ts.contains("GUARD_DIR = \"guard\"") && ts.contains("h.command.startsWith(`d=${shQuote(guardDir)};`)"), "the runner finds its guard entries the same way");
+        assert!(ts.contains("done: \"Stop\", guard: \"PreToolUse\", waiting: \"Notification\"") && ts.contains("GUARD_DIR = \"guard\"") && ts.contains("c.startsWith(`d=${shQuote(guardDir)};`)"), "the runner finds its guard entries the same way");
         // M78: the start hook under SessionStart, found by its start folder opening on both sides.
-        assert!(ts.contains("start: \"SessionStart\"") && ts.contains("START_DIR = \"start\"") && ts.contains("h.command.startsWith(`s=${shQuote(startDir)};`)"), "the runner finds its start entries the same way");
+        assert!(ts.contains("start: \"SessionStart\"") && ts.contains("START_DIR = \"start\"") && ts.contains("c.startsWith(`s=${shQuote(startDir)};`)"), "the runner finds its start entries the same way");
     }
 }

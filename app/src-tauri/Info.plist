@@ -8,6 +8,9 @@
   <!-- Shown by macOS the first time the talk keys are used. -->
   <key>NSMicrophoneUsageDescription</key>
   <string>Squibby listens only while you hold its talk keys. Your voice is turned into words on this Mac and is never sent anywhere or saved.</string>
+  <!-- M115: shown by macOS the first time Go to picks the exact Terminal or iTerm tab (notch.jumpTab), never before. -->
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Squibby brings the Terminal or iTerm tab where your AI tool runs to the front when you press Go to. It only selects that tab and reads nothing.</string>
   <!-- 5 Nov 2026: Squibby has no ordinary window, so macOS may otherwise quit it by itself to free memory. It stays on
        until the person quits it (main.rs keep_running_until_quit says the same at launch). -->
   <key>NSSupportsAutomaticTermination</key>

@@ -1,5 +1,5 @@
 {
-  "about": "M82: the one list of the AI tools the Your AI tools screen looks for, and how each is found. The shell reads it (app/src-tauri/src/aitools.rs: only whether an app with that bundle id is installed, whether a program file with that name is in one of the folders, and whether the project has that folder; it never runs a program and never reads any file's contents) and so do the pages (app/src/aiTools.ts: which tools are on this Mac). The ids are the done signal's tools (runner/src/donesignal.ts DONE_TOOLS). apps: bundle ids, also the app Put it in brings to the front. programs: command line program names. folders: the tool's own folder in a project. binFolders: where programs are looked for besides the app's own PATH (~ is the home folder). [verify] the bundle ids of Antigravity and the Codex app on a real Mac.",
+  "about": "M82: the one list of the AI tools the Your AI tools screen looks for, and how each is found. The shell reads it (app/src-tauri/src/aitools.rs: only whether an app with that bundle id is installed, whether a program file with that name is in one of the folders, and whether the project has that folder; it never runs a program and never reads any file's contents) and so do the pages (app/src/aiTools.ts: which tools are on this Mac). The ids are the done signal's tools (runner/src/donesignal.ts DONE_TOOLS). apps: bundle ids, also the app Put it in brings to the front. programs: command line program names. folders: the tool's own folder in a project. binFolders: where programs are looked for besides the app's own PATH (~ is the home folder). [verify] the bundle ids of Antigravity and the Codex app on a real Mac. M115: the tools Squibby reaches through a file of its own (OpenCode, Amp, Cline, Kiro), through Copilot CLI's own hook file, or through the folder (Zed, Junie, the JetBrains IDEs, Xcode); via names the tool whose connection covers this one (Claude Desktop runs Claude Code), and such a tool is never a done signal tool of its own. any, the open tag, is not here: it has no app to find. [verify] the bundle ids of the OpenCode and Kiro apps and the program names of Amp, Cline and Junie.",
   "tools": [
     { "id": "claude", "apps": [], "programs": ["claude"], "folders": [".claude"] },
     { "id": "codex", "apps": ["com.openai.codex"], "programs": ["codex"], "folders": [".codex"] },
@@ -7,7 +7,17 @@
     { "id": "copilot", "apps": ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders"], "programs": [], "folders": [".vscode"] },
     { "id": "antigravity", "apps": ["com.google.antigravity", "com.google.antigravity-ide"], "programs": ["agy"], "folders": [".agent"] },
     { "id": "gemini", "apps": [], "programs": ["gemini"], "folders": [".gemini"] },
-    { "id": "windsurf", "apps": ["com.exafunction.windsurf"], "programs": ["devin"], "folders": [".windsurf", ".devin"] }
+    { "id": "windsurf", "apps": ["com.exafunction.windsurf"], "programs": ["devin"], "folders": [".windsurf", ".devin"] },
+    { "id": "copilotcli", "apps": [], "programs": ["copilot"], "folders": [] },
+    { "id": "opencode", "apps": ["ai.opencode.desktop"], "programs": ["opencode"], "folders": [".opencode"] },
+    { "id": "amp", "apps": [], "programs": ["amp"], "folders": [".amp"] },
+    { "id": "cline", "apps": [], "programs": ["cline"], "folders": [".clinerules"] },
+    { "id": "kiro", "apps": ["dev.kiro.desktop"], "programs": ["kiro"], "folders": [".kiro"] },
+    { "id": "zed", "apps": ["dev.zed.Zed", "dev.zed.Zed-Preview"], "programs": ["zed"], "folders": [".zed"] },
+    { "id": "junie", "apps": [], "programs": ["junie"], "folders": [".junie"] },
+    { "id": "jetbrains", "apps": ["com.jetbrains.intellij", "com.jetbrains.intellij.ce", "com.jetbrains.WebStorm", "com.jetbrains.pycharm", "com.jetbrains.pycharm.ce", "com.jetbrains.goland", "com.jetbrains.PhpStorm", "com.jetbrains.rubymine", "com.jetbrains.CLion", "com.jetbrains.rider", "com.jetbrains.rustrover", "com.google.android.studio"], "programs": [], "folders": [".idea"] },
+    { "id": "xcode", "apps": ["com.apple.dt.Xcode"], "programs": [], "folders": [] },
+    { "id": "claudedesktop", "via": "claude", "apps": ["com.anthropic.claudefordesktop"], "programs": [], "folders": [] }
   ],
   "binFolders": ["~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "~/.npm-global/bin", "~/.claude/local", "~/.bun/bin"]
 }

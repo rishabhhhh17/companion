@@ -125,7 +125,10 @@ mod tests {
     #[test]
     fn the_list_is_the_done_signals_tools_each_once() {
         let ids: Vec<&str> = list().tools.iter().map(|t| t.id.as_str()).collect();
-        assert_eq!(ids, ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf"]);
+        // M115 (changed on purpose): every tool Squibby reaches now, then Claude Desktop, listed through Claude Code (via).
+        assert_eq!(ids, ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf", "copilotcli", "opencode", "amp", "cline", "kiro", "zed", "junie", "jetbrains", "xcode", "claudedesktop"]);
+        assert!(tool("zed").unwrap().apps.contains(&"dev.zed.Zed".to_string()));
+        assert!(tool("xcode").unwrap().apps.contains(&"com.apple.dt.Xcode".to_string()));
         // The plan's programs and the known app ids (pastehere.rs) are on it.
         for p in ["claude", "codex", "gemini", "agy", "devin"] { assert!(list().tools.iter().any(|t| t.programs.iter().any(|x| x == p)), "{p}"); }
         assert!(tool("cursor").unwrap().apps.contains(&"com.todesktop.230313mzl4w4u92".to_string()));
@@ -172,7 +175,11 @@ mod tests {
         std::fs::create_dir_all(proj.join(".codex")).unwrap();
         std::fs::create_dir_all(proj.join(".devin")).unwrap();
         let path = format!("{}:{}", bin.display(), bin.display());
-        let f = find(list(), &path, Path::new("/nowhere"), Some(&proj), |b| b == "com.microsoft.VSCode" || b == "com.example.other");
+        // M115 (changed on purpose): the list now names programs (copilot, amp, ...) a developer's Mac may really have in
+        // /opt/homebrew/bin, so this test looks only in its own folder.
+        let mut own: List = serde_json::from_str(LIST_TEXT).unwrap();
+        own.bin_folders.clear();
+        let f = find(&own, &path, Path::new("/nowhere"), Some(&proj), |b| b == "com.microsoft.VSCode" || b == "com.example.other");
         assert_eq!(f, Found { apps: vec!["com.microsoft.VSCode".into()], programs: vec!["claude".into(), "gemini".into()], folders: vec![".codex".into(), ".devin".into()] });
         // No project: no folders are looked at.
         assert!(find(list(), &path, Path::new("/nowhere"), None, |_| false).folders.is_empty());

@@ -3,10 +3,12 @@
 // Connect opens one card that shows every file and every line for that tool; only its yes sends the adds (aiTools.ts).
 import { useEffect, useState } from "react";
 import { ConfirmStep } from "./confirm.tsx";
-import { anyConnected, connectAsk, connectCommands, connection, connectProblem, connectRows, disconnectCommands, feedOffRow, findTools, foundFrom, toolName, type Found, type ToolId } from "./aiTools.ts";
-import { addDoneSignal, showDoneSignal } from "./commands.ts";
+import { anyConnected, anyLineFrom, connectAsk, connectCommands, connection, connectProblem, connectRows, disconnectCommands, feedOffRow, findTools, foundFrom, supportsLine, toolName, watchNote, type Found, type ToolId } from "./aiTools.ts";
+import { addDoneSignal, askAnyLine, showDoneSignal } from "./commands.ts";
 import { doneAsk, doneStateFrom, type DoneState } from "./doneSignal.ts";
 import { S } from "./strings.ts";
+import { reviewModeOf } from "../../protocol/index.ts";
+import { useSetting } from "./settingsStore.ts";
 import { invoke, listen } from "./tauri.ts";
 import { Button, Disclosure, Row } from "./ui/parts.tsx";
 
@@ -45,9 +47,17 @@ export function AiToolsScreen({ project }: { project: string }) {
   const [askingFeed, setAskingFeed] = useState<ToolId | null>(null);
   const [said, setSaid] = useState("");
   const [notHereOpen, setNotHereOpen] = useState(false);
+  // M115: the open tag's line for this project, asked when its part is opened.
+  const [anyOpen, setAnyOpen] = useState(false);
+  const anyLine = useAnyLine(project, anyOpen);
+  const [anySaid, setAnySaid] = useState("");
+  // M115 review: a watch tool's changes come from the review's folder watch, which runs only while reviews are on here and
+  // Fix is on; its row and its card say so (aiTools.ts watchNote).
+  const reviewMode = reviewModeOf(useSetting("review.mode"), useSetting("review.modeHere"));
+  const flowOn = useSetting("flow.on");
   if (found === null) return <Row label={S.m82.title} description={S.m82.looking} />;
   if (found === "failed") return <Row label={S.m82.title} description={S.m82.couldNotLook} />;
-  const { here, notHere } = findTools(found);
+  const { here, notHere, via } = findTools(found);
   const ask = asking ? connectAsk(st, asking) : null;
   const connect = (t: ToolId) => { setSaid(""); setAskingFeed(null); setAsking(t); };
   const feedRow = askingFeed ? feedOffRow(st, askingFeed) : null;
@@ -68,21 +78,32 @@ export function AiToolsScreen({ project }: { project: string }) {
       const c = connection(st, t), problem = connectProblem(st, t);
       // M113: a connected tool whose live feed is on says so too.
       const live = connectRows(st, t).some((r) => r.hook === "feed" && r.on) ? ` ${S.m113.liveOn}` : "";
-      return <Row key={t} indent label={toolName(t)} description={problem ?? (c === "on" ? `${S.m82.connected}. ${t === "claude" ? S.m82.toolLineClaude : S.m82.toolLine}${live}` : c === "partly" ? `${S.m82.partly}. ${t === "claude" ? S.m82.toolLineClaude : S.m82.toolLine}` : t === "claude" ? S.m82.toolLineClaude : S.m82.toolLine)}
+      // M115: each tool says what Squibby does with it, by what its hooks can do.
+      const note = watchNote(t, reviewMode, flowOn);
+      const line = note ? `${supportsLine(t)} ${note}` : supportsLine(t);
+      return <Row key={t} indent label={toolName(t)} description={problem ?? (c === "on" ? `${S.m82.connected}. ${line}${live}` : c === "partly" ? `${S.m82.partly}. ${line}` : line)}
         control={!project || problem || !st ? null
           : c === "on" ? <>
             {feedOffRow(st, t) && <Button size="sm" kind="secondary" id={`ai-feed-${t}`} label={S.m113.showLiveLabel(toolName(t))} onClick={() => { setSaid(""); setAsking(null); setAskingFeed(t); }}>{S.m113.showLive}</Button>}
             <Button size="sm" kind="quiet" label={S.m82.disconnectLabel(toolName(t))} onClick={() => disconnect(t)}>{S.m82.disconnect}</Button></>
           : <Button size="sm" id={`ai-connect-${t}`} label={S.m82.connectLabel(toolName(t))} onClick={() => connect(t)}>{S.m82.connect}</Button>} />;
     })}
+    {/* M115: a tool that runs another one (Claude Desktop runs Claude Code): that tool's state, and its Connect. */}
+    {via.map((v) => {
+      const c = connection(st, v.via), viaName = toolName(v.via);
+      return <Row key={v.id} indent label={v.name} description={c === "on" ? `${S.m82.connected}. ${S.m115.viaLine(v.name, viaName)}` : S.m115.viaLine(v.name, viaName)}
+        control={!project || !st || c === "on" || connectProblem(st, v.via) ? null : <Button size="sm" kind="secondary" {...(here.includes(v.via) ? {} : { id: `ai-connect-${v.via}` })} label={S.m115.viaConnectLabel(v.name, viaName)} onClick={() => connect(v.via)}>{S.m82.connect}</Button>} />;
+    })}
     {asking && ask && (
       <ConfirmStep className="set-confirm done-ask ai-connect-ask" label={ask.title} back={`ai-connect-${asking}`} onCancel={() => setAsking(null)}>
         <p><b>{ask.title}</b></p>
         {ask.parts.map((p) => (<div key={p.hook} className="ai-connect-part">
           <p>{p.label}. {p.where}</p>
-          <div className="ask-what" role="group" aria-label={p.label}><code>{p.what}</code></div>
+          {/* M115: a watch part writes nothing, so it shows no lines. */}
+          {p.what && <div className="ask-what" role="group" aria-label={p.label}><code>{p.what}</code></div>}
         </div>))}
         {ask.notes.map((n) => <p key={n}>{n}</p>)}
+        {watchNote(asking, reviewMode, flowOn) && <p>{watchNote(asking, reviewMode, flowOn)}</p>}
         <div className="set-buttons"><Button kind="primary" onClick={() => yes(asking)}>{S.m82.yes}</Button><Button cancel onClick={() => setAsking(null)}>{S.m82.no}</Button></div>
       </ConfirmStep>
     )}
@@ -101,8 +122,32 @@ export function AiToolsScreen({ project }: { project: string }) {
         <ul className="ai-not-here">{notHere.map((t) => <li key={t}>{toolName(t)}</li>)}</ul>
       </Disclosure>
     )}
+    {/* M115: the open tag, so any other tool can say it is done (docs/any-tool-hook.md). */}
+    {project && (
+      <Disclosure title={S.m115.anyTitle} open={anyOpen} onToggle={(o) => { setAnyOpen(o); setAnySaid(""); }}>
+        <p className="set-note">{S.m115.anyLine}</p>
+        {anyLine ? <>
+          <div className="ask-what" role="group" aria-label={S.m115.anyTitle}><code>{anyLine}</code></div>
+          <div className="set-buttons"><Button size="sm" kind="secondary" onClick={() => { void invoke("copy_text", { text: anyLine }).then(() => setAnySaid(S.m115.anyCopied), () => setAnySaid(S.m115.anyCopyFailed)); }}>{S.m115.anyCopy}</Button></div>
+        </> : <p className="set-note" role="status">{S.m115.anyLoading}</p>}
+        {anySaid && <p className="set-note" role="status">{anySaid}</p>}
+      </Disclosure>
+    )}
     {said && <p className="set-note" role="status">{said}</p>}
   </div>);
+}
+
+/** M115: the open tag's line for this project (donesignal.anyLine), asked only once its part is opened. */
+function useAnyLine(project: string, open: boolean): string | null {
+  const [line, setLine] = useState<string | null>(null);
+  useEffect(() => {
+    setLine(null);
+    if (!project || !open) return;
+    const off = listen("runner-event", (e) => { const l = anyLineFrom(e.payload, project); if (l) setLine(l); });
+    void send(askAnyLine(project)).catch(() => {});
+    return () => { void off.then((f) => f()); };
+  }, [project, open]);
+  return line;
 }
 
 /** M82: Now's one row while no AI tool is connected in this project (aiTools.nowRow, on as usual). It opens Your AI tools;

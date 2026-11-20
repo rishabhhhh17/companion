@@ -141,3 +141,8 @@
 {"v":1,"id":"m114c4","type":"toolask.answer","ask":"ta_a1b2c3d4e5f6","choice":"tool"}
 {"v":1,"id":"m114c5","type":"donesignal.add","project":"p_9f2c","tool":"claude","confirm":true,"hook":"approve"}
 {"v":1,"id":"m114c6","type":"donesignal.add","project":"p_9f2c","tool":"claude","confirm":true,"hook":"answer"}
+{"v":1,"id":"m115c1","type":"tool.jump","project":"p_9f2c","tool":"claude"}
+{"v":1,"id":"m115c2","type":"tool.jump","project":"p_9f2c","tool":"cursor"}
+{"v":1,"id":"m115c3","type":"donesignal.anyLine","project":"p_9f2c"}
+{"v":1,"id":"m115c4","type":"donesignal.add","project":"p_9f2c","tool":"zed","confirm":true,"hook":"watch"}
+{"v":1,"id":"m115c5","type":"donesignal.add","project":"p_9f2c","tool":"copilotcli","confirm":true,"hook":"guard"}

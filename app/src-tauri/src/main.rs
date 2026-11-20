@@ -1956,6 +1956,12 @@ mod bundle_tests {
         assert!(plist.contains("<key>LSUIElement</key>") && plist.contains("<true/>"));
         assert!(plist.contains("<key>NSMicrophoneUsageDescription</key>"));
     }
+    /// M115: Go to's exact tab asks macOS about Automation on the first press; the question says why, and the hardened app may send it.
+    #[test]
+    fn the_info_file_explains_go_to_and_the_entitlements_allow_it() {
+        assert!(include_str!("../Info.plist").contains("<key>NSAppleEventsUsageDescription</key>"));
+        assert!(include_str!("../Entitlements.plist").contains("com.apple.security.automation.apple-events"));
+    }
     #[test]
     fn the_entitlements_allow_the_microphone() {
         assert!(include_str!("../Entitlements.plist").contains("com.apple.security.device.audio-input"));

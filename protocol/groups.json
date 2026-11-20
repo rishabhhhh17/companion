@@ -19,7 +19,7 @@
       "runner": [] },
     { "id": "stop", "group": "core", "hotkeys": ["stop"], "permissions": [], "settings": [],
       "commands": ["showme_clear", "showme_hide", "speak_stop"],
-      "runner": ["agent.interrupt", "agent.interruptAll", "approval.resolve", "toolask.answer", "assist.cancel", "runner.ping", "google.accounts"] },
+      "runner": ["agent.interrupt", "agent.interruptAll", "approval.resolve", "toolask.answer", "tool.jump", "assist.cancel", "runner.ping", "google.accounts"] },
     { "id": "projects", "group": "core", "permissions": [], "settings": [],
       "commands": ["get_project", "list_projects", "use_project", "pick_project", "clone_project", "start_in_new_folder", "list_made", "open_made", "reveal_made", "trash_made", "numbers_mail", "save_receipt"],
       "runner": ["tasks.list", "project.inspect", "project.install", "project.clone", "recap.ask", "week.show", "jobs.save", "jobs.list", "jobs.drop"] },
@@ -77,7 +77,7 @@
       "runner": ["where.was.i"] },
     { "id": "review", "group": "flow", "tried": "page", "permissions": [], "settings": ["review.mode", "review.quietSeconds"],
       "commands": ["ai_tools_find"],
-      "runner": ["review.now", "review.dismiss", "review.fix", "review.undoPlan", "review.undo", "donesignal.show", "donesignal.add", "donesignal.remove"], "stays": ["review.dismiss", "review.undoPlan", "review.undo", "donesignal.remove"] },
+      "runner": ["review.now", "review.dismiss", "review.fix", "review.undoPlan", "review.undo", "donesignal.show", "donesignal.add", "donesignal.remove", "donesignal.anyLine"], "stays": ["review.dismiss", "review.undoPlan", "review.undo", "donesignal.remove"] },
 
     { "id": "showMe", "group": "guide", "hotkeys": ["showme"], "tried": "page", "permissions": ["screenRecording"], "settings": ["showme.allScreens", "point.everyday"],
       "commands": ["showme_start", "showme_aim", "showme_labels", "do_it_for_me"],

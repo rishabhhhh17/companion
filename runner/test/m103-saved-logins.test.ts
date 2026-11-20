@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { DONE_TOOLS, GUARD_ASK, GUARD_BLOCK, GUARD_DIR, canAsk, canBlock, guardCommand, guardEntryFor, type DoneTool } from "../src/donesignal.ts";
+import { DONE_TOOLS, TOOL_HOOKS, GUARD_ASK, GUARD_BLOCK, GUARD_DIR, canAsk, canBlock, guardCommand, guardEntryFor, type DoneTool } from "../src/donesignal.ts";
 import { HookGuard, parseRead } from "../src/guard.ts";
 import { LOGIN_MODES, loginModeOf, savedLoginCommand, savedLoginPath, isSavedLoginPath } from "../src/savedlogins.ts";
 import { TaskLog } from "../src/tasklog.ts";
@@ -176,7 +176,8 @@ const logins = (e: ReturnType<typeof engine>) => e.events.filter((x) => x.type =
 describe("each tool's hook shape, run for real", () => {
   test("which tools ask and which can block, from each tool's own hook docs", () => {
     expect(DONE_TOOLS.filter(canAsk)).toEqual(["claude", "cursor", "copilot", "antigravity"]);
-    expect(DONE_TOOLS.filter(canBlock)).toEqual(["codex", "gemini", "windsurf"]);
+    // M115 (changed on purpose): Copilot CLI's preToolUse can deny too, never ask.
+    expect(DONE_TOOLS.filter(canBlock)).toEqual(["codex", "gemini", "windsurf", "copilotcli"]);
     // A block is only ever the person's own Settings choice, and only where the tool cannot ask.
     for (const t of DONE_TOOLS) expect(!!GUARD_ASK[t] && !!GUARD_BLOCK[t]).toBe(false);
     for (const f of Object.values(GUARD_BLOCK)) expect(f).not.toMatch(/approve|"allow"|auto/);
@@ -284,8 +285,10 @@ describe("each tool's hook shape, run for real", () => {
     expect(e.rows).toEqual([]);
   });
   test("a harmless command or read: each tool's usual ending, unchanged, and nothing said", async () => {
-    const want: Record<string, { code: number; out: string }> = { claude: { code: 0, out: "" }, codex: { code: 0, out: "" }, copilot: { code: 0, out: "" }, cursor: { code: 1, out: "" }, antigravity: { code: 0, out: '{"decision":"allow"}' }, gemini: { code: 0, out: "" }, windsurf: { code: 0, out: "" } };
-    for (const t of DONE_TOOLS) {
+    const want: Record<string, { code: number; out: string }> = { claude: { code: 0, out: "" }, codex: { code: 0, out: "" }, copilot: { code: 0, out: "" }, cursor: { code: 1, out: "" }, antigravity: { code: 0, out: '{"decision":"allow"}' }, gemini: { code: 0, out: "" }, windsurf: { code: 0, out: "" },
+      // M115 (changed on purpose): Copilot CLI goes on with no output; only the tools that have a guard are run.
+      copilotcli: { code: 0, out: "" } };
+    for (const t of DONE_TOOLS.filter((x) => TOOL_HOOKS[x].includes("guard"))) {
       const e = engine({ mode: "block" });
       const r = await run(t, "cat src/credentials.ts", e);
       expect({ tool: t, code: r.code, out: r.out }).toEqual({ tool: t, ...want[t] });

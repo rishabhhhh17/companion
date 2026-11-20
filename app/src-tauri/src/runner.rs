@@ -1062,6 +1062,39 @@ mod tests {
         }
     }
     #[test]
+    fn m115_go_to_names_no_app_or_folder_and_where_a_session_runs_is_only_an_apps_name() {
+        // M115 (runner/src/jump.ts): the shared fixtures. Go to comes from a page, is bound to the project, and names only the
+        // tool: the engine already knows the app. Where a session runs travels as the app's own name and whether its tab can
+        // be found: never a path, a terminal's name or a process id. None of it is replayed to a late page or logged.
+        let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");
+        let cmds: Vec<Value> = fixtures.lines().filter(|l| l.contains("\"id\":\"m115c")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(cmds.len(), 5);
+        for c in &cmds {
+            assert!(check_command(c).is_ok(), "{c}");
+            if c["type"] == "tool.jump" {
+                assert!(PROJECT_BOUND.contains(&"tool.jump"));
+                let mut keys: Vec<&str> = c.as_object().unwrap().keys().map(|k| k.as_str()).collect();
+                keys.sort();
+                assert_eq!(keys, ["id", "project", "tool", "type", "v"]);
+            }
+        }
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let evs: Vec<Value> = events.lines().filter(|l| l.contains("\"id\":\"m115e")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(evs.len(), 5);
+        for e in &evs {
+            let mut sticky = BTreeMap::new();
+            assert!(!remember(&mut sticky, e), "never replayed");
+            let mut seen = BTreeMap::new();
+            assert!(approval_line(e, &mut seen).is_none(), "never a log line");
+            if e["type"] == "tool.where" {
+                for k in e.as_object().unwrap().keys() { assert!(["v", "id", "ts", "type", "project", "tool", "app", "tab"].contains(&k.as_str()), "{k}"); }
+                let app = e["app"].as_str().unwrap();
+                assert!(!app.contains('/') && !app.ends_with(".app") && app.chars().count() <= 80, "{app}");
+            }
+            if e["type"] == "donesignal.anyLine" { assert!(e["line"].as_str().unwrap().starts_with("/usr/bin/touch -- '")); }
+        }
+    }
+    #[test]
     fn m105_a_review_names_the_tool_that_finished_and_codex_waiting_carries_no_words() {
         // M105: the shared fixtures (read by the runner's suite and the pages too). The shell passes these through as they are;
         // here it checks the shape it may forward: `by` and `tool` are one of the seven tools' ids, and another tool's waiting
@@ -1148,7 +1181,8 @@ mod tests {
             } else { assert!(check_project(&v, "").is_ok(), "{line}"); }
             seen.insert(t);
         }
-        assert_eq!(seen.into_iter().collect::<Vec<_>>(), ["cost.choose", "donesignal.add", "donesignal.remove", "donesignal.show", "proof.signIn"]);
+        // M115 (changed on purpose): the open tag's line is a done signal command too.
+        assert_eq!(seen.into_iter().collect::<Vec<_>>(), ["cost.choose", "donesignal.add", "donesignal.anyLine", "donesignal.remove", "donesignal.show", "proof.signIn"]);
         // The cost pause carries no amount.
         let events = include_str!("../../../protocol/fixtures/events.jsonl");
         for l in events.lines().filter(|l| l.contains("\"type\":\"cost.pause\"")) {
