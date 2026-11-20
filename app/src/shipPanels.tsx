@@ -23,11 +23,13 @@ type GatesProps = {
   share?: ReactNode;
   /** M87: Why is live broken?, the read only check of the live setup, on the person's press. */
   whyLive?: ReactNode;
+  /** M117: the Money and fines part (moneyFines.tsx), under the gates. Never a gate: it changes nothing above it. */
+  money?: ReactNode;
 };
 
 /** The check before going live. Every gate passed: one main button, Put it online. A blocked gate: its own Fix it, which
  *  says Starting the fix at once and leaves the panel on screen until the task's first event takes its place. */
-export function ShipGatesPanel({ ship, words, online, practice, onPutOnline, onFix, onCheck, onConfirm, onClose, share, whyLive }: GatesProps) {
+export function ShipGatesPanel({ ship, words, online, practice, onPutOnline, onFix, onCheck, onConfirm, onClose, share, whyLive, money }: GatesProps) {
   const [fixing, setFixing] = useState<string | null>(null);
   // A new report (the check ran again) starts with no fix asked; a refused fix gives its row back at once.
   useEffect(() => setFixing(null), [ship]);
@@ -50,6 +52,7 @@ export function ShipGatesPanel({ ship, words, online, practice, onPutOnline, onF
           </div>
         );
       })}
+      {money}
       {online && (
         <div className="ship-finish">
           <div className="line muted">{S.going.putOnlineLine}</div>

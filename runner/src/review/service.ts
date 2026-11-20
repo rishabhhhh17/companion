@@ -51,6 +51,8 @@ import { PACKAGE_NOTES, packageReasons, type PackageLookup } from "./osv.ts";
 import { dirname as dirOf } from "node:path";
 import { committedSince } from "./gitcommit.ts";
 import { findingsOf, outcomeOf, stillCount, type FixCheck, type FixOutcome } from "./fixcheck.ts";
+import { moneyFilesAt, moneyReasons, type MoneyItem } from "../money/review.ts";
+import { CODE as MONEY_CODE, PAGE as MONEY_PAGE } from "../money/text.ts";
 import type { DoneTool } from "../donesignal.ts";
 
 /** The commands whose work can write in the project (a task, a plan, Undo, an install, a check or a ship step that builds
@@ -124,6 +126,8 @@ export type ReviewDeps = {
   /** M79 (T18): known serious problems of the packages a change added, on OSV.dev (osv.ts). Only names and versions are
    *  sent, only while packages.check is on and the review may send more than the checks. Absent: never looked up. */
   packages?: PackageLookup;
+  /** M117: the project's "I set this up outside the code" lines the person pressed for (money/told.ts). */
+  moneyTold?: (project: string) => readonly string[];
 };
 /** M57 feature 1: a review's row in History. Names of files only, never their text (TaskLog.addReview keeps nothing else). */
 export type ReviewHistory = {
@@ -259,8 +263,13 @@ function withoutKeys(hunks: Hunk[]): Hunk[] {
 
 /** How a shown reason is checked again later (M57 feature 4). A key: its line, by hash. A removed file still used: the
  *  import. Open data: the table. Anything else is about the change itself: it holds until its files are back as they were. */
-function recheckOf(r: Reason, o: { b: Batch; added: AddedLine[]; stillUsed: StillUsed[]; open: { reason: Reason; table: string; open: "anyone" | "signedIn" }[] }): Recheck {
+function recheckOf(r: Reason, o: { b: Batch; added: AddedLine[]; stillUsed: StillUsed[]; open: { reason: Reason; table: string; open: "anyone" | "signedIn" }[]; money?: { items: MoneyItem[]; context: string[] } }): Recheck {
   const all: Recheck = { how: "files", files: o.b.files.map((f) => f.file) };
+  // M117: a money reason is checked again by the same rule, over its file and the files that rule read.
+  if ((r.kind === "paid_route_open" || r.kind === "form_open" || r.kind === "tracker_no_consent") && r.file) {
+    const m = o.money?.items.find((x) => x.reason.kind === r.kind && x.file === r.file && x.reason.line === r.line);
+    return m ? { how: "money", kind: m.kind, file: m.file, anchor: m.anchor, context: o.money!.context.filter((f) => f !== m.file) } : { how: "files", files: [r.file] };
+  }
   if ((r.kind === "secret_in_code" || r.kind === "key_in_page") && r.file) {
     const line = o.added.find((a) => a.file === r.file && a.line === r.line);
     return line ? { how: "line", file: r.file, hash: lineHash(line.text) } : { how: "files", files: [r.file] };
@@ -871,7 +880,7 @@ export class ReviewService {
         const store = this.deps.store(rec.batch.project);
         if (!store.has(after) || !store.has(rec.batch.from) || !store.has(rec.batch.to)) return null;
         const want = new Set(recheckFiles(rec.rechecks));
-        const text = want.size ? await store.readFiles(after, (x) => want.has(x)) : {};
+        const text = { ...(want.size ? await store.readFiles(after, (x) => want.has(x)) : {}), ...(await this.moneyRecheckText(store, after, rec.rechecks)) };
         const migrations = rec.rechecks.some((t) => t.how === "table") ? await store.readFiles(after, (x) => MIGRATION.test(x)) : {};
         const changed = async (a: string) => new Set([...(await store.diff(a, after)).map((c) => c.file), ...(await store.envChanged(a, after))]);
         const changedSinceBefore = await changed(rec.batch.from), byFix = await changed(rec.batch.to);
@@ -971,7 +980,7 @@ export class ReviewService {
       if (!open.length) continue;
       const ts = open.map((i) => rec.rechecks[i]);
       const want = new Set(recheckFiles(ts));
-      const text = want.size ? await store.readFiles(newer.to, (x) => want.has(x)) : {};
+      const text = { ...(want.size ? await store.readFiles(newer.to, (x) => want.has(x)) : {}), ...(await this.moneyRecheckText(store, newer.to, ts)) };
       const migrations = ts.some((t) => t.how === "table") ? await store.readFiles(newer.to, (x) => MIGRATION.test(x)) : {};
       const changedSinceBefore = new Set([...(await store.diff(rec.batch.from, newer.to)).map((c) => c.file), ...(await store.envChanged(rec.batch.from, newer.to))]);
       // M95: a newer version that is the one before the change (the change undone, or its files deleted back to how they
@@ -1006,6 +1015,32 @@ export class ReviewService {
     if (signal.aborted) throw new Error("stopped");
     if (l.notChecked) notes.push(l.checked === 0 ? PACKAGE_NOTES.offline : PACKAGE_NOTES.some(l.notChecked));
     return { reasons: packageReasons(l), notes };
+  }
+
+  /** M117: a money reason is checked again over the files its rule needs at the newer version, found again there (a fix
+   *  often adds a new helper, such as lib/ratelimit.ts, that the files kept at review time do not name). None when there is
+   *  no money recheck or the files cannot be read. */
+  private async moneyRecheckText(store: CheckpointStore, id: string, ts: readonly Recheck[]): Promise<Record<string, string>> {
+    const files = [...new Set(ts.flatMap((t) => (t.how === "money" ? [t.file] : [])))];
+    if (!files.length) return {};
+    try { return await moneyFilesAt((v, keep) => store.readFiles(v, keep), id, files); } catch { return {}; }
+  }
+
+  /** M117: the money rules over the change: what it added, at most Worth a look. Off with money.checks off, for a change
+   *  with no code or page in it, and for the key practice (its rules are its own). Read from the undo store's two versions
+   *  only. A failure finds nothing here; the go live check still says what it could not check. */
+  private async moneyOf(b: Batch, store: CheckpointStore): Promise<{ items: MoneyItem[]; notes: string[]; context: string[] }> {
+    const none = { items: [], notes: [], context: [] };
+    const changed = b.files.filter((f) => f.kind !== "deleted").map((f) => f.file).filter((f) => (MONEY_CODE.test(f) || MONEY_PAGE.test(f)) && !isEnvFile(f));
+    if (!changed.length || this.deps.setting("money.checks") === false || this.deps.rulesOnly?.(b.project) === true) return none;
+    try {
+      const read = (id: string, keep: (p: string) => boolean) => store.readFiles(id, keep);
+      const [before, after] = [await moneyFilesAt(read, b.from, changed), await moneyFilesAt(read, b.to, changed)];
+      let told: readonly string[] = [];
+      try { told = this.deps.moneyTold?.(b.project) ?? []; } catch { told = []; }
+      const r = moneyReasons({ changed, before, after, told });
+      return { ...r, context: Object.keys(after).slice(0, 80) };
+    } catch { return none; }
   }
 
   /** stops: Stop everything's count when this review was asked for; a Stop since means it does not start. asked: the
@@ -1059,7 +1094,9 @@ export class ReviewService {
       const weakened = this.deps.setting("review.weakenedChecks") === false ? [] : weakenedChecks(deltas, after);
       // M79 (T18): known serious problems in the packages this change added (only names and versions leave the Mac).
       const pk = await this.packagesOf(b, store, abort.signal);
-      const found: Reason[] = [...weakened, ...page.page, ...open.map((x) => x.reason), ...house, ...pk.reasons];
+      // M117: what the change added that costs money or risks a fine (worth a look at most), by the go live check's rules.
+      const money = await this.moneyOf(b, store);
+      const found: Reason[] = [...weakened, ...page.page, ...open.map((x) => x.reason), ...house, ...pk.reasons, ...money.items.map((x) => x.reason)];
       const deleted = b.files.filter((f) => f.kind === "deleted").map((f) => f.file);
       const stillUsed = deleted.length ? importersOf(deleted, liveCode(b.project)) : [];
       // M102: the first file that made each touch, for the proof line of a change to a risky area.
@@ -1148,7 +1185,7 @@ export class ReviewService {
       // a Fix this first, a key, a settings or key file and open data never are.
       const shown = applyStrictness(rated, this.deps.setting("review.strictness") as ReviewStrictness, reviewSilenced(this.silencedLines(b.project)));
       const summary = words?.summary ?? plainSummary(b.files, b.count);
-      const notes = [...[...concernNote, ...(words?.notes ?? [])].map((n) => clip(redact(n), 200)), ...pk.notes];
+      const notes = [...[...concernNote, ...(words?.notes ?? [])].map((n) => clip(redact(n), 200)), ...pk.notes, ...money.notes];
       const review: ReviewWords = { rating: shown.rating, reasons: shown.reasons, touches, files: b.files, count: b.count, summary, notes, ...(pushRisk ? { pushRisk: true } : {}) };
       // M77: what the changes did not tell you, from this review's own data (no model call).
       const untold = untoldOf(b.files, deltas, checks);
@@ -1170,7 +1207,7 @@ export class ReviewService {
       if (sheet && this.deps.setting("replay.model") === true && !rulesOnly && !checksOnly) void this.replayByModel(b, sheet, abort.signal, gen);
       // M57 feature 1: one row in the task log. Names of files only, the summary with secrets hidden; no file text.
       try { this.deps.history?.add({ project: b.project, batch: b.id, at: new Date().toISOString(), files: b.files.map((f) => f.file).slice(0, 20), count: b.count, rating: shown.rating, touches, checks, summary: clip(redact(summary), 400), kinds: [...new Set(shown.reasons.map((r) => r.kind))], from: b.from, to: b.to, ...(b.began ? { began: b.began } : {}) }); } catch { /* the row is a nicety */ }
-      const rechecks = shown.reasons.map((r) => recheckOf(r, { b, added, stillUsed, open }));
+      const rechecks = shown.reasons.map((r) => recheckOf(r, { b, added, stillUsed, open, money }));
       this.reviewed.set(b.id, { batch: b, words: review, rechecks, fixed: new Set(), kinds: shown.reasons.map((r) => r.kind), at: Date.now() });
       // The oldest go first, but a review that found something may still be the card on the page (newer ones wait behind
       // it), so its Fix it and Looks fine keep working: safe ones go before it, and it goes only past KEEP_WARNED.

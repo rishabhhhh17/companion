@@ -12,6 +12,7 @@ import { Ledger } from "./ledger.ts";
 import { promptHelpMemory } from "./memory/recall.ts";
 import { MemoryStore } from "./memory/store.ts";
 import { SilenceLedger } from "./review/silence.ts";
+import { ToldLedger } from "./money/told.ts";
 import { doctor } from "./doctor.ts";
 import { release as releaseShotDrive } from "./ramdisk.ts";
 import { VercelCli } from "./ship/deploy.ts";
@@ -89,7 +90,7 @@ const taskLog = new TaskLog(join(settings.data, "tasks.db"), problem);
 // beside the task history and is opened only when it is first needed, so with payments off nothing about it is written.
 const plan = new PlanGate({ fixes: () => new FreeFixes(taskLog.database), emit: (e) => say(e) });
 const taskHost = taskReachHost(settings);
-const runner = new AgentRunner({ reachable: taskHost ? () => claudeOnline(taskHost) : undefined, settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, reviewState: (p) => review.stateFor(p), shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, startNotes: { refresh: (p, m) => sessionNotes.refresh(p, m) }, deployer: vercel, deployLogs: vercel, liveTools: realTools({ vercelAuthFile: join(homedir(), "Library", "Application Support", "com.vercel.cli", "auth.json"), browserReady: browserInstalled }), fixes: plan, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
+const runner = new AgentRunner({ reachable: taskHost ? () => claudeOnline(taskHost) : undefined, settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, reviewState: (p) => review.stateFor(p), shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), moneyTold: (p) => toldLines(p), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, startNotes: { refresh: (p, m) => sessionNotes.refresh(p, m) }, deployer: vercel, deployLogs: vercel, liveTools: realTools({ vercelAuthFile: join(homedir(), "Library", "Application Support", "com.vercel.cli", "auth.json"), browserReady: browserInstalled }), fixes: plan, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
 const watches = new WatchEngine({
   file: join(settings.data, WATCH_FILE), emit: (e) => say(e), get: (k) => runnerSettings.get(k), onProblem: problem,
   checks: makeChecks({ vercel, gh, project: (p, sig) => runner.checkWithoutModel(p, sig) }), evidence: makeEvidence({ vercel, gh }),
@@ -112,6 +113,9 @@ function ownWork(project: string | undefined, start: () => Promise<unknown>, kin
 // M57 feature 7: which "Don't flag this kind here again" lines the person pressed for, kept in this data folder, outside
 // every project (review/silence.ts). A line the tool being reviewed writes into the project's memory file silences nothing.
 const silences = new SilenceLedger(join(settings.data, "review-silenced.json"));
+// M117: "I set this up outside the code" lines count only when the person pressed for them, kept the same way (money/told.ts).
+const told = new ToldLedger(join(settings.data, "money-told.json"));
+const toldLines = (p: string): string[] => { try { return told.lines(p, projectLines(p)); } catch { return []; } };
 const projectLines = (p: string): string[] => { try { return new MemoryStore({ project: p, profileDir: settings.data }).list("project").entries.map((e) => e.text); } catch { return []; } };
 // M113: the live feed in the notch (livefeed.ts): the tool's feed notes and guard requests, and the review watcher's paths for
 // a tool with no hooks. In memory only; said as feed.update.
@@ -125,6 +129,7 @@ const review = new ReviewService({
   // M57 feature 7: "Don't flag this kind here again" is a line in the project's memory (What I remember), read each review,
   // and it counts only when the person pressed for it (silences).
   silenced: (p) => silences.lines(p, projectLines(p)),
+  moneyTold: (p) => toldLines(p),
   // M58 (feature 9): the key practice's copy is reviewed by the rules alone, with no model and no cost.
   rulesOnly: (p) => isKeyPractice(p),
   // M57 feature 1: each review that ran is one row in the task history (names of files only), kept review.keepDays days.
@@ -322,7 +327,8 @@ function dispatch(cmd: Command) {
   // M57 feature 7: a press of "Don't flag this kind here again" is recorded once its line is in memory; a line forgotten,
   // edited or erased ends its silence.
   if ((c.type === "memory.add" || c.type === "memory.forget" || c.type === "memory.edit" || c.type === "memory.erase") && c.scope === "project") {
-    const after = () => { try { if (c.type === "memory.add") silences.pressed(c.project, c.text, projectLines(c.project)); else silences.prune(c.project, projectLines(c.project)); } catch { /* the safe side: nothing silenced */ } };
+    const after = () => { try { if (c.type === "memory.add") silences.pressed(c.project, c.text, projectLines(c.project)); else silences.prune(c.project, projectLines(c.project)); } catch { /* the safe side: nothing silenced */ }
+      try { if (c.type === "memory.add") told.pressed(c.project, c.text, projectLines(c.project)); else told.prune(c.project, projectLines(c.project)); } catch { /* the safe side: nothing silenced */ } };
     void work.then(after, after);
   }
   const p = work.catch((e: Error) => say({ type: "protocol.error", ...failure(e, cmd.type) })).finally(() => inflight.delete(p));

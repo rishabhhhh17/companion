@@ -1062,6 +1062,55 @@ mod tests {
         }
     }
     #[test]
+    fn m117_a_money_part_carries_ids_files_and_lines_only_and_a_bad_shape_is_refused() {
+        // M117 (runner/src/money/, protocol/money.ts): the shared fixtures (read by the runner's suite and the pages too). The
+        // shell passes ship.gates through as it is and never writes it to the log; here it checks the money part has only
+        // its known keys, ids from fixed lists, files from the project down, lines and route paths: no free text, no value.
+        // The refused shapes (protocol/fixtures/money-refused.jsonl) each break one of these.
+        fn file_ok(f: &Value) -> bool { f.as_str().is_some_and(|s| !s.is_empty() && s.len() <= 400 && !s.starts_with('/') && !s.contains('\\') && !s.chars().any(|c| c.is_control()) && !s.split('/').any(|p| p == ".." || p.is_empty())) }
+        fn path_ok(p: &Value) -> bool { p.as_str().is_some_and(|s| s.starts_with('/') && s.len() <= 201 && s.chars().all(|c| c.is_ascii_alphanumeric() || "_-./:[]*$".contains(c))) }
+        fn only(v: &Value, keys: &[&str]) -> bool { v.as_object().is_some_and(|o| o.keys().all(|k| keys.contains(&k.as_str()))) }
+        let services = ["openai", "anthropic", "google_ai", "replicate", "groq", "mistral", "cohere", "together", "fal", "huggingface", "deepgram", "assemblyai", "elevenlabs", "openrouter", "other_ai", "resend", "sendgrid", "postmark", "mailgun", "ses", "nodemailer", "twilio", "sns", "vonage", "plivo", "puppeteer", "playwright", "ffmpeg", "sharp", "vercel", "supabase", "cloudflare"];
+        let kinds = ["paid_route_open", "heavy_route_open", "form_open", "auth_open", "no_privacy_page", "tracker_no_consent", "no_delete_account"];
+        let told_kinds = ["paid_route_open", "heavy_route_open", "form_open", "auth_open"];
+        let money_ok = |m: &Value| -> bool {
+            if m.get("off").is_some() { return m.as_object().is_some_and(|o| o.len() == 1) && m["off"] == true; }
+            if !only(m, &["findings", "paid", "unsure", "seen", "accounts", "emails", "deleteByEmail", "cookieless", "guides"]) || !m["accounts"].is_boolean() { return false; }
+            let findings = m["findings"].as_array().is_some_and(|fs| fs.len() <= 50 && fs.iter().all(|f| {
+                let kind = f["kind"].as_str().unwrap_or("");
+                only(f, &["kind", "file", "line", "method", "path", "framework", "services", "trackers", "form", "told"]) && kinds.contains(&kind)
+                    && (f.get("file").is_none() || file_ok(&f["file"])) && (f.get("path").is_none() || path_ok(&f["path"]))
+                    && f.get("services").map_or(true, |s| s.as_array().is_some_and(|a| a.iter().all(|x| x.as_str().is_some_and(|x| services.contains(&x)))))
+                    && f.get("told").map_or(true, |t| *t == true && told_kinds.contains(&kind))
+            }));
+            let paid = m["paid"].as_array().is_some_and(|ps| ps.len() <= 30 && ps.iter().all(|p| only(p, &["service", "file", "line"]) && p["service"].as_str().is_some_and(|x| services.contains(&x)) && file_ok(&p["file"])));
+            findings && paid
+        };
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let evs: Vec<Value> = events.lines().filter(|l| l.contains("\"id\":\"m117e")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(evs.len(), 3);
+        for e in evs.iter().filter(|e| e["type"] == "ship.gates") {
+            assert!(money_ok(&e["money"]), "{e}");
+            let mut seen = BTreeMap::new();
+            assert!(approval_line(e, &mut seen).is_none(), "never a log line");
+            assert!(!e.to_string().contains("sk_live") && !e.to_string().contains("sk-"));
+        }
+        assert_eq!(evs[0]["money"]["findings"].as_array().unwrap().len(), 5);
+        assert_eq!(evs[1]["money"], serde_json::json!({ "off": true }));
+        let kinds_seen: Vec<&str> = evs[2]["reasons"].as_array().unwrap().iter().map(|r| r["kind"].as_str().unwrap()).collect();
+        assert_eq!(kinds_seen, ["paid_route_open", "tracker_no_consent"]);
+        let refused = include_str!("../../../protocol/fixtures/money-refused.jsonl");
+        let bad: Vec<Value> = refused.lines().filter(|l| !l.trim().is_empty()).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(bad.len(), 7);
+        for b in &bad { assert!(!money_ok(&b["money"]), "{}", b["why"]); }
+        // "I set this up outside the code" is an ordinary memory.add that names its project, so the shell holds it to the folder.
+        let cmds = include_str!("../../../protocol/fixtures/commands.jsonl");
+        let c: Value = serde_json::from_str(cmds.lines().find(|l| l.contains("\"id\":\"m117c1\"")).unwrap()).unwrap();
+        assert!(check_command(&c).is_ok(), "{c}");
+        assert!(check_project(&c, "p_9f2c").is_ok());
+        assert!(check_project(&c, "/Users/me/other").is_err());
+    }
+    #[test]
     fn m105_a_review_names_the_tool_that_finished_and_codex_waiting_carries_no_words() {
         // M105: the shared fixtures (read by the runner's suite and the pages too). The shell passes these through as they are;
         // here it checks the shape it may forward: `by` and `tool` are one of the seven tools' ids, and another tool's waiting

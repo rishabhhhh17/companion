@@ -10,14 +10,16 @@
 // is the person's tap on a save dialog (main.rs save_report).
 import { hasKeyShape, redact } from "../../runner/src/redact.ts";
 import { gatesReadiness, shapeFindings, type Level } from "./findingShape.ts";
+import { moneyView } from "./moneyFines.ts";
 import type { ProofState, ShipReport } from "./model.ts";
 import { hexRgb, pdfDoc, type PdfBlock } from "./pdfText.ts";
 import type { ReviewCard } from "./review.ts";
 import { S } from "./strings.ts";
 
-export type Mark = "ok" | "bad" | "unsure" | "skip" | "notNeeded" | Level;
+// M117: noneSeen is the most the money part ever says, drawn in the Not checked colour, never as Passed.
+export type Mark = "ok" | "bad" | "unsure" | "skip" | "notNeeded" | "noneSeen" | Level;
 export type ReportRow = { mark: Mark; head: string; lines: string[]; code?: string[] };
-export type ReportSection = { id: "work" | "gates" | "review" | "notChecked"; title: string; rows: ReportRow[] };
+export type ReportSection = { id: "work" | "gates" | "money" | "review" | "notChecked"; title: string; rows: ReportRow[] };
 export type Answer = "ready" | "notReady" | "notChecked";
 export type ReportDoc = { title: string; project: string; date: string; day: string; answer: Answer; answerWords: string; answerLine: string; sections: ReportSection[]; about: string[] };
 export type ReportInput = { project: string; when: Date; proof?: ProofState | null; review?: ReviewCard | null; ship?: ShipReport | null; codeLines?: boolean };
@@ -95,21 +97,41 @@ export function buildReport(i: ReportInput): ReportDoc {
   const reviewed = !!i.review && (i.review.stage === "reviewed" || !!i.review.keys?.length);
   if (!review.length) review.push({ mark: reviewed ? "ok" : "skip", head: reviewed ? G.reviewNothing : G.noReview, lines: [] });
 
+  // M117: money and fines, by rules on this Mac. Never part of the answer (it is never a gate, and never a stop): its parts
+  // that could not be checked are listed under What was not checked too, and the answer line says how many things are worth
+  // a look, but the answer word is the same with or without them.
+  const before = notChecked.length;
+  const money: ReportRow[] = [];
+  let moneyCount = 0;
+  // An engine of an older build sends no money part: nothing is said about it (the same build always sends one, off or not).
+  if (ship?.money) {
+    const v = moneyView(ship.money);
+    for (const r of v.rows) {
+      money.push({ mark: r.mark, head: cleanLine(r.head, project) ?? "", lines: clean(r.lines, project) });
+      if (r.notChecked) skip(cleanLine(r.head, project) ?? "", clean(r.lines, project));
+    }
+    moneyCount = v.findings;
+  }
+  const moneyNotChecked = notChecked.length - before;
+
   // The answer. Red anywhere is Not ready; anything not run is Not fully checked; Ready only over all green.
   const open = shaped.filter((x) => x.level === "must" || x.level === "should");
   const red = (ship ? gatesReadiness(ship).kind === "notSafe" && ship.gates.some((g) => g.status === "blocked") : false)
     || proof?.verdict === "failed" || proof?.steps.some((s) => s.status === "failed") || shaped.some((x) => x.level === "must")
     || (i.review?.result?.rating === "stop" && i.review.stage === "reviewed");
-  const allGreen = !!ship && gatesReadiness(ship).kind === "ready" && proof?.verdict === "passed" && open.length === 0 && notChecked.length === 0;
+  const allGreen = !!ship && gatesReadiness(ship).kind === "ready" && proof?.verdict === "passed" && open.length === 0 && notChecked.length - moneyNotChecked === 0;
   const answer: Answer = red ? "notReady" : allGreen ? "ready" : "notChecked";
 
   const sections: ReportSection[] = [
     { id: "gates", title: G.sections.gates, rows: gates.length ? gates : [{ mark: "skip", head: G.noGates, lines: [] }] },
     { id: "work", title: G.sections.work, rows: work.length ? work : [{ mark: "skip", head: G.noProof, lines: [] }] },
+    ...(money.length ? [{ id: "money" as const, title: G.sections.money, rows: money }] : []),
     { id: "review", title: G.sections.review, rows: review },
     ...(notChecked.length ? [{ id: "notChecked" as const, title: G.sections.notChecked, rows: notChecked }] : []),
   ];
-  return { title: G.title, project: name, date: long, day, answer, answerWords: G.answer[answer], answerLine: G.answerLine[answer], sections, about: [...G.about, G.made(long)] };
+  const answerLine = moneyCount ? `${G.answerLine[answer]} ${S.money.answerAdd(moneyCount)}` : G.answerLine[answer];
+  const moneyAbout = ship?.money && !("off" in ship.money) ? [S.money.about, S.money.notLegal] : [];
+  return { title: G.title, project: name, date: long, day, answer, answerWords: G.answer[answer], answerLine, sections, about: [...G.about, ...moneyAbout, G.made(long)] };
 }
 
 /** Every word of the report as one text, for the tests and for checking nothing secret is in it. */

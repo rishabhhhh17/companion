@@ -94,7 +94,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "fixing.undo", items: ["undo.protectMyEdits"] },
     ],
     more: [
-      { id: "more.fixing.review", items: ["review.quietSeconds", "review.autoQuietSeconds", "review.ignore", "review.stopKinds", "review.whenNothing", "review.maxFiles", "review.keepDays", "review.weakenedChecks", "packages.check"] },
+      { id: "more.fixing.review", items: ["review.quietSeconds", "review.autoQuietSeconds", "review.ignore", "review.stopKinds", "review.whenNothing", "review.maxFiles", "review.keepDays", "review.weakenedChecks", "packages.check", "money.checks"] },
       // M86: Watch what changed, the drawn replay of each review.
       { id: "more.fixing.replay", items: ["replay.show", "replay.speed", "replay.reduceMotion", "replay.model"] },
       { id: "more.fixing.run", items: ["work.maxTurns", "work.askOnAnyFailure", "work.tryAgain", "work.stopOnQuestion", "work.webSearch", "drive.maxSteps", "make.folder", "approval.waitMinutes", "approval.offerAlways", "safety.askBeforeLive", "pointat.editor", "explain.after", "ask.choices", "handoff.improve", "aiTools.nowRow", "paste.showWhere", "tour.offer", "report.codeLines"] },
