@@ -74,6 +74,11 @@ pub fn size_in_force(base: HomeSize, settings: bool, chat: bool) -> HomeSize {
 /// island drawn (`island`: on a display, shown; the chat grows out of it) and the small chat on (island.smallChat), and only
 /// for the two ways in that ask for it: a click on Flowflow or the greeting in the panel under the notch ("notch_chat",
 /// never with the keyboard), and the ask key ("ask_key", which may take the keyboard, as it always did).
+/// QA1: an open of Home that a person's own click on Squibby made (the notch's row, or the hello under it) takes the keys
+/// at once, so Esc and typing reach it, as the ask key's open always did. This is not taking focus away: the person just
+/// clicked Squibby. Pointing, a pill in the panel and every open Squibby makes by itself never take them (rule 9).
+pub fn click_takes_keys(source: &str) -> bool { matches!(source, "island" | "notch_chat") }
+
 pub fn opens_small(source: &str, was_open: bool, on: bool, island: bool) -> bool {
     !was_open && on && island && matches!(source, "notch_chat" | "ask_key")
 }
@@ -2429,6 +2434,18 @@ mod m96_tests {
         // The pill and the line too.
         let p = home_panel(Some(&air()), &sizes, HomeSize::CHAT, None).unwrap();
         assert_eq!(p.body_w, 460.0);
+    }
+
+    #[test]
+    fn a_click_on_the_notch_or_its_hello_gives_home_the_keys_and_nothing_else_does() {
+        // QA1 (the 19 Nov 2026 functionality check): Home or the chat opened by a click on the notch, or on the hello under
+        // it, did not take Esc or typing until a second click inside. The person clicked Squibby on purpose, so that open
+        // takes the keys, as the ask key's does. Pointing, a pill in the panel and every open Squibby makes by itself never do.
+        assert!(click_takes_keys("island") && click_takes_keys("notch_chat"));
+        for no in ["point", "notch_panel", "hotkey", "first_run", "reopen", "settings", "arrival", ""] { assert!(!click_takes_keys(no), "{no}"); }
+        let open = main_body("fn open_card_then(");
+        assert!(open.contains("let keyboard = keyboard || island::click_takes_keys(source);"), "{open}");
+        assert!(open.find("let keyboard = keyboard ||").unwrap() < open.find("log(\"card_open\"").unwrap(), "decided before anything else reads it");
     }
 
     #[test]

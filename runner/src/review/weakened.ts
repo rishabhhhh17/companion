@@ -13,7 +13,8 @@ import type { FileChange, Reason } from "./rate.ts";
 /** The lines one file's change took away and added, each with its line number in that version. */
 export type FileDelta = { file: string; added: { line: number; text: string }[]; removed: { line: number; text: string }[] };
 
-export const TEST_FILE = /(^|\/)(__tests__|tests?|spec|e2e|cypress)\/|\.(test|spec)\.[cm]?[jt]sx?$|_test\.(py|go|rb)$|(^|\/)test_[^/]*\.py$|\.spec\.rb$|Test\.(java|kt|cs)$/i;
+// QA1: a file named only test, tests or spec (test.js, tests.py, spec.ts), at the root or in a folder, is a test too.
+export const TEST_FILE = /(^|\/)(__tests__|tests?|spec|e2e|cypress)\/|(^|\/)(?:tests?|spec)\.(?:[cm]?[jt]sx?|py)$|\.(test|spec)\.[cm]?[jt]sx?$|_test\.(py|go|rb)$|(^|\/)test_[^/]*\.py$|\.spec\.rb$|Test\.(java|kt|cs)$/i;
 const CI_FILE = /(^|\/)\.github\/workflows\/[^/]+\.ya?ml$|(^|\/)\.gitlab-ci\.ya?ml$|(^|\/)\.circleci\/config\.ya?ml$|(^|\/)bitbucket-pipelines\.ya?ml$|(^|\/)azure-pipelines\.ya?ml$|(^|\/)Jenkinsfile$|(^|\/)\.travis\.ya?ml$/i;
 const LINT_FILE = /(^|\/)(\.eslintrc(\.[a-z]+)?|eslint\.config\.[cm]?[jt]s|biome\.jsonc?|\.prettierrc(\.[a-z]+)?|tsconfig(\.[a-z]+)?\.json|jsconfig\.json|\.pylintrc|pyproject\.toml|setup\.cfg|ruff\.toml|\.flake8|\.rubocop\.ya?ml|\.golangci\.ya?ml|stylelint\.config\.[cm]?js|\.stylelintrc(\.[a-z]+)?)$/i;
 const COVERAGE_FILE = /(^|\/)(jest\.config\.[cm]?[jt]s|vitest\.config\.[cm]?[jt]s|vite\.config\.[cm]?[jt]s|\.nycrc(\.[a-z]+)?|nyc\.config\.[cm]?js|codecov\.ya?ml|\.coveragerc|pyproject\.toml|package\.json|karma\.conf\.[cm]?js)$/i;

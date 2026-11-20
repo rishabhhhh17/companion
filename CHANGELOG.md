@@ -2,6 +2,18 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Fixes from a full check of the app: 20 Nov 2026
+
+- **The chat answers in the chat.** Ask a question in the small chat and the answer shows there as a reply. A plain answer stays in the chat; work that changed files still opens Home with Undo and proof.
+- **No lost words.** Pressing Return twice quickly sends only the first ask; the second waits in the field and says why. Closing the chat keeps what you typed for next time.
+- **Clicking the notch is enough.** Home or the chat opened by a click takes Esc and typing straight away. Clicking the news in the notch opens Home on that news.
+- **Talking stays in the chat.** Hold to talk from the chat no longer opens all of Home, and the chat's mic lights up while it listens, as Home's does.
+- **The chat never takes the AI's word for it.** If the AI says the checks pass but they did not run or failed, or the task stopped on an error or a limit, the chat says so under its words and opens Home on the result.
+- **Bring the fix back from anywhere.** After an Undo from History or Now, the row offers Bring the fix back, as long as nothing changed your files since, so it can never take later work away. A change that never passed its checks says "Bring the changes back" instead, and the result stops saying the files were put back once they are back.
+- **Reviews miss less.** A change made right after Squibby's own work is now reviewed, files named test.js, spec.js or test.py count as tests, and putting a review's files back counts in the week's Undo count.
+- **Plain names.** A fix started from the review card is called "Fix what the review found".
+- **Small things.** Esc closes More ways to ask first. Tab goes round the chat. Memory's Return saves once. Explain an error with an empty box says to paste the error. With fixing not switched on, nothing is sent, Send is greyed, and the box says why.
+
 ## See what your AI tool is doing, live in the notch: 19 Nov 2026
 
 - **A live list under the notch.** While Claude Code, Codex, Cursor, the VS Code agent or Gemini CLI works, pointing at the notch shows the file it just edited with how many lines it added and took away (`app.tsx  +12 −3`), and the command it ran (`npm test`), newest first.

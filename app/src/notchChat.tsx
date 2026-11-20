@@ -3,12 +3,12 @@
 // Settings and Open all of Home), the recent news as bubbles under a small time line, and at the foot the mic and the ask
 // field. The field is Home's one ask box (card.tsx hands its ref here while the chat shows), so Return asks exactly as Home
 // does, and voice words land in it as they do there. It never takes the keys by itself: card.tsx focuses it only when the
-// ask key opened Home (rule 9). Words in strings.ts, colours in tokens.css (black.css draws it).
+// shell says a key or a click on Squibby opened Home (opened.keyboard: the ask key, or QA1's click on the notch; rule 9). Words in strings.ts, colours in tokens.css (black.css draws it).
 import { Fragment, useLayoutEffect, useRef, useState, type KeyboardEvent, type Ref } from "react";
 import { FlowMini } from "./flowflowMini.tsx";
 import { Icon } from "./icons.tsx";
 import type { Model } from "./model.ts";
-import { chatAskFull, chatBubbles, chatProject, chatRowProject, chatWhen, fitRowProject, type Bubble } from "./notchChat.ts";
+import { chatAskFull, chatBubbles, chatFocusNext, chatProject, chatRowProject, chatWhen, fitRowProject, type Bubble } from "./notchChat.ts";
 import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
 import { useSetting } from "./settingsStore.ts";
@@ -42,12 +42,15 @@ type Props = {
   /** Feel round 3 (19 Nov 2026): the words just sent from the field, shown as the person's bubble at once (with Squibby's
    *  working dots) until the engine's task with those words arrives. */
   pending?: string | null;
+  /** QA1 review: Send can never send (fixing is off): greyed, with why as its name. Return still says why in the thread. */
+  sendOff?: string | null;
   /** The project's state after its name in the top row: a word or three and its dot, as Home's project chip has. */
   state?: { words: string; dot: Colour } | null;
 };
 
-export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk, stop, onStop, onBubble, onFeed, onMic, onSend, onKeyDown, onInput, onFocus, onSettings, onExpand, onClose, pending = null, state = null }: Props) {
+export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk, stop, onStop, onBubble, onFeed, onMic, onSend, onKeyDown, onInput, onFocus, onSettings, onExpand, onClose, pending = null, state = null, sendOff = null }: Props) {
   const C = S.m96.chat;
+  const listening = m.voice?.stage === "listening";
   // M111: tucked into the notch, Flowflow's face can be dragged out onto the screen, and one small button brings it out.
   const tucked = useSetting("character.lives") === "notch";
   const out = useDragOut(tucked);
@@ -93,8 +96,17 @@ export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk,
   const news = useRef<HTMLDivElement>(null);
   const last = bubbles.at(-1)?.key ?? "";
   useLayoutEffect(() => { const el = news.current; if (el) el.scrollTop = el.scrollHeight; }, [last, bubbles.length]);
+  // QA1: Tab goes round the chat's own controls (past Send back to the top row), so the keys are never lost on the page.
+  const tabRound = (e: KeyboardEvent<HTMLElement>) => {
+    if (e.key !== "Tab" || e.altKey || e.metaKey || e.ctrlKey) return;
+    const all = [...e.currentTarget.querySelectorAll<HTMLElement>("button:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")].filter((el) => !el.closest("[hidden]"));
+    const next = chatFocusNext(all.length, all.indexOf(document.activeElement as HTMLElement), e.shiftKey);
+    if (next === null) return;
+    e.preventDefault();
+    all[next]!.focus();
+  };
   return (
-    <section className="notch-chat" aria-label={C.label}>
+    <section className="notch-chat" aria-label={C.label} onKeyDown={tabRound} data-talking={listening ? "" : undefined}>
       <div className="nc-top">
         {tucked && <span className="nc-face-hold" data-tucked="" data-out={out.dragging ? "" : undefined} title={S.m111.tucked(who)}
           onPointerDown={out.onPointerDown} onPointerMove={out.onPointerMove} onPointerUp={out.onPointerUp} onPointerCancel={out.onPointerCancel} onLostPointerCapture={out.onLostPointerCapture}>
@@ -127,10 +139,12 @@ export function NotchChat({ m, project, greet, now, hint, boxRef, working, talk,
         {empty && <div className="nc-suggest">{C.suggest.map((q) => <button key={q} type="button" className="nc-pill" title={C.suggestLabel} onClick={() => fill(q)}>{q}</button>)}</div>}
       </div>
       <div className="nc-bar">
-        {talk.on && <button type="button" className="nc-mic" aria-label={talk.label} title={talk.title} onClick={onMic}><Icon name="mic" size={15} /></button>}
+        {/* QA1 review (rule 5): while the microphone is open the mic is lit, as Home's is (the light is drawn here too when
+            the chat is the only thing showing), and it shows then even if the keys were changed meanwhile. */}
+        {(talk.on || listening) && <button type="button" className="nc-mic" data-on={listening ? "" : undefined} aria-label={listening ? C.micListening : talk.label} title={listening ? C.micListening : talk.title} onClick={onMic}><Icon name="mic" size={15} /></button>}
         <div className="nc-field">
           <textarea ref={setBox} rows={1} autoComplete="off" spellCheck={false} placeholder={C.ask} aria-label={askFull} onKeyDown={onKeyDown} onInput={onInput} onFocus={onFocus} />
-          <button type="button" className="nc-send" aria-label={C.send} title={C.send} disabled={working} onClick={onSend}><Icon name="send" size={14} /></button>
+          <button type="button" className="nc-send" aria-label={sendOff ? `${C.send}. ${sendOff}` : C.send} title={sendOff ?? C.send} disabled={working || !!sendOff} onClick={onSend}><Icon name="send" size={14} /></button>
         </div>
       </div>
     </section>
@@ -143,5 +157,7 @@ export function withPending(bubbles: Bubble[], pending: string | null): Bubble[]
   const words = pending?.trim() ?? "";
   if (!words || bubbles.some((b) => b.who === "you" && b.words.trim() === words)) return bubbles;
   const kept = bubbles.filter((b) => b.key !== "empty");
-  return [...kept, { key: "you:pending", who: "you", words }, { key: "sq:pending", who: "squibby", words: S.m96.chat.working }];
+  // QA1: a hint the field gave (the busy line) was said about this send, so it comes after it, never above it.
+  const hint = kept.filter((b) => b.key === "hint");
+  return [...kept.filter((b) => b.key !== "hint"), { key: "you:pending", who: "you", words }, { key: "sq:pending", who: "squibby", words: S.m96.chat.working }, ...hint];
 }

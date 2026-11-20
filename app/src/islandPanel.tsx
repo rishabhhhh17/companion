@@ -23,7 +23,7 @@ import { invoke } from "./tauri.ts";
 import { useSetting } from "./settingsStore.ts";
 import { homeStatus, notchStatusLine } from "./homeHero.ts";
 import { panelLayout } from "./notchQuick.ts";
-import { hoverAction, hoverGreeting, hoverHeadline, hoverHint, hoverLine, hoverPill } from "./notchMinimal.ts";
+import { hoverAction, hoverGreeting, hoverHeadline, hoverHint, hoverLine, hoverPill, rowPressOpens } from "./notchMinimal.ts";
 import { useGroups } from "./groups.ts";
 import { Button } from "./ui/parts.tsx";
 import { Icon } from "./icons.tsx";
@@ -148,7 +148,8 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   // M96: the pill's words and its dot (notchMinimal.ts hoverPill).
   const pill = hoverPill(action, m);
   // M96: the face or the hello opens the small chat out of the notch (the shell opens Home as before with island.smallChat
-  // off). Never with the keyboard: the chat's field takes the keys only when the person clicks into it (rule 9).
+  // off). QA1: that click is the person choosing Squibby, so the shell gives the chat the keys as it opens
+  // (island.rs click_takes_keys); pointing alone never does (rule 9).
   // M111: tucked into the notch, the face can be dragged out onto the screen (a click still opens the chat).
   const tucked = useSetting("character.lives") === "notch";
   const out = useDragOut(tucked);
@@ -157,7 +158,10 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   // button keeps the drag (useDragOut captures on it), and the face inside it only hides (data-out, notch.css), so the
   // let go is never lost.
   const who = characterName(useSetting("character.name"));
-  const openChat = () => { if (out.swallowed()) return; if (ready()) void invoke("island_chat").catch(() => {}); };
+  // QA1: with news in the row (a result, a review, Claude waiting), its headline and the line under it open Home on that
+  // news, as a click on the notch's own row does (it opened the small chat instead, and the line did nothing).
+  const opensHome = rowPressOpens(head) === "home";
+  const openChat = () => { if (out.swallowed()) return; if (opensHome) { if (ready()) void invoke("island_click").catch(() => {}); return; } if (ready()) void invoke("island_chat").catch(() => {}); };
   // Every press but Stop opens Home at a place (island_go); Stop stops, as Home's own Stop does.
   const act = () => {
     if (!ready()) return;
@@ -184,8 +188,8 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
       ) : <>
       {/* M96: one row out of the notch. The face and the hello are one button that opens the small chat; the one pill does
           the moment's one action. The line M93 drew (hoverLine) is what VoiceOver hears and the pill's tooltip, never a row. */}
-      <div className="nb-row" role="group" aria-label={S.m93.say(greet, hline?.words ?? null)}>
-        <button className="nb-hi" type="button" tabIndex={tab} aria-label={S.m96.openChat(greet)} onClick={openChat} data-tucked={tucked ? "" : undefined} data-out={out.dragging ? "" : undefined} title={tucked ? S.m111.tucked(who) : undefined}
+      <div className="nb-row" role="group" aria-label={S.m93.say(greet, hline?.words ?? null)} data-news={opensHome ? "" : undefined}>
+        <button className="nb-hi" type="button" tabIndex={tab} aria-label={opensHome ? `${head.words}. ${S.m93.openHome}` : S.m96.openChat(greet)} onClick={openChat} data-tucked={tucked ? "" : undefined} data-out={out.dragging ? "" : undefined} title={tucked ? S.m111.tucked(who) : undefined}
           onPointerDown={out.onPointerDown} onPointerMove={out.onPointerMove} onPointerUp={out.onPointerUp} onPointerCancel={out.onPointerCancel} onLostPointerCapture={out.onLostPointerCapture}>
           {tucked && <FlowMini className="ip-face nb-face" state={m.character} still={!shown} />}
           {head.tone && <span className="nb-tone" data-tone={head.tone} aria-hidden="true"><Icon name={head.tone === "ok" ? "tick" : "cross"} size={10} /></span>}
@@ -193,6 +197,8 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
         </button>
         {/* Feel round 3 (the founder's HeyClicky reference, 18 Nov 2026): under the headline one quiet hint line (the news's
             own line, or the key for being stuck), and the pill with a small round Open Home beside it. */}
+        {/* QA1: with news, the headline's button covers this quiet line too (notch.css .nb-row[data-news]), so a click on it
+            does what a click on the headline does. */}
         {hint && <p className="nb-hint" aria-hidden="true">{hint}</p>}
         {/* Feel round 1: with the question's own card under the row (its Allow and Don't allow), the pill does not offer a
             second way to answer the same thing. */}

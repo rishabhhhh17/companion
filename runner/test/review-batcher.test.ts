@@ -110,7 +110,10 @@ describe("the engine's own work", () => {
     f.fire("src/fixed.ts");
     await sleep(80);
     b.releaseOwn();
-    f.fire("src/late-event.ts");   // file events can arrive a little after the work that caused them ended
+    // Changed on purpose (QA1, 19 Nov 2026): a late event is the work's own only for a file the work touched; any other file
+    // in that moment is someone else's change and counts (it was dropped for good). The service measures from the version
+    // the work left, so a late event of the work's own on another file finds nothing changed and says nothing.
+    f.fire("src/fixed.ts");   // file events can arrive a little after the work that caused them ended
     await sleep(100);
     expect(ready).toEqual([]);
     f.fire("src/theirs.ts");

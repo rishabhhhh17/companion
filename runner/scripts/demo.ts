@@ -32,7 +32,8 @@ const engine = new ScriptedEngine([
 const handlers: Record<string, (e: any) => void> = {
   "checkpoint.created": (e) => say(`  Saved a snapshot of your project first (${e.checkpoint}, ${e.files} file${e.files === 1 ? "" : "s"}).`),
   "agent.state": (e) => say(`  [${e.state}]`),
-  "agent.tool": (e) => say(e.outcome === "blocked" ? `  BLOCKED: ${e.summary}` : e.outcome === "needs_approval" ? `  Wants to: ${e.summary}` : `  Did: ${e.summary}`),
+  // QA1: a command the person said no to never ran, so it is never said as done.
+  "agent.tool": (e) => say(e.outcome === "blocked" ? `  BLOCKED: ${e.summary}` : e.outcome === "needs_approval" ? `  Wants to: ${e.summary}` : e.outcome === "denied" ? `  Not run: ${String(e.summary).replace(/^Running:\s*/, "")}` : `  Did: ${e.summary}`),
   "approval.request": (e) => pending.push(e),
   "cost.update": (e) => say(`  Cost so far: $${e.usdEstimate.toFixed(3)}`),
   "receipt": (e) => {
@@ -50,7 +51,7 @@ runner = new AgentRunner({
     handlers[e.type]?.(e);
     if (e.type === "approval.request") {
       const a = e as any;
-      say(`\n  ASK: ${a.title}. Risk: ${a.risk}.`);
+      say(`\n  ASK: ${String(a.title).replace(/[.\s]+$/, "")}. Risk: ${a.risk}.`);
       const ans = await ask("  Allow this?", "n");
       await runner.handle({ v: 1, id: "demo-approve", type: "approval.resolve", approval: a.approval, decision: ans === "y" ? "allow" : "deny", scope: "once" });
     }

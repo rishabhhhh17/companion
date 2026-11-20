@@ -39,7 +39,9 @@ describe("2. Return and auto send do nothing while a job works", () => {
   test("submit asks askRoute with working and keeps the words with one quiet line", () => {
     const card = read("./card.tsx");
     const body = card.slice(card.indexOf("const submit = () => {"), card.indexOf("const submitNow = useRef(submit)"));
-    expect(body).toMatch(/askRoute\(\{ prompt, project, newFolder, working \}\)/);
+    // Changed on purpose (QA1, 19 Nov 2026): a send the engine has not answered yet holds the next one too (starting), and
+    // with fixing off nothing is sent (fixOff); working still holds it as before.
+    expect(body).toMatch(/askRoute\(\{ prompt, project, newFolder, working, starting: [^}]+, fixOff: [^}]+\}\)/);
     const busy = body.indexOf('route === "busy"');
     expect(busy).toBeGreaterThan(-1);
     expect(body.slice(busy, body.indexOf("\n", busy))).toContain("needWords(S.askBusy)");

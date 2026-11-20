@@ -77,7 +77,9 @@ export type LiveFile = { file: string; kind: "added" | "modified" | "deleted" };
 export type Task = { agent: string; project?: string; checkpoint?: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState; files?: LiveFile[] };
 // undone (M45): an Undo put the project back to before this task (the engine's task log says so). back: Bring the fix back
 // then put its files back again (undone stays set).
-export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string; failedCheck?: string; still?: number };
+export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string; failedCheck?: string; still?: number;
+  /** QA1: the safety copy the Undo that took this task back made first, while it is still kept: Bring back restores it. */
+  undoSafety?: string };
 export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
 export type DriveProgress = { index: number; total: number; title: string; status: string; completed: number; finished?: { status: string; completed: number; total: number }; whole?: PlanWhole };
 /** What a plan's steps did so far, added up from each step's receipt (must fix 7): the first step's undo point, every file
@@ -650,6 +652,8 @@ function reduceRest(m: Model, e: Ev): Model {
     case "ui.undoAsked": return { ...m, undo: { stage: "confirm", checkpoint: String(e.checkpoint) } };
     // M45: Bring the fix back restores the safety copy the Undo made first (shadow snapshots only, never git: rule 10). It
     // reuses the Undo's steps (sent, then the engine's answer), marked back.
+    // QA1: Bring back from a History row (or Now's last fix) after an Undo: the Undo's own safety copy, asked first there.
+    case "ui.bringBackRowAsked": return typeof e.checkpoint === "string" && /^cp_/.test(e.checkpoint) ? { ...m, undo: { stage: "confirm", checkpoint: e.checkpoint, back: true } } : m;
     case "ui.bringBackAsked": return m.receipt?.undone && !m.receipt.back && m.receipt.undoSafety ? { ...m, undo: { stage: "confirm", checkpoint: m.receipt.undoSafety, back: true } } : m;
     // ---- which task broke it ----
     case "ui.bisectAsked": return { ...m, bisect: { stage: "running" } };
@@ -737,10 +741,12 @@ function reduceRest(m: Model, e: Ev): Model {
       }
       // Put my fix back puts the fix itself back, so the files are as checked; the conversation no longer matches them.
       if (turnBack) { if (here && !m.receipt!.undone) m = answerGone({ ...m, receipt: { ...m.receipt!, undone: true, fixKept: true } }); }
+      // QA1: a Bring back asked from a row restores an Undo's safety copy: it never takes the receipt's work away.
+      else if (m.undo?.back && m.undo.checkpoint === e.checkpoint) { /* the row's task is back; History says so */ }
       // Any other undo in this project (from the card or the timeline) puts the files back, so the receipt's work is gone from them.
       else m = filesWentBack(m, e.project, e.safety);
       // Undo of the whole task puts every file back as it was before it, so no turn is left (the engine drops it too).
-      return m.undo?.stage === "working" && m.undo.checkpoint === e.checkpoint ? { ...m, teach: null, undo: { stage: "done", checkpoint: m.undo.checkpoint, recovered: Array.isArray(e.recovered) ? e.recovered.length : 0, large: Array.isArray(e.largeLeftAlone) ? e.largeLeftAlone.length : 0, ...(Array.isArray(e.yours) && e.yours.length ? { yours: e.yours.filter((x: unknown): x is string => typeof x === "string") } : {}) } } : m;
+      return m.undo?.stage === "working" && m.undo.checkpoint === e.checkpoint ? { ...m, teach: null, undo: { stage: "done", checkpoint: m.undo.checkpoint, ...(m.undo.back ? { back: true as const } : {}), recovered: Array.isArray(e.recovered) ? e.recovered.length : 0, large: Array.isArray(e.largeLeftAlone) ? e.largeLeftAlone.length : 0, ...(Array.isArray(e.yours) && e.yours.length ? { yours: e.yours.filter((x: unknown): x is string => typeof x === "string") } : {}) } } : m;
     }
     // Put those back too: asked, then confirmed with a second press, then answered.
     case "ui.putBackAsked": return m.undo?.stage === "done" && m.undo.yours?.length ? { ...m, undo: { ...m.undo, putBack: "confirm", putBackNote: undefined } } : m;
@@ -810,7 +816,7 @@ function reduceRest(m: Model, e: Ev): Model {
       return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), away: {}, driveAway: null, workIn: {}, task, receipt: m.receipt ? { ...m.receipt, gone: true } : null, bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice && ["lesson", "proving"].includes(m.practice.stage) ? { ...m.practice, stage: "found" as const, checksFailed: undefined } : m.practice, point: null, where: null, teach: turn, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null, followUp: "idle" }, {}), notice, error: null };
     }
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
-    case "app.stop_everything": return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, costPause: null, signIn: null, toast: null, followUp: "idle", task: m.task }, {}), notice: "Stopped everything.", error: null, stopped: (m.stopped ?? 0) + 1, toolBusy: null, feed: null };
+    case "app.stop_everything": return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, costPause: null, signIn: null, toast: null, followUp: "idle", task: m.task }, {}), notice: S.stoppedEverything, error: null, stopped: (m.stopped ?? 0) + 1, toolBusy: null, feed: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       // Only this line is the connection's to set or clear: a notice about something else (the engine restarting, say) stays,

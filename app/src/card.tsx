@@ -1,4 +1,4 @@
-import { Fragment, StrictMode, useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { Fragment, StrictMode, useCallback, useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { createRoot } from "react-dom/client";
 import { EMPTY_LINE, liveLine, type LiveLine } from "./a11y.ts";
 import { ConfirmStep } from "./confirm.tsx";
@@ -29,7 +29,7 @@ import { PracticeList, PracticePanel } from "./practicePanel.tsx";
 import { Onboarding } from "./onboarding.tsx";
 import { afterInstallFailed, autoCheckDue, found, installAllowed, isBusy, quietInstallOk, readyVersion, updateLine, updatedWords } from "./updates.ts";
 import { useModel } from "./useModel.ts";
-import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
+import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, explainBoxHint, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { followLessMotion, reducedMotion } from "./motion.ts";
 import { HomeStage, useHomeStage } from "./homeStage.tsx";
@@ -41,7 +41,7 @@ import { RecheckList } from "./recheckList.tsx";
 import { stillOf } from "./fixRecheck.ts";
 import { feedPress, feedProjectName } from "./notchFeed.ts";
 import { ASKED_NOTICE_MS, arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
-import { jobStep, needMainWords, goLiveAnswer, reviewHeroSays, askRoute, blockerOf, blockLineFor, blockMainFor, fixOffered, MAIN_TOOL, heroCompact, homeFixRoute, jobLive, timeLine, clockOnly, HELLO_GRACE_MS, reviewLead, aboutWorthACard, needMainFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
+import { jobStep, needMainWords, goLiveAnswer, reviewHeroSays, askHintNow, askRoute, blockerOf, blockLineFor, blockMainFor, fixOffered, MAIN_TOOL, heroCompact, homeFixRoute, jobLive, timeLine, clockOnly, HELLO_GRACE_MS, reviewLead, aboutWorthACard, needMainFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
 import { notePress, orderWays, readCounts, type Counts, type Way } from "./usedOften.ts";
 import { homeKey } from "./homeKeys.ts";
 import { paletteMove, paletteRows, paletteShown, type PaletteAction, type PaletteRow } from "./palette.ts";
@@ -126,7 +126,7 @@ import { memoryDate, offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./
 import { webLink } from "./links.ts";
 import { DRAFT_KEY, askKey, boxTakesKeyboard, draftToKeep, heardGoesTo, heardInto, heardKind, putBack, sendsItself, sentOutcome, type FollowAim, type HeardKind, type Sent } from "./askbox.ts";
 import { aboutCopy, copyable, ehCopy, slCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
-import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyDays, historyFiltering, historyTime, historyUndo, type HistoryQuery, type HistoryStatus } from "./history.ts";
+import { HISTORY_STATUSES, NO_FILTER, bringBackOffer, filterHistory, historyDays, historyFiltering, historyTime, historyUndo, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
 import { DropList, useDrop } from "./dropRing.tsx";
 import { Icon, type IconName } from "./icons.tsx";
@@ -151,7 +151,7 @@ import { changeSize } from "./changeSize.ts";
 import { contentAtMs, fromOf } from "./homeShape.ts";
 // M96: the small chat out of the notch (notchChat.ts, notchChat.tsx).
 import { NotchChat } from "./notchChat.tsx";
-import { chatClosesAway, chatHolds } from "./notchChat.ts";
+import { chatClosesAway, chatFocusNext, chatHolds, resultStaysInChat } from "./notchChat.ts";
 import { hoverGreeting } from "./notchMinimal.ts";
 import { resultChips, type ChipId } from "./resultChips.ts";
 /** How long a proven result keeps its landing attribute: long enough for the glow to play once (ui/homeFlow.css). */
@@ -395,6 +395,9 @@ function OnlineBox({ f, project, onClose, onCheckAgain, onLesson, dispatch, whyL
   );
 }
 
+/** QA1: how long after Stop everything nothing opens the small chat out by itself (the shell is folding Home away then). */
+const STOP_FOLD_MS = 2000;
+
 // What I did: the project's tasks, newest first, with a search by words in their name and by how they ended (history.ts).
 // Without a search the newest 20 show; with one, every match among the tasks the engine sent.
 // Undo (finding H): on the newest task that changed files only (history.ts historyUndo), with the same yes / keep question and
@@ -439,16 +442,33 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
   const shown = filtering ? filterHistory(items, q) : items.slice(0, 20);
   const undoId = useId();
   const offers = project ? shown.map((h) => historyUndo(items, h, u?.stage === "done" ? u.checkpoint : null)) : [];
+  // QA1: Bring back on a row an Undo took back (its safety copy still kept), as a result's own card offers it.
+  const bring = project ? shown.map((h) => bringBackOffer(items, h)) : [];
   // The task whose marks are open under the list (a press on its row), or the one an Undo is being asked about.
   const [sel, setSel] = useState<number | null>(null);
   const picked = shown.find((h) => h.id === sel) ?? null;
   // M88 (b): the task whose Share what my AI did preview is open (under its row).
   const [sharing, setSharing] = useState<number | null>(null);
-  const asking = u && project ? shown.find((h) => h.checkpoint && h.checkpoint === u.checkpoint) ?? null : null;
+  // QA1: a Bring back asked from a row is about the Undo's safety copy, so it is found by that copy too.
+  const asking = u && project ? shown.find((h) => (h.checkpoint && h.checkpoint === u.checkpoint) || (u.back && h.undoSafety === u.checkpoint)) ?? null : null;
   const name = project.split("/").filter(Boolean).at(-1) ?? project;
   // When: the time today, else the day (historyDays), so one list holds every day.
   // The Undo question for a task, right under its row (the same words as the receipt's).
-  const undoAsk = (h: HistoryItem) => { const backId = `${undoId}-${h.id}`; return (<div className="hist-extra">
+  const undoAsk = (h: HistoryItem) => { const backId = `${undoId}-${h.id}`;
+    // QA1: Bring back, asked from this row after an Undo: the same question and words as on a result.
+    if (u!.back) { const fix = h.proof === "passed"; return (<div className="hist-extra">
+        {u!.stage === "confirm" && (
+          <ConfirmStep className="line" label={S.bringBackSure} back={backId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.bringBackSure}</div>
+            <div className="row">
+              <button className="btn" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, u!.checkpoint)); }}>{S.bringBackYes}</button>
+              <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.bringBackNo}</button>
+            </div></ConfirmStep>
+        )}
+        {u!.stage === "working" && <div className="line" role="status">{fix ? S.bringBackWorking : S.bringBackChangesWorking}</div>}
+        {u!.stage === "failed" && <UndoFailed u={u!} dispatch={dispatch} />}
+        {u!.stage === "done" && <div className="line" role="status">{u!.yours?.length ? S.bringBackExcept(u!.yours.length, fileNames(u!.yours)) : fix ? S.bringBackDone : S.bringBackChangesDone}</div>}
+      </div>); }
+    return (<div className="hist-extra">
         {u!.stage === "confirm" && (
           <ConfirmStep className="line" label={S.undoSure} back={backId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div><div className="muted">{undoLimitsLine([])}</div>
             <div className="row">
@@ -549,7 +569,8 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
               title={<>{task}<SaveMarksLine lastWorking={h.lastWorking} star={h.star} name={h.name} /></>}
               line={<>{lineWords}{when(h) ? <>{lineWords ? " · " : ""}<time className="hist-time" dateTime={h.endedAt ?? h.startedAt}>{when(h)}</time></> : null}</>}
               onOpen={h.checkpoint && project ? () => setSel(sel === h.id ? null : h.id) : undefined} openLabel={h.checkpoint ? `${S.fix.star}, ${S.fix.nameIt}: ${task}` : undefined}
-              action={offers[i] === "undo" && !undoBusy(u) ? { id: backId, label: S.historyUndo, colour: "orange", ariaLabel: `${S.historyUndo}: ${task}`, onClick: () => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint }) } : null}
+              action={offers[i] === "undo" && !undoBusy(u) ? { id: backId, label: S.historyUndo, colour: "orange", ariaLabel: `${S.historyUndo}: ${task}`, onClick: () => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint }) }
+                : bring[i] && !undoBusy(u) ? { id: backId, label: bring[i]!.fix ? S.bringBack : S.bringBackChanges, colour: "blue", ariaLabel: `${bring[i]!.fix ? S.bringBack : S.bringBackChanges}: ${task}`, onClick: () => dispatch({ type: "ui.bringBackRowAsked", checkpoint: bring[i]!.safety }) } : null}
               expanded={h.checkpoint && project ? sel === h.id : undefined} />
               {/* M72 (the walkthrough, item 9): the Undo question and the opened row's Star and Name it sit right under the
                   row they belong to, never at the foot of the page. */}
@@ -604,7 +625,7 @@ function MemoryList({ title, scope, lines, project, eraseLabel }: { title: strin
         )}
         {shownLines.map((l) => editing === l.id ? (
           <li className="ui-mrow mem-editing" key={l.id}>
-            <input ref={focusIfLost} type="text" value={text} aria-label={`${S.memoryEdit}: ${l.text}`} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) save(l.id); if (e.key === "Escape") { e.stopPropagation(); setEditing(null); focusBack(editId(l.id)); } }} />
+            <input ref={focusIfLost} type="text" value={text} aria-label={`${S.memoryEdit}: ${l.text}`} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); save(l.id); } if (e.key === "Escape") { e.stopPropagation(); setEditing(null); focusBack(editId(l.id)); } }} />
             <button className="ui-mrow-act" data-c="blue" type="button" onClick={() => save(l.id)}>{S.memorySave}</button>
           </li>
         ) : (
@@ -746,6 +767,10 @@ export function Card() {
   // Whether the small chat can hold what goes on now (notchChat.ts chatHolds), read as Home opens; set further down.
   const chatHoldsNow = useRef<() => boolean>(() => true);
   const homeBox = useRef<HTMLTextAreaElement | null>(null), chatBox = useRef<HTMLTextAreaElement | null>(null);
+  // QA1: when the chat's field goes (the chat closed by its Close, Esc or a click elsewhere), the words typed in it move into
+  // Home's own box, as opening out does, so the next chat or Home has them (it lost them).
+  const chatLast = useRef<HTMLTextAreaElement | null>(null);
+  const chatBoxRef = useCallback((el: HTMLTextAreaElement | null) => { chatBox.current = el; if (el) chatLast.current = el; }, []);
   const box = useRef<RefObject<HTMLTextAreaElement | null>>({
     get current() { return chatOn.current ? chatBox.current : homeBox.current; },
     set current(el: HTMLTextAreaElement | null) { homeBox.current = el; },
@@ -957,7 +982,8 @@ export function Card() {
   useEffect(() => { setDraft(m.plan?.steps ?? []); }, [m.plan]);
   // The files went back after the last task (an Undo here, from the timeline or of one task), so its picture, Show me what
   // changed and the turn are not about what is in the files (M45). Put my fix back on a turn is not an Undo.
-  const undone = receiptUndone(m.receipt) || (m.undo?.stage === "done" && !m.undo.back);
+  // QA1: once the fix is brought back its files are the fix's again, so the result no longer reads as put back.
+  const undone = (receiptUndone(m.receipt) && !m.receipt?.back) || (m.undo?.stage === "done" && !m.undo.back);
   const keepsMine = useSetting("undo.protectMyEdits") !== false;
   // M77: the week's count on Now and in History (read on every render, never behind a condition).
   const weekOn = useSetting("history.thisWeek") !== false;
@@ -1355,6 +1381,9 @@ export function Card() {
   const answerFromFirstRun = (approval: string, allow: boolean) => { void send(answerApproval(approval, allow)); dispatch({ type: "ui.approvalAnswered", approval }); };
   // The timeline: ask when the project is known, and again whenever a task ends.
   useEffect(() => { if (project) void sendQuiet(listTasks(project)); }, [project, m.receipt, m.review?.batch]);
+  // QA1: also once an Undo or a Bring back finishes, so History's row says it (and offers Bring back) with no receipt open.
+  const undoEnded = m.undo?.stage === "done" ? m.undo.checkpoint : "";
+  useEffect(() => { if (project && undoEnded) void sendQuiet(listTasks(project)); }, [undoEnded]);
   // M89: the jobs saved for after the reset in this project, asked when the project opens (and when the engine is back).
   useEffect(() => { if (project && m.runnerUp) void sendQuiet(listSavedJobs(project)).catch(() => {}); }, [project, m.runnerUp]);
   // M85 review: and when the person's own tool was just told to ask first, so the ask lands in Today and History at once.
@@ -1950,6 +1979,9 @@ export function Card() {
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
       if (e.defaultPrevented || !homeShown.current) return;
+      // QA1: More ways to ask open closes first, as a popover does; Esc again closes Home (it closed Home at once).
+      const pop = e.key === "Escape" && !e.isComposing && e.keyCode !== 229 ? root.current?.querySelector<HTMLDetailsElement>("details.more[open]") : null;
+      if (pop) { e.preventDefault(); pop.open = false; pop.querySelector("summary")?.focus(); return; }
       if (e.key === "Escape" && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); box.current?.blur(); player.current.hush(); closeHome(); }
     };
     window.addEventListener("keydown", onEsc);
@@ -2150,7 +2182,9 @@ export function Card() {
   };
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
-    const route = askRoute({ prompt, project, newFolder, working });
+    // QA1: a send the engine has not answered yet holds the next one, and with fixing off nothing is sent (F29).
+    const route = askRoute({ prompt, project, newFolder, working, starting: !!sent.current || !!nowModel.current.sending, fixOff: nowModel.current.connected === "none" });
+    if (route === "fixOff") { needWords(S.askFixOff); return; }
     if (route === "newFolder") { startNew("build"); return; }
     if (route === "needWords") { needWords(S.typeFirst); return; }
     if (route === "chooseProject") { setNoProjectFor("build"); return; }
@@ -2184,6 +2218,14 @@ export function Card() {
     if (was && home && was.value) { home.value = was.value; was.value = ""; }
     setChat(false); void invoke("home_expand").catch(() => {});
   };
+  // QA1: the chat went (closed, or opened out): words left in its field move into Home's own box and are kept as the draft.
+  useLayoutEffect(() => {
+    if (chat) return;
+    const was = chatLast.current, home = homeBox.current;
+    chatLast.current = null;
+    if (was && was.value.trim() && home && !home.value) { home.value = was.value; keepDraft(was.value); }
+    if (was) was.value = "";
+  }, [chat]);
   // M112 (the founder's glitch): the chat opens at the top of Home, never scrolled down to the parts hidden under it.
   useLayoutEffect(() => { if (chat && root.current) root.current.scrollTop = 0; }, [chat]);
   // And Home's draft moves into the chat's field as it opens.
@@ -2197,13 +2239,22 @@ export function Card() {
   const chatAt = useRef<{ notice: string | null; receipt: Model["receipt"] } | null>(null);
   if (!chat) chatAt.current = null;
   else if (!chatAt.current) chatAt.current = { notice: m.notice, receipt: m.receipt };
-  const freshNotice = chat && !!m.notice && m.notice !== S.notConnectedNotice && m.notice !== chatAt.current?.notice;
-  const freshResult = chat && !!m.receipt && m.receipt !== chatAt.current?.receipt;
+  // QA1: Stop everything folds everything away (notchNext "stop"), so its own notice never throws the chat open; and an
+  // answer that changed nothing stays in the chat as Squibby's bubble (resultStaysInChat).
+  const freshNotice = chat && !!m.notice && m.notice !== S.notConnectedNotice && m.notice !== S.stoppedEverything && m.notice !== chatAt.current?.notice;
+  const freshResult = chat && !!m.receipt && m.receipt !== chatAt.current?.receipt && !resultStaysInChat(m.receipt);
   useEffect(() => { if (!chat || m.voice) setMicSaid(null); }, [chat, m.voice]);
   chatHoldsNow.current = () => chatHolds(nowModel.current, { onboarded, vague: !!vague, noProject: !!noProjectFor, handoff: !!handoff, attached: attached.length, freshNotice: false, freshResult: false });
+  // QA1: right after Stop everything nothing opens the chat out by itself (the shell is folding Home away): the chat folds.
+  const stopSeen = useRef(m.stopped ?? 0), stopUntil = useRef(0);
   useEffect(() => {
+    if ((m.stopped ?? 0) !== stopSeen.current) { stopSeen.current = m.stopped ?? 0; stopUntil.current = Date.now() + STOP_FOLD_MS; if (chat) { closeHome(); return; } }
+    if (Date.now() < stopUntil.current) return;
     if (chat && !chatHolds(m, { onboarded, vague: !!vague, noProject: !!noProjectFor, handoff: !!handoff, attached: attached.length, freshNotice, freshResult })) openOut();
   }, [chat, m, onboarded, vague, noProjectFor, handoff, attached, freshNotice, freshResult]);
+  // QA1: the busy line goes once nothing works any more (it stayed after Stop, under the newest words).
+  const busyNow = working || !!m.sending;
+  useEffect(() => { setAskHint((h) => askHintNow(h, busyNow)); }, [busyNow]);
   // M83: the hand off waits for the person's AI tool (handoffCard.tsx). (Home drew the character watching while it did;
   // the founder took the character out of the opened Home on 17 Nov 2026.)
   const [, setHandoffWaits] = useState(false);
@@ -2268,7 +2319,7 @@ export function Card() {
   const explainFromBox = () => {
     pressed();
     const q = box.current?.value.trim() ?? "";
-    if (q.length < 3) { needWords(keyHint("explain", S.explainChipHint, keys, S.explainChipHintNoKeys)); return; }
+    if (q.length < 3) { needWords(explainBoxHint(keys)); return; }
     setAskHint(null);
     void invoke("eh_typed", { text: q }).then(() => clearBox(), (e) => { if (String(e) === "tooShort") needWords(S.explainChipHintNoKeys); });
   };
@@ -2425,7 +2476,9 @@ export function Card() {
   });
   // The one way out of a block, or into the review, as the main button.
   // Feel round 2 (19 Nov 2026): with the engine stopped or still starting, the send arrow waits and its tooltip says why.
-  const sendWhy = blocker === "engine" || blocker === "starting" ? S.home.blocked[blocker].headline : null;
+  // QA1 review: with fixing off (F29) Send can never send, so it is greyed as for a blocked engine, and its name says why.
+  // Return still answers with the line under the box (submit's fixOff route).
+  const sendWhy = blocker === "engine" || blocker === "starting" ? S.home.blocked[blocker].headline : m.connected === "none" ? S.sendFixOff : null;
   const blockMain = blocker && S.home.blocked[blocker].main ? blocker : null;
   // M98 (F29): fixing not switched on has no Try again; Check my project works without the engine, so it is the button.
   const blockAct = blockMainFor(blocker, project);
@@ -2583,6 +2636,8 @@ export function Card() {
   const [putBackShown, setPutBackShown] = useState(false);
   useEffect(() => {
     if (m.undo?.stage !== "done") return;
+    // QA1: only an Undo says "Put back as it was"; a Bring back never does.
+    if (m.undo.back) return;
     setPutBackShown(true);
     const el = root.current;
     el?.classList.add("putback");
@@ -2590,6 +2645,8 @@ export function Card() {
     const id = setTimeout(() => setPutBackShown(false), 2000);
     return () => { clearTimeout(settle); clearTimeout(id); el?.classList.remove("putback"); };
   }, [m.undo?.stage]);
+  // QA1: once the fix is brought back the line goes at once.
+  useEffect(() => { if (m.receipt?.back) setPutBackShown(false); }, [m.receipt?.back]);
   // About this project shows as a card only when it says something to act on (homeHero.ts aboutWorthACard).
   const aboutCard = aboutWorthACard(m.about, project);
   // The fade above the ask box shows only while there is more work below to scroll to (homeLayout.ts, ui/wide.css).
@@ -2697,6 +2754,20 @@ export function Card() {
     const u = m.undo;
     const fixUndoId = restFix ? `now-fix-undo-${restFix.item.id}` : "";
     // Undo on the last fix is History's own (history.ts historyUndo), with the same question and words, under the list.
+    // QA1: Bring back on the last fix after an Undo (its safety copy kept), asked first right under the list.
+    const back = restFix ? bringBackOffer(m.history, restFix.item) : null;
+    const backAsk = restFix && back && u?.back && u.checkpoint === back.safety ? (<>
+        {u.stage === "confirm" && (
+          <ConfirmStep className="line now-undo" label={S.bringBackSure} back={fixUndoId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.bringBackSure}</div>
+            <div className="row">
+              <button className="btn" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, back.safety)); }}>{S.bringBackYes}</button>
+              <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.bringBackNo}</button>
+            </div></ConfirmStep>
+        )}
+        {u.stage === "working" && <div className="line" role="status">{back.fix ? S.bringBackWorking : S.bringBackChangesWorking}</div>}
+        {u.stage === "failed" && <UndoFailed u={u} dispatch={dispatch} />}
+        {u.stage === "done" && <div className="line" role="status">{u.yours?.length ? S.bringBackExcept(u.yours.length, fileNames(u.yours)) : back.fix ? S.bringBackDone : S.bringBackChangesDone}</div>}
+      </>) : null;
     const undoAsk = restFix && cp && u?.checkpoint === cp ? (<>
         {u.stage === "confirm" && (
           <ConfirmStep className="line now-undo" label={S.undoSure} back={fixUndoId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>{m.receipt?.checkpoint === cp && m.receipt.notesStay?.length ? <div>{S.guard.notesStay(m.receipt.notesStay)}</div> : null}
@@ -2711,7 +2782,7 @@ export function Card() {
       </>) : null;
     // M71: Now's one list (homeRest.ts nowRows): the last fix and how its check went, then what happened since, at most
     // three rows, each in its meaning's colour. It fills the room under the lead, so Now never has a big empty gap.
-    const rows = nowRows({ fix: restFix, since: restFix ? restSince : [], practice: practiceRow, undo: fixUndo === "undo" && !undoBusy(u), now: clock, caught: weekOn && project ? m.caught ?? null : null });
+    const rows = nowRows({ fix: restFix, since: restFix ? restSince : [], practice: practiceRow, undo: fixUndo === "undo" && !undoBusy(u), bringBack: !undoBusy(u) ? back : null, now: clock, caught: weekOn && project ? m.caught ?? null : null });
     const act = (r: (typeof rows)[number]) => {
       if (r.act === "practice") beginPractice(FIRST_PRACTICE);
       else if (r.act === "open" && r.item) openRecent(r.item);
@@ -2725,10 +2796,11 @@ export function Card() {
             : <ListRow key={r.id} colour={MEANING_COLOUR[r.meaning]} icon={r.icon} title={r.title} line={r.line}
               fact={r.fact} factColour={MEANING_COLOUR[r.meaning]} onOpen={r.act === "practice" ? undefined : () => act(r)} openLabel={`${r.act === "look" ? S.homeNow.look : S.homeNow.open}: ${r.title}`}
               action={r.action === "undo" && cp ? { id: fixUndoId, label: S.homeNow.undo, colour: "orange", onClick: () => dispatch({ type: "ui.undoAsked", checkpoint: cp }) }
+                : r.action === "bringBack" && back ? { id: fixUndoId, label: back.fix ? S.bringBack : S.bringBackChanges, colour: "blue", ariaLabel: `${back.fix ? S.bringBack : S.bringBackChanges}: ${r.title}`, onClick: () => dispatch({ type: "ui.bringBackRowAsked", checkpoint: back.safety }) }
                 : r.action === "show" ? { label: S.homeNow.look, onClick: () => act(r) }
                 : r.action === "start" ? { label: S.homeNow.practiceStart, onClick: () => act(r) } : null} />)}
         </ListGroup>
-        {undoAsk}
+        {undoAsk}{backAsk}
       </div>
     );
   };
@@ -2939,14 +3011,14 @@ export function Card() {
       <div className="inner" ref={inner}>
       {/* M96: the small chat out of the notch, only while Home is the small chat; everything else in Home stays laid out but
           hidden until it opens out (black.css), so nothing in it is lost. */}
-      {chat && <NotchChat m={m} project={project} greet={hoverGreeting(setting("you.name"))} now={clock} hint={askHint ?? micSaid} boxRef={chatBox} working={working}
+      {chat && <NotchChat m={m} project={project} greet={hoverGreeting(setting("you.name"))} now={clock} hint={askHint ?? micSaid} boxRef={chatBoxRef} working={working || !!m.sending} sendOff={m.connected === "none" ? S.sendFixOff : null}
         pending={chatSent} state={project ? { words: statusWords({ kind: status.kind, ago: status.ago, working: stopCan(m) }), dot: statusDot(status.kind) } : null}
         talk={{ on: groups.on("talk") && !!keys.using.talk, title: talkKeysLine(keys), label: keys.using.talk ? S.m96.chat.micKeys(chordLabel(keys.using.talk)) : S.m96.chat.mic }}
         stop={stopCan(m) ? { label: `${S.m96.chat.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`, title: keyHint("stop", S.look.stopKeys, keys) } : null} onStop={() => void stopNow()}
         onBubble={(go) => { openOut(); if (go === "review") onArrival.current({ do: "review" }); else pickTab("now"); }}
         onFeed={(key) => { openOut(); onArrival.current({ do: "feed", key }); }}
         onMic={() => { if (keys.using.talk) setMicSaid(S.look.micHint(chordLabel(keys.using.talk))); }}
-        onSend={submit} onInput={() => { fitBox(); setAskHint(null); setVague(null); }} onFocus={() => warmSoon()}
+        onSend={submit} onInput={() => { fitBox(); keepDraft(chatBox.current?.value ?? ""); setAskHint(null); setVague(null); }} onFocus={() => warmSoon()}
         onKeyDown={(e) => {
           if (e.key === "Escape" && !composing(e) && e.currentTarget.value) { e.preventDefault(); e.stopPropagation(); clearBox(); return; }
           if (askKey({ key: e.key, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, ctrl: e.ctrlKey, composing: composing(e) }) !== "send") return;
@@ -3698,7 +3770,7 @@ export function Card() {
                 <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
               </div></ConfirmStep>
           )}
-          {m.undo?.stage === "working" && <div className="line" role="status">{m.undo.back ? S.bringBackWorking : S.undoWorking}</div>}
+          {m.undo?.stage === "working" && <div className="line" role="status">{m.undo.back ? (m.receipt?.proof === "passed" ? S.bringBackWorking : S.bringBackChangesWorking) : S.undoWorking}</div>}
           {m.undo?.stage === "failed" && <UndoFailed u={m.undo} dispatch={dispatch} />}
           {m.undo?.stage === "done" && <div className="line" role="status">{m.undo.back ? (m.undo.yours?.length ? S.bringBackExcept(m.undo.yours.length, fileNames(m.undo.yours)) : "") : m.undo.yours?.length ? undoneExcept(m.undo.yours) : S.undone}{m.undo.recovered ? ` ${S.undoRecovered}` : ""}{m.undo.large ? ` ${S.undoLarge}` : ""}{m.undo.putBack === "done" ? ` ${S.undoPutBackDone}` : ""}</div>}
           {m.undo?.stage === "done" && !!m.undo.yours?.length && !m.undo.putBack && project && (
@@ -3716,7 +3788,7 @@ export function Card() {
           {/* M45: Bring the fix back restores the safety copy the Undo made first (shadow snapshots only, never git). An Undo
               from the timeline or of one task shows no extra line: the result row above already says Undone. */}
           {bringBackCan(m, project) && (
-            <div className="row"><button id={`${undoId}-bring`} className="btn" type="button" onClick={() => dispatch({ type: "ui.bringBackAsked" })}><Icon name="undo" size={14} />{S.bringBack}</button></div>
+            <div className="row"><button id={`${undoId}-bring`} className="btn" type="button" onClick={() => dispatch({ type: "ui.bringBackAsked" })}><Icon name="undo" size={14} />{m.receipt?.proof === "passed" ? S.bringBack : S.bringBackChanges}</button></div>
           )}
           {m.undo?.stage === "confirm" && m.undo.back && project && (
             <ConfirmStep className="line" label={S.bringBackSure} back={`${undoId}-bring`} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.bringBackSure}</div>

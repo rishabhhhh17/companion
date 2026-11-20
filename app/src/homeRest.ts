@@ -172,13 +172,15 @@ export function restCards(o: { project: string; history: readonly HistoryItem[] 
  *  after it, at most three. `act`: what a press on the row or its action does. Never who changed a file (M57). */
 export type NowRow = {
   id: string; meaning: Meaning; icon: IconName; title: string; line: string; fact: string;
-  act: "open" | "look" | "practice"; action: "undo" | "show" | "start" | null; item?: HistoryItem;
+  act: "open" | "look" | "practice"; action: "undo" | "bringBack" | "show" | "start" | null; item?: HistoryItem;
 };
 export const NOW_ROWS_MAX = 3;
 const FIX_ICON: Record<FixTag, IconName> = { proven: "tick", undone: "undo", failed: "cross", partly: "half", unchecked: "dash" };
 const SINCE_MEANING: Record<SinceRow["kind"], Meaning> = { files: "review", unchecked: "review", task: "stopped" };
 
-export function nowRows(i: { fix: LastFix | null; since: readonly SinceRow[]; practice: boolean; undo: boolean; now: number; caught?: CaughtView | null }): NowRow[] {
+/** QA1: `bringBack`: the last fix was taken back by an Undo whose safety copy is kept (history.ts bringBackOffer), so its row
+ *  offers Bring back, as its result card did. */
+export function nowRows(i: { fix: LastFix | null; since: readonly SinceRow[]; practice: boolean; undo: boolean; bringBack?: { fix: boolean } | null; now: number; caught?: CaughtView | null }): NowRow[] {
   const rows: NowRow[] = [];
   // M77: what the safety net caught this week, only when there is something (rule 16: a count, never praise). A press opens History.
   const parts = caughtParts(i.caught);
@@ -189,11 +191,12 @@ export function nowRows(i: { fix: LastFix | null; since: readonly SinceRow[]; pr
     const files = it.changed != null ? S.homeNow.files(it.changed) : "";
     const ago = agoWords(at(it), i.now);
     const tick = f.ticks[0]?.words ?? "";
+    const act = i.undo ? "undo" as const : i.bringBack ? "bringBack" as const : null;
     rows.push({
       id: `fix:${it.id}`, meaning: FIX_MEANING[f.tag], icon: FIX_ICON[f.tag], title: f.title,
       // With Undo on the right, the time moves into the line, so the row still says when.
-      line: [tick, files, i.undo ? ago : ""].filter(Boolean).join(" · "), fact: i.undo ? "" : ago,
-      act: "open", action: i.undo ? "undo" : null, item: it,
+      line: [tick, files, act ? ago : ""].filter(Boolean).join(" · "), fact: act ? "" : ago,
+      act: "open", action: act, item: it,
     });
   }
   for (const r of i.since) {

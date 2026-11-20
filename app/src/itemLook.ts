@@ -7,6 +7,7 @@ import { historyFacts, type HistoryItem } from "./model.ts";
 import type { IconName } from "./icons.tsx";
 import { verdictOf, type VerdictKind } from "./verdict.ts";
 import { VERDICT_MEANING, type Meaning } from "./meaning.ts";
+import { S } from "./strings.ts";
 
 /** The five tints, each meaning one kind of work (KIND_TINT), the same with every water. Graphite and Deep draw them as deep
  *  washes with a light ink, Paper as pastels with a dark ink (ui/tokens.css). */
@@ -16,7 +17,10 @@ export type Tint = (typeof TINTS)[number];
 /** A task's name as a person reads it. The engine names a safety copy "Before: " and the words asked (agent.ts), and a
  *  task row from an older log may carry that label; every list shows only the words asked (M51 polish: History and the
  *  list on the left said it two ways). */
-export const taskName = (label: string): string => (typeof label === "string" ? label : "").replace(/^\s*Before:\s*/i, "").trim();
+/** QA1: the start of the request a review card's Fix it sends (runner/src/review/sendback.ts REVIEW_FIX_INTRO). Older rows
+ *  were named by it, cut mid sentence; the engine now names them in plain words, and older ones read the same here. */
+const REVIEW_FIX_START = "Another AI tool just changed files in this project, and a review";
+export const taskName = (label: string): string => { const t = (typeof label === "string" ? label : "").replace(/^\s*Before:\s*/i, "").trim(); return t.startsWith(REVIEW_FIX_START) ? S.reviewFixName : t; };
 
 /** What kind of work it was, from the words asked: an explanation, a fix, going live, making it better, a question,
  *  something made, or something else. The first that matches wins, so "Explain why the page is blank" is an explanation,

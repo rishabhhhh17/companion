@@ -65,7 +65,8 @@ function body(f: Facts): Body {
   const finished = f.ended === "done" || f.ended === "unknown";
   const limit: LimitWhy = f.limit ?? "spending";
   // 1, 2: Undo put the files back (a read only answer has nothing to undo, so an Undo then is not the result).
-  if (f.undone && f.back) return { kind: "back", headline: V.back, line: f.backPartly ? V.backPartlyLine : checked ? V.backLine : V.backLineUnchecked, tone: "plain", icon: "wait" };
+  // QA1: what comes back for a task whose checks never passed is its changes, never "the fix".
+  if (f.undone && f.back) return { kind: "back", headline: f.proof === "passed" ? V.back : V.backChanges, line: f.backPartly ? V.backPartlyLine : checked ? V.backLine : V.backLineUnchecked, tone: "plain", icon: "wait" };
   if (f.undone && hasFix) return { kind: "undone", headline: V.undone, line: checked ? V.undoneFix : V.undoneOther, tone: "plain", icon: "undo" };
   // 3: it waits for the person.
   if (f.ended === "needsYou") return { kind: "needsYou", headline: V.needsYou, line: f.proof === "failed" ? V.needsYouFailed : null, tone: "ask", icon: "wait" };

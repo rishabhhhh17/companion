@@ -107,6 +107,14 @@
 .island-panel[data-layout] .nb-greet { font: 600 15px / 20px var(--font); letter-spacing: -.012em; color: var(--notch-ink); text-align: center; }
 .island-panel[data-layout] .nb-greet:not([data-news]) { color: var(--notch-ink); }
 .island-panel[data-layout] .nb-hint { grid-column: 1 / -1; margin: 0; overflow: hidden; color: var(--notch-fg-2); font: 400 12px / 16px var(--font); text-align: center; white-space: nowrap; text-overflow: ellipsis; }
+/* QA1: with news in the row, the headline's button also covers the quiet line under it (the line lets the pointer through),
+   so a click anywhere on the news opens Home on it, as the notch's own row does. Layout only: same look. */
+.island-panel[data-layout] > .nb-row[data-news] button.nb-hi { position: relative; justify-self: stretch; overflow: visible; }
+/* QA1 review: the cover is the hint's own one line (12/16, nowrap, after the 2px row gap), only when there is a hint, and the
+   pill and Open Home always sit above it, so it can never take a press meant for them at any size or text size. */
+.island-panel[data-layout] > .nb-row[data-news]:has(> .nb-hint) button.nb-hi::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: calc(16px + 2px); }
+.island-panel[data-layout] > .nb-row[data-news] .nb-hint { pointer-events: none; }
+.island-panel[data-layout] > .nb-row[data-news] :is(button.nb-pill, button.nb-open) { position: relative; z-index: 1; }
 .island-panel[data-layout] button.nb-pill { grid-column: 1; grid-row: 3; justify-self: start; align-self: end; margin-left: 0; }
 .island-panel[data-layout] button.nb-open { grid-column: 2; grid-row: 3; align-self: end; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--chat-icon-bg); color: var(--chat-icon-fg); cursor: default; transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .island-panel[data-layout] button.nb-open:hover { background: var(--chat-send); color: var(--chat-fg); }

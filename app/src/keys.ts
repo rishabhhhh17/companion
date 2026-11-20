@@ -78,6 +78,9 @@ export const withKeys = (template: string, job: Job, k: Keys = now): string => t
 export const hasKeys = (job: Job, k: Keys = now): boolean => k.picked[job] !== null;
 /** A hint about a job: filled with its keys; with none picked yet, where to add one; when another app holds them, where to
  *  pick others (never keys that do not work). `off` replaces the last line where something better fits. */
+/** QA1: Explain an error pressed with the box empty: how to paste an error, with the explain keys only when there are some
+ *  (with none it used to say to add a shortcut, which is not what the person asked). */
+export const explainBoxHint = (k: Keys = now): string => (k.using.explain ? withKeys(S.explainChipHint, "explain", k) : S.explainChipHintNoKeys);
 export const keyHint = (job: Job, template: string, k: Keys = now, off?: string): string =>
   (k.using[job] ? withKeys(template, job, k) : !hasKeys(job, k) ? S.keyHintNoKey.replace("{job}", jobName(job)) : off ?? S.keyHintOff.replace("{job}", jobName(job)));
 

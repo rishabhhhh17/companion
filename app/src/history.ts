@@ -7,6 +7,21 @@ export const HISTORY_STATUSES: readonly HistoryStatus[] = ["all", "done", "not_d
 export type HistoryQuery = { words: string; status: HistoryStatus };
 export const NO_FILTER: HistoryQuery = { words: "", status: "all" };
 
+/** QA1: Bring back on a History row (or Now's last fix) after an Undo took that task back: the Undo's safety copy, kept,
+ *  and whether what comes back was a fix (its checks passed) or only its changes. Bringing back puts the whole project back
+ *  as it was just before that Undo, so, like historyUndo, it is offered only while that Undo is the newest change: no task
+ *  after this row changed files and none is working on the project. One Undo can take back several tasks (they share its
+ *  safety copy); the offer is then on the newest of them only, as any task after it blocks it. Nothing once it is back, for
+ *  a task that changed nothing, or when the copy is no longer kept. `items` is the whole list, newest first. */
+export function bringBackOffer(items: readonly HistoryItem[], h: Pick<HistoryItem, "id" | "undone" | "back" | "changed" | "proof" | "undoSafety">): { safety: string; fix: boolean } | null {
+  if (!h.undone || h.back || !h.undoSafety || !((h.changed ?? 1) > 0)) return null;
+  const at = items.findIndex((x) => x.id === h.id);
+  if (at < 0 || items.some((x) => x.status === "running")) return null;
+  // Anything newer that changed files (or may have: an unknown count) would be taken away by the restore.
+  if (items.slice(0, at).some((x) => (x.changed ?? 1) > 0)) return null;
+  return { safety: h.undoSafety, fix: h.proof === "passed" };
+}
+
 /** How a task ended, by its status. Anything unknown is "not done". A task an Undo took back is "undone" whatever its status
  *  (M45), as its row says "Undone": only when it changed files (an Undo of a task that changed nothing is not its result, as
  *  in the verdict) and nothing brought it back since. Note: the rows now say the verdict's words ("Fixed and proven",

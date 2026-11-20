@@ -4,7 +4,7 @@
 // batch is ready once nothing has changed for the quiet time (review.quietSeconds), so a tool still writing is never
 // looked at half way. While the engine's own work runs in the project, changes are not counted in a batch: their paths are
 // kept aside (takeOwnSeen), so the review can tell which of them the engine's work could not have made. For a moment after
-// that work, late file events are its own. One batch holds at most a fixed number of paths.
+// that work, late file events for the files it touched are its own. One batch holds at most a fixed number of paths.
 import { lstatSync, watch as fsWatch } from "node:fs";
 import { join } from "node:path";
 import { coveredBy } from "../pathglob.ts";
@@ -75,6 +75,9 @@ export class ChangeBatcher {
   private ownSeen = new Set<string>();
   private ownCapped = false;
   private poked = false;
+  /** QA1: the paths the engine's last own work touched. In the grace after it, only their late events are its own. */
+  private recentOwn = new Set<string>();
+  private recentOwnCapped = false;
   constructor(private o: BatcherOptions) {}
 
   /** Starts listening. False when the folder cannot be watched (then nothing is ever ready). */
@@ -92,13 +95,14 @@ export class ChangeBatcher {
     this.w = null;
     this.paths.clear(); this.dirs.clear(); this.capped = false;
     this.ownSeen.clear(); this.ownCapped = false; this.poked = false;
+    this.recentOwn.clear(); this.recentOwnCapped = false;
   }
   /** The engine's own work in the project begins: what changes now is not counted in a batch, only kept aside. */
   holdOwn(): void { if (this.own === 0) { this.ownSeen.clear(); this.ownCapped = false; } this.own++; }
   /** That work ended. Once all of it has, changes count again after a short grace, for file events that arrive late. */
   releaseOwn(): void {
     if (this.own > 0) this.own--;
-    if (this.own === 0) this.quietUntil = Date.now() + (this.o.graceMs ?? GRACE_MS);
+    if (this.own === 0) { this.quietUntil = Date.now() + (this.o.graceMs ?? GRACE_MS); this.recentOwn = new Set(this.ownSeen); this.recentOwnCapped = this.ownCapped; }
   }
   /** What is waiting now, handed over and forgotten (Review now, or the engine's own work about to start). */
   take(): { paths: string[]; capped: boolean } {
@@ -137,7 +141,9 @@ export class ChangeBatcher {
       if (!this.ownSeen.has(rel)) { if (this.ownSeen.size >= (this.o.maxPaths ?? MAX_PATHS)) this.ownCapped = true; else this.ownSeen.add(rel); }
       return;
     }
-    if (this.holding()) return;
+    // QA1: in the grace after the engine's own work, a late event for a file that work touched is its own. Any other
+    // file is someone else's change and counts at once (it used to be dropped for good, and Review now said nothing changed).
+    if (Date.now() < this.quietUntil && (this.recentOwnCapped || this.recentOwn.has(rel))) return;
     if (this.isDir(rel)) { this.dirs.add(rel); this.arm(); return; }
     if (!this.paths.has(rel)) {
       if (this.paths.size >= (this.o.maxPaths ?? MAX_PATHS)) this.capped = true;

@@ -1091,6 +1091,8 @@ fn open_card(app: &AppHandle, source: &str, keyboard: bool) { open_card_then(app
 
 /// Show the card, and tell Home what to do once it is open (`then`, arrival::arrival): start a lesson, show Learn or Settings.
 fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<serde_json::Value>) {
+    // QA1: a click on the notch or on the hello under it is the person choosing Squibby, so that Home takes the keys.
+    let keyboard = keyboard || island::click_takes_keys(source);
     log("card_open", json!({ "source": source, "keyboard": keyboard }));
     let a = app.clone();
     let src = source.to_string();
@@ -1278,7 +1280,8 @@ fn toggle_card(app: AppHandle) { toggle_home(app, "character"); }
 
 /// Clicking the island in the notch opens Home at once (F18), and never closes it (2 Nov 2026: pointing may have opened it
 /// a moment before, and the click that meant to open it must not close it). Home closes by Esc, Close or a click elsewhere.
-/// Never with the keyboard (rule 9): Home takes it only when the person clicks into it.
+/// QA1: the click is the person choosing Squibby, so Home takes the keys as it opens (open_card_then, island::click_takes_keys);
+/// pointing at the notch never does (rule 9).
 /// Round 1 (the founder: "when I open the chat, I cannot close it fully"): with the small chat open, a second click on the
 /// notch folds it back. Pointing never opens the chat (island.rs opens_small), so that click never meant to open it.
 #[tauri::command]
@@ -1304,8 +1307,8 @@ fn island_go(app: AppHandle, then: Option<serde_json::Value>) {
 }
 
 /// M96: a click on Flowflow or the greeting in the panel under the notch opens Home as the small chat, out of the notch
-/// (island.rs opens_small; with island.smallChat off, Home as before). Never with the keyboard (rule 9): the chat's field
-/// takes the keys only when the person clicks into it.
+/// (island.rs opens_small; with island.smallChat off, Home as before). QA1: the click is the person choosing Squibby, so the
+/// chat takes the keys as it opens (island::click_takes_keys), and Esc and typing reach it at once.
 #[tauri::command]
 fn island_chat(app: AppHandle) { open_card(&app, "notch_chat", false); }
 

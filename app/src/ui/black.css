@@ -421,6 +421,9 @@
 .notch-chat .nc-field:has(textarea:not(:placeholder-shown)) .nc-send:not(:disabled) { background: var(--acc); color: var(--acc-ink); }
 .notch-chat .nc-send:active:not(:disabled) { transform: scale(var(--press)); transition-duration: var(--dur-press); }
 .notch-chat:has(.nc-field:focus-within) .nc-mic { box-shadow: none; }
+/* QA1 review (rule 5): the microphone is open. Home's own listening light (system.css .home[data-talking] .ask-mic), with a
+   ring in the same token so it reads as lit on the lavender, whatever has the keys. */
+.notch-chat[data-talking] .nc-mic, .notch-chat[data-talking]:has(.nc-field:focus-within) .nc-mic { color: var(--ring-working); box-shadow: 0 0 0 var(--ring) var(--ring-working); }
 .notch-chat .nc-dots { display: inline-flex; gap: 3px; margin-inline-start: var(--space-1); vertical-align: middle; }
 .notch-chat .nc-dots > i { width: 4px; aspect-ratio: 1; border-radius: var(--r-round); background: currentColor; opacity: .35; animation: ui-dot-breathe var(--loop-busy) var(--ease-loop) infinite alternate; }
 .notch-chat .nc-dots > i:nth-child(2) { animation-delay: calc(var(--loop-busy) / 3); }

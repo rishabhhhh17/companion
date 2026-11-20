@@ -524,7 +524,10 @@ export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: n
 /** failedCheck (M72): the rung of the check that failed (install, checks, tests, start, browser, review), for a failed task. */
 export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string; failedCheck?: string;
   /** M104: a Fix it from a review left this many of its problems still there, so it is not proven (absent: none, or not a Fix it). */
-  still?: number };
+  still?: number;
+  /** QA1: on a row an Undo took back (and not brought back since): the Undo's own safety copy, while it is still kept. A
+   *  checkpoint.restore of it is Bring back. Absent when there is nothing to bring back. */
+  undoSafety?: string };
 /** M77: a saved copy taken the instant before the person's own AI tool ran a destructive command (runner/src/guard.ts), as
  *  its own row in History: never a task, so no verdict is read from it. command: the short, redacted command (60
  *  characters). undone: an Undo went back to this copy or an earlier one. */

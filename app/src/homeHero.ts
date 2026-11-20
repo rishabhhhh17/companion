@@ -419,15 +419,20 @@ export function homeFixRoute(m: Pick<Model, "point" | "practice" | "receipt">, s
 
 /** Where Return sends the words (item 2): a new folder only when Make it in a new folder is ticked; with no project open
  *  the words wait while the person picks their project or starts a new one from them; never a silent new project. */
-export type AskRoute = "newFolder" | "chooseProject" | "needWords" | "busy" | "here";
+export type AskRoute = "newFolder" | "chooseProject" | "needWords" | "busy" | "fixOff" | "here";
 /** busy: a job works here, so Return and auto send do what the greyed send arrow does: nothing is sent and the words stay
  *  (a new folder keeps its own busy check, card.tsx startNew). */
-export function askRoute(o: { prompt: string; project: string; newFolder: boolean; working?: boolean }): AskRoute {
+/** QA1: `starting`: a send the engine has not answered yet holds the next one (two quick Returns both went out, and the
+ *  second one's words were lost). `fixOff`: fixing is not switched on for this Mac (F29), so nothing is sent at all. */
+export function askRoute(o: { prompt: string; project: string; newFolder: boolean; working?: boolean; starting?: boolean; fixOff?: boolean }): AskRoute {
   if (!o.prompt.trim()) return "needWords";
+  if (o.fixOff) return "fixOff";
   if (o.newFolder) return "newFolder";
   if (!o.project) return "chooseProject";
-  return o.working ? "busy" : "here";
+  return o.working || o.starting ? "busy" : "here";
 }
+/** QA1: the busy line under the ask box goes once nothing works any more (it stayed after Stop); any other line stays. */
+export const askHintNow = (hint: string | null, busy: boolean): string | null => (hint === S.askBusy && !busy ? null : hint);
 
 /** What stops any work right now (item 12): no Claude key or plan, the engine stopped, or Anthropic's Claude missing or
  *  being fetched. Unknown (the engine has not said yet) blocks nothing. claude: claude_status's state, null until known. */

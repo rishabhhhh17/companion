@@ -6,6 +6,10 @@ import { NO_UNASKED_DETAILS_STEP, STEP_INSTRUCTION } from "./drive.ts";
 import { label as clipLabel } from "./redact.ts";
 import { STALE_ERROR_RULE } from "./staleerror.ts";
 import { PRODUCT } from "./names.ts";
+import { REVIEW_FIX_INTRO } from "./review/sendback.ts";
+
+/** QA1: the name of a fix started from the review card (Fix it), never the request sent to the model. */
+export const REVIEW_FIX_LABEL = "Fix what the review found";
 
 /** The label of any task the person asked to keep off the record (nothing about it is kept). */
 export const OFF_RECORD_LABEL = "Off the record task";
@@ -24,6 +28,7 @@ export function taskLabel(text: string, max = 120): string {
     const failed = /Failed check:\s*(.+)/.exec(t)?.[1];
     if (failed) return clipLabel(`Fix the failing check: ${failed}`, max);
   }
+  if (t.startsWith(REVIEW_FIX_INTRO)) return REVIEW_FIX_LABEL;
   for (const w of ENGINE_WORDS) t = t.split(w).join(" ");
   return clipLabel(t, max);
 }

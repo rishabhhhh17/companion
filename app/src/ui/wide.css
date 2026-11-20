@@ -125,6 +125,9 @@
    one shows (homeHero.ts heroCompact), the hero is one line: no pond, no main button (the card has its own). The ask box's
    band pads the scroll, so a card scrolled into view stops above it. */
 .home[data-side] { scroll-padding-bottom: calc(var(--h-lg) * 2 + var(--space-6)); }
+/* QA1: the project row stays at the top while the work scrolls (.work > .bar, sticky), so a part scrolled into view stops
+   below it, never with its top (the status pill) tucked under the project chip. */
+.home[data-side] { scroll-padding-top: calc(var(--h-lg) + var(--space-3)); }
 .home[data-side] .hero[data-compact] { --char: 0px; grid-template-columns: minmax(0, 1fr); min-height: 0; margin-bottom: var(--space-4); }
 .home[data-side] .hero[data-compact] .home-pond { display: none; }
 .home[data-side] .hero[data-compact] { padding-bottom: var(--space-2); }

@@ -28,7 +28,9 @@ describe("the buttons under the ask box", () => {
   test("Explain an error explains the words in the box; with none it says how, in a line that can be closed", () => {
     const ex = fnBody(card, "const explainFromBox = () => {");
     expect(ex).toContain('invoke("eh_typed", { text: q })');
-    expect(ex).toContain('needWords(keyHint("explain", S.explainChipHint, keys, S.explainChipHintNoKeys))');
+    // Changed on purpose (QA1, 19 Nov 2026): with no explain shortcut it says to paste the error (keys.ts explainBoxHint);
+    // keyHint said to add a shortcut instead.
+    expect(ex).toContain("needWords(explainBoxHint(keys))");
     expect(card).not.toContain('dispatch({ type: "app.notice", message: keyHint("explain", S.errKeyHint, keys) })');
     // The shell sends it down the explain keys' own engine path, only from Home, and never reads another app for it.
     expect(main).toContain("fn eh_typed(app: AppHandle, window: tauri::WebviewWindow, text: String)");

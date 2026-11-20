@@ -52,6 +52,10 @@ export function hoverHeadline(m: Model, greet: string, line: HoverLine | null, n
   return said ? { words: said, news: true, ...(tone ? { tone } : {}) } : { words: greet, news: false };
 }
 
+/** QA1: what a click on the row's headline (or the quiet line under it) opens. News (a result, a review, Claude waiting)
+ *  opens Home on it, as a click on the notch's own row does; the plain hello opens the small chat. */
+export const rowPressOpens = (head: { words?: string; news: boolean }): "home" | "chat" => (head.news ? "home" : "chat");
+
 // ---------- the one short line ----------
 
 const projectOf = (m: Model): string => m.task?.project ?? m.folder ?? "";

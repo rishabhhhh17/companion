@@ -163,7 +163,11 @@ describe("the keys: never taken at rest or while pointing", () => {
     expect(panel).toContain('invoke("island_chat")');
     // Home's own field takes the keys only when the shell says a key opened it (opened.keyboard), as before.
     expect(read("./card.tsx")).toContain("else if (keyboard) setTimeout(() => box.current?.focus(), 30);");
-    expect(read("./notchChat.tsx")).not.toMatch(/autoFocus|\.focus\(/);
+    // Changed on purpose (QA1, 19 Nov 2026): the one focus call is Tab going round the chat's own controls, on the person's
+    // own Tab press inside it (tabRound); nothing else in the chat ever moves the keys.
+    const chatSrc = read("./notchChat.tsx");
+    expect(chatSrc.replace(/const tabRound = [\s\S]*?\n  \};\n/, "")).not.toMatch(/autoFocus|\.focus\(/);
+    expect(chatSrc.match(/\.focus\(/g)?.length ?? 0).toBe(1);
   });
 });
 
@@ -293,7 +297,9 @@ describe("the small chat: the recent news as bubbles", () => {
     const ok = { onboarded: true, vague: false, noProject: false, handoff: false, attached: 0, freshNotice: false, freshResult: false };
     expect(chatHolds(m(), ok)).toBe(true);
     // Hold to talk: the listening line, a model to download, the microphone refused. Home draws each with its light.
-    for (const stage of ["listening", "needs_model", "needs_mic", "mic_refused", "error"]) expect(chatHolds(m({ voice: { stage, message: "x" } }), ok), stage).toBe(false);
+    // Changed on purpose (QA1, 19 Nov 2026): listening, writing the words down and the words heard stay in the chat, which
+    // says it listens (qa1.test.ts); the rest still open Home, where their buttons and light are.
+    for (const stage of ["needs_model", "needs_mic", "mic_refused", "error"]) expect(chatHolds(m({ voice: { stage, message: "x" } }), ok), stage).toBe(false);
     expect(chatHolds(m({ error: "The engine stopped." }), ok)).toBe(false);
     expect(chatHolds(m({ notice: "Flow is off." }), { ...ok, freshNotice: true })).toBe(false);
     expect(chatHolds(m(), { ...ok, attached: 1 })).toBe(false);

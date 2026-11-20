@@ -1066,7 +1066,17 @@ export class AgentRunner {
         const working = this.lastWorking(cmd.project);
         let marks: Record<string, { star?: true; name?: string }> = {};
         try { marks = this.store(cmd.project).marks(); } catch { /* no marks to show */ }
-        const tasks = this.o.log.list(cmd.project, 50).map((t) => ({ id: t.id, label: t.label, status: t.status, usd: t.usd, startedAt: t.startedAt, endedAt: t.endedAt, checkpoint: t.checkpoint, changed: t.changed, proof: t.proof, ...(t.undone ? { undone: true } : {}), ...(t.failedCheck ? { failedCheck: t.failedCheck } : {}), ...(t.still ? { still: t.still } : {}), ...(t.back ? { back: true } : {}),
+        // QA1: an undone row names its Undo's safety copy while the store still keeps it, so History (and Now) can offer
+        // Bring back after an Undo from anywhere, not only on the result card of the same session.
+        let keeps: (cp: string) => boolean = () => false;
+        try { const st = this.store(cmd.project); keeps = (cp) => { try { return st.has(cp); } catch { return false; } }; } catch { /* no store, nothing to bring back */ }
+        // Bringing back restores the whole project as it was just before that Undo, so the copy is named only while that Undo
+        // is the newest change (history.ts bringBackOffer holds the same rule): on the newest row it took back, and only
+        // when no task after that row changed files (or may have: an unknown count), so later work is never taken away.
+        const rows = this.o.log.list(cmd.project, 50);
+        const newestChange = (i: number) => !rows.slice(0, i).some((x) => (x.changed ?? 1) > 0);
+        const tasks = rows.map((t, i) => ({ id: t.id, label: t.label, status: t.status, usd: t.usd, startedAt: t.startedAt, endedAt: t.endedAt, checkpoint: t.checkpoint, changed: t.changed, proof: t.proof, ...(t.undone ? { undone: true } : {}), ...(t.failedCheck ? { failedCheck: t.failedCheck } : {}), ...(t.still ? { still: t.still } : {}), ...(t.back ? { back: true } : {}),
+          ...(t.undone && !t.back && t.undoneBy && newestChange(i) && keeps(t.undoneBy) ? { undoSafety: t.undoneBy } : {}),
           ...(working?.task === t.id ? { lastWorking: true } : {}), ...(t.checkpoint && marks[t.checkpoint]?.star ? { star: true } : {}), ...(t.checkpoint && marks[t.checkpoint]?.name ? { name: marks[t.checkpoint].name } : {}) }));
         const sinceCheck = await this.sinceProven(cmd.project);
         // M57 feature 1: the reviews of changes to this project, as their own rows (names of files only), within review.keepDays.

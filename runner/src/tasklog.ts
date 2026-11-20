@@ -53,6 +53,8 @@ export type TaskRow = { id: number; project: string; agent: string; mode: string
   /** M45: an Undo put the project back to before this task. back: and then "Bring the fix back" put the task's files back
    *  again (undone stays true, so What I did can say "The fix is back", never "Fixed and proven": nothing was checked since). */
   undone?: boolean; back?: boolean;
+  /** QA1: the safety copy the Undo that took this task back made first (the id Bring back restores), while not back. */
+  undoneBy?: string;
   /** M72: the rung of the check that failed (the ladder's own id: install, checks, tests, start, browser, review), so a page
    *  can say which check failed. Never the check's output. */
   failedCheck?: string;
@@ -213,7 +215,8 @@ export class TaskLog {
     return {
       since, falseDones, keys, weakened,
       saved: n("SELECT COUNT(*) AS n FROM tasks WHERE project = ? AND mode = ? AND undone_by IS NOT NULL AND started_at >= ?", project, GUARD_MODE, since),
-      undone: n("SELECT COUNT(*) AS n FROM tasks WHERE project = ? AND mode != ? AND undone_by IS NOT NULL AND COALESCE(ended_at, started_at) >= ?", project, GUARD_MODE, since),
+      // QA1: Put these files back on a review is an undo too (the review's own row says so).
+      undone: n("SELECT COUNT(*) AS n FROM tasks WHERE project = ? AND mode != ? AND undone_by IS NOT NULL AND COALESCE(ended_at, started_at) >= ?", project, GUARD_MODE, since) + this.reviewUndos(project, since),
     };
   }
   /** M79: the weekly summary's counts for the seven days before now, from real rows only (the decisions come from memory,
@@ -356,6 +359,7 @@ export class TaskLog {
     return rows.map((r) => ({
       id: r.id, project: r.project, agent: r.agent, mode: r.mode, label: r.label, status: r.status, usd: r.usd, startedAt: r.started_at, endedAt: r.ended_at,
       checkpoint: r.checkpoint ?? null, changed: r.changed ?? null, proof: r.proof ?? null, undone: r.undone_by != null, back: r.undone_by != null && r.brought_back === 1,
+      ...(r.undone_by && r.brought_back !== 1 ? { undoneBy: String(r.undone_by) } : {}),
       ...(r.failed_check && RUNGS.includes(r.failed_check) ? { failedCheck: r.failed_check as string } : {}),
       ...(typeof r.still === "number" && r.still > 0 ? { still: r.still as number } : {}),
     }));

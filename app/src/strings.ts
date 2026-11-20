@@ -509,6 +509,8 @@ export const S = {
     undoneFix: "The fix is gone, so the problem is back.",
     undoneOther: "Your project is back as it was before this task.",
     back: "The fix is back",
+    // QA1: a task that never passed brought back is its changes, never "the fix".
+    backChanges: "The changes are back",
     backLine: "It passed its checks before the Undo. Nothing was checked since.",
     backLineUnchecked: "Nothing was checked since.",
     backPartlyLine: "Files you changed yourself after the Undo were left as you have them. Nothing was checked since.",
@@ -525,6 +527,11 @@ export const S = {
   islandResult: (headline: string, what: string) => `${headline}: ${what.charAt(0).toUpperCase()}${what.slice(1)}`,
   saidResult: (what: string, say: string) => (what ? `${what}: ${say}` : say),
   bringBack: "Bring the fix back",
+  // QA1: for a task whose checks did not pass, what comes back is its changes, never a fix.
+  bringBackChanges: "Bring the changes back",
+  bringBackDone: "The fix is back.",
+  bringBackChangesWorking: "Bringing the changes back…",
+  bringBackChangesDone: "The changes are back.",
   bringBackSure: "This puts back what the task changed, as it was just before you pressed Undo.",
   bringBackYes: "Yes, bring it back",
   bringBackNo: "Leave it undone",
@@ -1276,6 +1283,14 @@ export const S = {
   typeFirst: "Type what you want done first.",
   // Return or auto send while a job works here (homeHero.ts askRoute busy): nothing is sent, the words stay.
   askBusy: "Something is still working here. Let it finish, or press Stop, then send again. Your words are still in the box.",
+  // QA1 (F29: nobody adds a key): with fixing not switched on, an ask is never sent. The words stay where they were typed.
+  askFixOff: "Fixing is not switched on for this Mac yet, so this was not sent. Your words are kept. You can still check your project.",
+  // QA1 review: the greyed Send's name while fixing is off, so it says why it does nothing.
+  sendFixOff: "Fixing is not switched on for this Mac yet",
+  // QA1: a fix started from the review card's Fix it, named in plain words (never the request sent to the model).
+  reviewFixName: "Fix what the review found",
+  // What Home says right after Stop everything (model.ts).
+  stoppedEverything: "Stopped everything.",
   // Plan it and Look up pressed with the box empty (card.tsx plan, research).
   planHint: "Type what you want made or changed, then press Plan it.",
   researchHint: "Type what you want to find out, then press Look up.",
@@ -4266,6 +4281,8 @@ export const S = {
       mic: "Hold to talk",
       // The mic is not a button that listens (rule 5): its own words carry the keys to hold.
       micKeys: (keys: string) => `Hold ${keys} to talk`,
+      // QA1 review: while the microphone is open the chat's mic is lit, as Home's is, and its name says so.
+      micListening: "Listening. Let go of the keys to stop.",
       stop: "Stop",
       today: "Today",
       // Feel round 2 (19 Nov 2026): under a reply that failed, one pill that opens Home on Now, where Fix it is.
@@ -4279,6 +4296,8 @@ export const S = {
       suggest: ["What changed today?", "Is it ready to go live?"] as readonly string[],
       suggestLabel: "Put this question in the field",
       working: "Working on it.",
+      // QA1: hold to talk from the chat stays in the chat, and says so while it listens.
+      listening: "Listening…",
       // Round 1: a task at work in another project, named, so the chat's Stop and its greyed Send have a reason.
       workingIn: (project: string) => `Working in ${project}${project.endsWith("…") ? "" : "."}`,
       // Round 1 (the founder: "when I open the chat, I cannot close it fully"): the chat's own Close.

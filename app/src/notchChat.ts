@@ -6,9 +6,9 @@
 // Three states. At rest: only the hardware notch, nothing drawn. Pointing at the notch: one row grows out of it (the face,
 // the hello, one pill; islandPanel.tsx). Opened: a click on the face or the hello, or the ask key, opens Home as a small chat
 // out of the notch (island.rs HomeSize::CHAT). Esc, a click elsewhere and Stop everything fold it back; Settings and the
-// expand button open it out to all of Home. The chat takes the keys only when the person clicks into its field or pressed
-// the ask key (rule 9); at rest and while pointing nothing takes them.
-import type { HistoryItem, Model } from "./model.ts";
+// expand button open it out to all of Home. The chat takes the keys only when the person clicks into its field, pressed
+// the ask key, or (QA1) clicked the notch or its hello to open it (rule 9); at rest and while pointing nothing takes them.
+import type { HistoryItem, Model, Receipt } from "./model.ts";
 import { shortClock } from "./clock.ts";
 import { S } from "./strings.ts";
 
@@ -142,6 +142,44 @@ function liveTask(m: Model): Model["task"] {
   if (t.checkpoint && m.history.some((h) => h.checkpoint === t.checkpoint && h.status !== "running")) return null;
   return t;
 }
+/** QA1: what the AI said at the end of this task (its receipt's last words), while that receipt is the one on Home. */
+const answerOf = (m: Model, checkpoint: string | null): string => (checkpoint && m.receipt?.checkpoint === checkpoint ? m.receipt.said?.trim() ?? "" : "");
+/** QA1: a result the chat can hold by itself: an answer that changed nothing and asks nothing back. One that changed files
+ *  (its Undo and proof), did something that cannot be undone, or asks the person something opens out to Home's receipt. */
+/** QA1 review (rule 14): also only when the engine said the task ended done (a receipt that did not say is never read as
+ *  done), its checks did not fail, and its last words do not claim checks pass that its proof did not show. Anything else
+ *  opens out to the receipt, where the proof is. */
+export const resultStaysInChat = (r: Receipt): boolean => r.changed.length === 0 && r.notUndoable.length === 0 && !r.asks
+  && r.end === "done" && r.proof !== "failed" && !r.claimedPassed;
+/** QA1 review: how a receipt's task ended (its end, limit and why), said as the History status its row will carry, so the
+ *  chat's bubble reads the same before and after the row arrives, and never as done unless the engine said done. */
+const statusOfEnd = (r: Receipt): string => {
+  switch (r.end) {
+    case "done": return "done";
+    case "stopped": return "interrupted";
+    case "needsYou": return "needs_you";
+    case "limit": return r.limit === "daily" ? "daily_limit" : r.limit === "turns" ? "error_max_turns" : "error_max_budget_usd";
+    case "failed": return r.failWhy === "check" ? "not_done" : r.failWhy === "noConnection" ? "no_connection" : r.failWhy === "claudeBusy" ? "claude_busy" : "error";
+    default: return "unknown";
+  }
+};
+/** QA1 review (rule 14): the AI's own words are all the chat says only for a plain answer: nothing changed, ended done, the
+ *  checks did not fail and the words claim no checks passed. Otherwise the proof's own line follows them. */
+const saidIsAll = (o: { changed: number; status: string; undone?: boolean; proof: string | null | undefined; claimed: boolean }): boolean =>
+  o.changed === 0 && o.status === "done" && !o.undone && o.proof !== "failed" && !o.claimed;
+/** QA1: hold to talk's own steps the chat shows by itself (the words land in its field); anything else (a model to
+ *  download, the microphone blocked or silent) has buttons only Home draws. */
+const CHAT_VOICE = ["listening", "transcribing", "heard"];
+export const voiceStaysInChat = (stage: string): boolean => CHAT_VOICE.includes(stage);
+/** QA1: Tab past the chat's last control goes back to its first (and Shift Tab from its first to its last), so the keys are
+ *  never lost on the page behind it. null: leave Tab to the browser. */
+export const chatFocusNext = (n: number, at: number, back: boolean): number | null => {
+  if (n <= 0) return null;
+  if (at < 0) return back ? n - 1 : 0;
+  if (!back && at === n - 1) return 0;
+  if (back && at === 0) return n - 1;
+  return null;
+};
 /** One task's bubbles share a key with its History row (by its checkpoint when it has one), so the words do not animate in
  *  again when the task at work becomes that row. */
 const keyOf = (id: string | number, checkpoint?: string | null): string => (checkpoint ? `cp:${checkpoint}` : String(id));
@@ -170,9 +208,25 @@ function chatTasks(m: Model, project: string, tail: number): { rows: HistoryItem
     const k = keyOf(h.id, h.checkpoint), b: Bubble[] = [];
     if (h.label.trim()) b.push({ key: `you:${k}`, who: "you", words: h.label.trim() });
     const failed = h.status !== "done" && h.status !== "interrupted" && h.status !== "stopped" && !h.undone && !!h.failedCheck;
-    b.push({ key: `sq:${k}`, who: "squibby", words: outcome(h), ...(failed ? { go: "now" as const, fix: true as const } : {}) });
+    // QA1: the AI's own answer (its last words, from this task's receipt) under the ask. A plain answer that changed nothing
+    // is all that is said; work that changed files still says what its checks found after it (rule 14).
+    const said = answerOf(m, h.checkpoint);
+    if (said) b.push({ key: `said:${k}`, who: "squibby", words: said });
+    const claimed = !!said && !!m.receipt?.claimedPassed;
+    if (!said || !saidIsAll({ changed: h.changed ?? 0, status: h.status, undone: h.undone, proof: h.proof, claimed })) b.push({ key: `sq:${k}`, who: "squibby", words: outcome(h), ...(failed ? { go: "now" as const, fix: true as const } : {}) });
     return { row: h, b };
   });
+  // QA1: the task that just ended, before its History row arrives: its ask and its answer, never a blank between them.
+  const r = m.receipt, ended = m.task;
+  if (!live && r && ended?.checkpoint === r.checkpoint && (!ended.project || sameFolder(ended.project, project)) && !groups.some((g) => g.row?.checkpoint === r.checkpoint)) {
+    const k = keyOf(`live:${ended.agent}`, ended.checkpoint), b: Bubble[] = [];
+    if (ended.label.trim()) b.push({ key: `you:${k}`, who: "you", words: ended.label.trim() });
+    const said = answerOf(m, r.checkpoint);
+    if (said) b.push({ key: `said:${k}`, who: "squibby", words: said });
+    const status = statusOfEnd(r);
+    if (!said || !saidIsAll({ changed: r.changed.length, status, undone: r.undone, proof: r.proof, claimed: !!r.claimedPassed })) b.push({ key: `sq:${k}`, who: "squibby", words: outcome({ id: 0, label: "", status, usd: 0, startedAt: "", endedAt: null, checkpoint: r.checkpoint, changed: r.changed.length, proof: r.proof ?? null, undone: r.undone, back: r.back }) });
+    groups.push({ row: null, b });
+  }
   if (live) {
     const k = keyOf(`live:${live.agent}`, live.checkpoint), b: Bubble[] = [];
     if (live.label.trim()) b.push({ key: `you:${k}`, who: "you", words: live.label.trim() });
@@ -196,7 +250,9 @@ function chatTasks(m: Model, project: string, tail: number): { rows: HistoryItem
 export function chatBubbles(m: Model, project: string, o: { hint?: string | null; now?: number } = {}): Bubble[] {
   const C = S.m96.chat;
   if (!m.runnerUp) return [{ key: "off", who: "squibby", words: C.off }];
-  if (m.connected === "none") return [{ key: "ready", who: "squibby", words: C.notReady }];
+  // QA1: with fixing off, the field's own line (nothing was sent, and why) takes the place of the plain one, so the chat
+  // never says the same thing twice.
+  if (m.connected === "none") return [o.hint ? { key: "hint", who: "squibby", words: o.hint } : { key: "ready", who: "squibby", words: C.notReady }];
   const tail: Bubble[] = [];
   const t = liveTask(m);
   // A task at work in another folder: the one Home shows (m.task), or one the engine runs there (m.away, with its agent busy).
@@ -206,6 +262,8 @@ export function chatBubbles(m: Model, project: string, o: { hint?: string | null
   if (m.claudeWaiting && sameFolder(m.claudeWaiting.project, project)) tail.push({ key: "claude", who: "squibby", words: C.claude, go: "now" });
   const rv = m.review;
   if (rv && rv.stage !== "reviewed" && rv.count > 0 && sameFolder(rv.project, project)) tail.push({ key: `review:${rv.batch}`, who: "squibby", words: C.review(rv.count), go: "review" });
+  // QA1: hold to talk from the chat stays in the chat, and says it is listening there.
+  if (m.voice && voiceStaysInChat(m.voice.stage) && m.voice.stage !== "heard") tail.push({ key: "voice", who: "squibby", words: m.voice.message.trim() || C.listening });
   if (o.hint) tail.push({ key: "hint", who: "squibby", words: o.hint });
   const shown = chatTasks(m, project, tail.length);
   // Feel round 2: each day's tasks under their own time line, from when the first of them was asked (never the time the
@@ -260,7 +318,7 @@ export type ChatLocal = { onboarded: boolean; vague: boolean; noProject: boolean
  *  own Stop (notchChat.tsx). */
 export function chatHolds(m: Model, l: ChatLocal): boolean {
   if (!l.onboarded || l.vague || l.noProject || l.handoff) return false;
-  if (m.voice || m.error || l.freshNotice || l.attached > 0 || l.freshResult) return false;
+  if ((m.voice && !voiceStaysInChat(m.voice.stage)) || m.error || l.freshNotice || l.attached > 0 || l.freshResult) return false;
   if (m.approvals.length > 0 || m.plan || m.stuck || m.paused || m.costPause || m.signIn || (m.walk && m.walk.stage !== "done" && m.walk.stage !== "stopped")) return false;
   return true;
 }
