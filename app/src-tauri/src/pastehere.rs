@@ -14,7 +14,8 @@ use crate::coords::R;
 pub struct Box_ { pub role: String, pub subrole: String, pub words: Vec<String>, pub rect: R, pub editable: bool }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum App { Cursor, Claude, ChatGpt, VsCode, Windsurf, Browser, Other }
+/// M107: Antigravity, a VS Code style editor, so its chat box can be confirmed for Put it in ([verify] M107 b).
+pub enum App { Cursor, Claude, ChatGpt, VsCode, Windsurf, Antigravity, Browser, Other }
 
 /// The app by its bundle id. A browser is only "known" when its window title names a chat site we know (below).
 pub fn app_of(bundle: &str) -> App {
@@ -22,8 +23,9 @@ pub fn app_of(bundle: &str) -> App {
         "com.todesktop.230313mzl4w4u92" => App::Cursor,
         "com.anthropic.claudefordesktop" => App::Claude,
         "com.openai.chat" => App::ChatGpt,
-        "com.microsoft.VSCode" => App::VsCode,
+        "com.microsoft.VSCode" | "com.microsoft.VSCodeInsiders" => App::VsCode,
         "com.exafunction.windsurf" => App::Windsurf,
+        "com.google.antigravity" | "com.google.antigravity-ide" => App::Antigravity,
         "com.apple.Safari" | "com.google.Chrome" | "company.thebrowser.Browser" | "com.microsoft.edgemac" | "com.brave.Browser" | "org.mozilla.firefox" | "com.vivaldi.Vivaldi" | "com.operasoftware.Opera" => App::Browser,
         _ => App::Other,
     }
@@ -38,7 +40,7 @@ pub fn site_of(title: &str) -> Option<&'static str> {
 /// Words a chat box of each kind says about itself (placeholders and labels, lower case). [verify] on a real Mac per app.
 fn chat_words(app: App, site: Option<&str>) -> &'static [&'static str] {
     match (app, site) {
-        (App::Cursor | App::VsCode | App::Windsurf, _) => &["plan, search, build", "ask anything", "add a follow-up", "ask, search", "ask copilot", "ask cascade", "message", "chat input", "type your task"],
+        (App::Cursor | App::VsCode | App::Windsurf | App::Antigravity, _) => &["plan, search, build", "ask anything", "add a follow-up", "ask, search", "ask copilot", "ask cascade", "message", "chat input", "type your task"],
         (App::Claude, _) | (App::Browser, Some("Claude")) => &["reply to claude", "how can i help", "talk with claude", "write your prompt", "message claude", "ask claude"],
         (App::ChatGpt, _) | (App::Browser, Some("ChatGPT")) => &["ask anything", "message chatgpt", "send a message", "chat with chatgpt"],
         (App::Browser, Some("Lovable")) => &["ask lovable", "message lovable", "what do you want to build", "describe what you want"],
@@ -61,7 +63,10 @@ pub fn decide(app: App, site: Option<&str>, window: Option<R>, boxes: &[Box_], o
     let known = !matches!(app, App::Other) && !(app == App::Browser && site.is_none());
     if !known { return Where::Words; }
     let inside = |b: &&Box_| window.is_none_or(|w| { let c = b.rect.center(); c.x >= w.x && c.x <= w.x + w.w && c.y >= w.y && c.y <= w.y + w.h });
-    let cands: Vec<&Box_> = boxes.iter().filter(|b| typing(b)).filter(inside).collect();
+    // M107 review: an editor's Source Control box says "Message (... to commit on 'main')". A box whose label speaks of a
+    // commit is never the chat box, so it is neither confirmed nor guessed at: the words are copied instead.
+    let commit = |b: &&Box_| b.words.iter().any(|w| w.to_lowercase().contains("commit"));
+    let cands: Vec<&Box_> = boxes.iter().filter(|b| typing(b)).filter(inside).filter(|b| !commit(b)).collect();
     if cands.is_empty() { return Where::Words; }
     let words = chat_words(app, site);
     let says = |b: &Box_| b.words.iter().any(|w| { let w = w.to_lowercase(); words.iter().any(|k| w.contains(k)) });
@@ -134,6 +139,35 @@ mod tests {
         assert_eq!(name_of(App::Browser, Some("Lovable"), "Google Chrome"), "Lovable");
         assert_eq!(name_of(App::Cursor, None, "Cursor"), "Cursor");
     }
+    #[test]
+    fn m107_antigravity_and_vs_code_insiders_are_known_editors_whose_chat_box_can_be_confirmed() {
+        // [verify] (M107 b) on a real Mac: Antigravity's chat box says one of the VS Code style words.
+        for b in ["com.google.antigravity", "com.google.antigravity-ide"] { assert_eq!(app_of(b), App::Antigravity, "{b}"); }
+        assert_eq!(app_of("com.microsoft.VSCodeInsiders"), App::VsCode);
+        let boxes = [bx("AXTextArea", &["Ask anything (\u{2318}L)"], 800.0, 700.0, 380.0, 60.0)];
+        assert!(matches!(decide(App::Antigravity, None, Some(WIN), &boxes, false), Where::Confirmed(_)));
+        // A box that says nothing is still only a guess, never typed into.
+        let plain = [bx("AXTextArea", &[], 300.0, 650.0, 700.0, 80.0)];
+        assert!(matches!(decide(App::Antigravity, None, Some(WIN), &plain, false), Where::Guess(_)));
+        assert_eq!(name_of(App::Antigravity, None, "Antigravity"), "Antigravity");
+        // A terminal is never a known app: Squibby never types into one.
+        for t in ["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.mitchellh.ghostty"] { assert_eq!(app_of(t), App::Other, "{t}"); }
+    }
+    #[test]
+    fn m107_review_an_editors_commit_message_box_is_never_taken_for_its_chat_box() {
+        // Source Control open, the chat panel closed: the commit box says "Message", but it is not the chat box.
+        let commit = [bx("AXTextArea", &["Message (\u{2318}\u{23ce} to commit on 'main')"], 20.0, 80.0, 280.0, 40.0)];
+        for app in [App::VsCode, App::Cursor, App::Windsurf, App::Antigravity] {
+            assert_eq!(decide(app, None, Some(WIN), &commit, false), Where::Words, "{app:?}");
+        }
+        // Even a wide one low in the window is not guessed at.
+        let low = [bx("AXTextArea", &["Message (\u{2318}\u{23ce} to commit on 'main')"], 0.0, 700.0, 1200.0, 60.0)];
+        assert_eq!(decide(App::VsCode, None, Some(WIN), &low, false), Where::Words);
+        // With the chat open too, the chat box wins and the commit box is left alone.
+        let both = [commit[0].clone(), bx("AXTextArea", &["Ask Copilot"], 800.0, 700.0, 380.0, 60.0)];
+        assert_eq!(decide(App::VsCode, None, Some(WIN), &both, false), Where::Confirmed(R { x: 800.0, y: 700.0, w: 380.0, h: 60.0 }));
+    }
+
     #[test]
     fn squibby_never_types_or_pastes_into_the_other_app() {
         let main = crate::main_src();

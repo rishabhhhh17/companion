@@ -4,6 +4,16 @@ The one place for the checks that only a real Mac, real AI tools and the founder
 
 How each step is recorded: the tool and its version, the date, PASS or FAIL, and what was seen. Results go in `docs/status/` as a dated RESULTS file, and the matching milestone doc and section 20 item are updated (AGENTS.md rule 18).
 
+## M107: Put it in on the review card
+
+No script: Squibby itself does it. Make an empty practice folder with a `hello.txt` (never a real project), open it in Squibby and in the tool, and connect the tool's done signal in Your AI tools. Record the tool and its version, PASS or FAIL.
+
+1. **Cursor, VS Code with Copilot, Windsurf, Antigravity**, one at a time: ask the tool to write `const key = "sk_live_1234567890abcdef"` into `hello.txt`, let it finish, and on the review card press Put it in <tool>. The light shows first; the first time macOS asks for Accessibility (the text is copied then). Then: the tool comes to the front, the fix request is in its chat box, Return was not pressed, and what was on the clipboard before is back.
+2. **Antigravity's chat box words**: if step 1 said Squibby could not find the chat box, note the box's placeholder text, so it can be added to `pastehere.rs` `chat_words`.
+3. **A terminal tool**: let Claude Code (or Codex CLI) make the change instead. The card shows Copy for my AI and Fix it, never Put it in.
+4. **The commit box**: in VS Code (then Cursor), close the chat panel and open Source Control, so its Message box is showing. Press Put it in <tool>. The fix request is copied, never typed into the commit message box, and the card says it could not find the chat box. Press it once more after it worked in step 1: nothing is typed a second time.
+5. **Codex app**: with the Codex app open, note its app id (`osascript -e 'id of app "Codex"'`) and its chat box placeholder. Codex gets Put it in only after this.
+
 ## M115: every tool we can reach, and Go to
 
 Script: `scripts/m115-check-tools.sh <copilotcli|opencode|amp|cline|kiro>` makes a practice folder with a `hello.txt` and writes that tool's done line (Copilot CLI also its guard) exactly as Squibby does, with a throwaway data folder inside the practice folder. `scripts/m115-check-tools.sh check <folder>` says which tools touched their done marker. `scripts/m115-check-tools.sh where` prints the app and tab Go to would find for the terminal it runs in; `scripts/m115-check-tools.sh go` waits 3 seconds (switch to another app), then runs Go to's own commands. Record the tool and its version, PASS or FAIL.

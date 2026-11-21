@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Put the fix straight into your AI tool: 21 Nov 2026
+
+- **One press from the review.** When a review finds something in a change Cursor, VS Code with Copilot, Windsurf or Antigravity made, the card now has Put it in Cursor (or that tool) beside Copy for my AI. Squibby brings the tool to the front and tries to put the fix request into its chat box. If it cannot be sure the box is the chat box, it copies the text instead. It never presses Return: you read it and send it yourself. Each of the four tools is still being checked on a real Mac.
+- **Once is enough.** After the fix request is in the chat box, the button says It is in Cursor and does nothing more, so it is never typed twice. It never types into the commit message box of Source Control.
+- **Back to the tool that made it.** The button names the tool that just finished. If Claude Code or another terminal tool made the change, there is no Put it in, because typing into a terminal could run the words. Copy for my AI and Fix it are there instead.
+- **When it cannot type, it copies.** If the tool is closed, its chat box is not found, or Accessibility is not allowed yet, the words are copied and the card says why in one line, with Show me where to paste.
+- **Your choice.** Settings, Fixing, more: Offer Put it in on the review card (on).
+
 ## Claude's background jobs get reviewed too: 21 Nov 2026
 
 - **Background jobs are no longer a blind spot.** Claude Code can run jobs in the background, each in its own folder inside your project. Squibby used to skip those folders. Now each job's changes get their own review card: "3 files changed in Claude's background job "fix-login"." with the usual rating, before you merge anything.

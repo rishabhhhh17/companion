@@ -205,6 +205,20 @@ mod tests {
     }
 
     #[test]
+    fn m107_put_in_only_ever_reaches_an_app_window_never_a_terminal() {
+        // Put it in brings only a tool's own apps forward (handoff_put_in passes `t.apps`). The terminal tools have none, so
+        // the shell can never find one running and copies instead; no tool's apps is a terminal, where a new line could run
+        // the text.
+        for id in ["claude", "gemini", "copilotcli", "amp", "cline", "junie"] { assert!(tool(id).unwrap().apps.is_empty(), "{id} has no app to type into"); }
+        let terminals = ["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.mitchellh.ghostty", "net.kovidgoyal.kitty", "org.alacritty", "com.github.wez.wezterm", "co.zeit.hyper", "com.raphaelamorim.rio"];
+        for t in &list().tools { for a in &t.apps { assert!(!terminals.contains(&a.as_str()), "{} lists the terminal {a}", t.id); } }
+        // The four the review card names (app/src/reviewPutIn.ts PUT_IN_TOOLS) are editors the paste code knows.
+        for id in ["cursor", "copilot", "windsurf", "antigravity"] {
+            for a in &tool(id).unwrap().apps { assert_ne!(crate::pastehere::app_of(a), crate::pastehere::App::Other, "{id}: {a}"); }
+        }
+    }
+
+    #[test]
     fn put_in_types_only_into_a_confirmed_chat_box_in_the_tool_in_front() {
         let r = R { x: 10.0, y: 10.0, w: 300.0, h: 40.0 };
         assert_eq!(put_in_step(false, false, &Where::Confirmed(r), true), Step::NotOpen);
@@ -222,7 +236,8 @@ mod tests {
         let start = main.find("fn handoff_put_in_now(").expect("the put in body");
         let body = &main[start..];
         let body = &body[..body.find("\n}\n").unwrap()];
-        for never in ["Return", "KEY_RETURN", "post_key", "press_paste", "press_menu", "value_of", "read_ladder", "select_all"] {
+        // M107 (the review card uses this same path): nor a new line or a carriage return added to the text.
+        for never in ["Return", "KEY_RETURN", "post_key", "press_paste", "press_menu", "value_of", "read_ladder", "select_all", "\\n", "\\r", "push('"] {
             assert!(!body.contains(never), "Put it in never uses {never}: {body}");
         }
         // The one paste path, Type by voice's, with Stop asked right before it.

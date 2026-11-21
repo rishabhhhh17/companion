@@ -145,6 +145,8 @@ describe("the shipped list of settings", () => {
       "review.weakenedChecks": true, "notch.waitingMinutes": "15", "history.thisWeek": true,
       // M106: Claude Code's background jobs (its own folders under .claude/worktrees) are reviewed too (on).
       "review.jobs": true,
+      // M107: Put it in on the review card, beside Copy for my AI (on; it only offers a button, and the person sends).
+      "review.putIn": true,
       // M90 (F32, the founder, 14 Nov 2026: the notch at rest is no longer bare): Flowflow peeks out of the notch (on), from
       // its left side, and hides 2 minutes after the last thing that happened.
       "notch.peek": true, "notch.peekSide": "left", "notch.peekHideAfter": "2",
@@ -270,6 +272,9 @@ describe("the shipped list of settings", () => {
     expect(defOf("paste.showWhere")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });
     expect(defOf("tour.offer")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });
     expect(defOf("report.codeLines")).toMatchObject({ section: "home", kind: "switch", default: false, scope: "app", applies: ["pages"] });
+  });
+  test("M107: Put it in on the review card is the pages' own switch, on as usual", () => {
+    expect(defOf("review.putIn")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
   });
   test("M58: which AI you build with is an optional choice for the pages only, unset until picked, and only the six named answers", () => {
     expect(defOf("you.buildsWith")).toMatchObject({ section: "home", kind: "choice", default: "unset", options: ["unset", "lovable", "bolt", "replit", "cursor", "claudeCode", "other"], scope: "app", applies: ["pages"], store: "settings", live: true });

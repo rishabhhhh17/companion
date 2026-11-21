@@ -608,6 +608,8 @@ export const S = {
     "check.privatePages": "After the page check, private looking pages are opened once without a sign in.",
     "live.stripeMode": "Why is live broken? reads your Stripe webhooks in live mode, or in test mode.",
     "paste.showWhere": "After you copy words for your AI tool, a button rings its chat box. You paste them yourself.",
+    // M107
+    "review.putIn": "A review that found something offers Put it in, which puts the fix request into your AI tool's chat box. You send it.",
     "tour.offer": "Reviews and fixes offer a walk through each changed place.",
     "report.codeLines": "Go live reports leave code out unless this is on. Keys are always hidden.",
     "ask.choices": "A short ask like \"make it better\" shows a few choices first. Nothing runs until you pick one.",
@@ -1888,6 +1890,24 @@ export const S = {
     safeUnchecked: "Its checks did not run on these changes, so nothing is proven yet.",
     sendBack: "Copy for my AI",
     sendBackHelp: "Copies a message about what the review found, for you to paste into the AI tool that made the change.",
+    // M107: Put it in <tool> beside Copy for my AI.
+    putInHelp: (tool: string) => `Puts the fix request into ${tool}'s chat box. It never presses Return, so you read it and send it.`,
+    // M107 review: once it is typed, the press says so and does nothing more, so the fix request is never typed twice.
+    putInDone: (tool: string) => `It is in ${tool}`,
+    // M107 review: what Put it in answered, in the card's own word for the text (the fix request). Same keys as m82.put,
+    // which keeps "prompt" for the hand off.
+    put: {
+      typed: (tool: string) => `It is in ${tool}'s chat box. Read it, then press Return there to send it.`,
+      notOpen: (tool: string) => `Open ${tool} first. The fix request is copied, so you can paste it into its chat box.`,
+      notFront: (tool: string) => `${tool} did not come to the front, so the fix request is copied. Paste it into its chat box.`,
+      noBox: (tool: string) => `${PRODUCT} could not find ${tool}'s chat box, so the fix request is copied. Paste it there.`,
+      refused: () => "That is a password box, so nothing was typed. The fix request is copied.",
+      needsPermission: () => `To put it in for you, allow Accessibility for ${PRODUCT} in System Settings. The fix request is copied for now.`,
+      stopped: () => "Stopped. Nothing was put in.",
+      hidden: () => "The fix request is copied.",
+      copied: () => "You moved to another box, so the fix request is copied. Paste it where you want it.",
+      failed: () => "That did not work, so the fix request is copied.",
+    } as Record<"typed" | "notOpen" | "notFront" | "noBox" | "refused" | "needsPermission" | "stopped" | "hidden" | "copied" | "failed", (tool: string) => string>,
     copied: "Copied. Paste it into your AI tool.",
     looksFine: "Looks fine",
     // Before any review has run, closing the card is skipping it, never a judgement (the audit, item 16).
@@ -2870,6 +2890,7 @@ export const S = {
     "check.privatePages": { label: "Look for pages that should need a sign in", help: `In a project with a sign in, ${PRODUCT} opens pages that look private, such as a dashboard or settings page, once without signing in. It only reads them. One that opens is Worth a look.`, also: ["sign in", "login", "auth", "private", "dashboard", "admin", "security", "protected", "middleware", "open"] },
     "live.stripeMode": { label: "Stripe mode for Why is live broken?", help: `Which of your Stripe modes ${PRODUCT} reads when you ask why your live site is broken. Live is where real payments are. It reads through your own Stripe tool and only reads.`, also: ["stripe", "webhook", "payments", "live", "test mode", "broken"], options: { live: "Live", test: "Test" } },
     "paste.showWhere": { label: "Offer Show me where to paste", help: `After you copy words for your AI tool, Show me where to paste rings its chat box. It works with Cursor, the Claude app, ChatGPT and Lovable. It looks only when you press it, with the light on first. ${PRODUCT} asks for Accessibility the first time. It never types or pastes for you.`, also: ["paste", "chat box", "cursor", "claude", "chatgpt", "lovable", "ring", "where"] },
+    "review.putIn": { label: "Offer Put it in on the review card", help: `Beside Copy for my AI, Put it in puts the fix request into the chat box of the AI tool that made the change. It is made for Cursor, VS Code, Windsurf and Antigravity. ${PRODUCT} brings the tool to the front and types the words into its chat box only. It never presses Return, so you read it and send it yourself. It never types into a terminal. ${PRODUCT} asks for Accessibility the first time. Off: only Copy for my AI.`, also: ["put it in", "paste", "chat box", "cursor", "vs code", "copilot", "windsurf", "antigravity", "fix with ai", "send back"] },
     "tour.offer": { label: "Offer Walk me through it", help: "On a review or a fix, Walk me through it goes through each changed place in order. Each place gets two plain lines and a button to open it in your editor. The words come from the review and the fix, with no extra model call.", also: ["walk", "tour", "explain", "changes", "learn", "editor"] },
     "report.codeLines": { label: "Include short code lines in go live reports", help: "A go live report names files but leaves their contents out. On, it adds the review's own short lines, three at most for each finding, with keys and passwords hidden. Off is safer for a report you send to someone.", also: ["report", "client", "share", "pdf", "code", "go live"] },
     "handoff.improve": { label: "Write a clear prompt first", help: `When you hand a job to your AI tool, ${PRODUCT} first writes a clear prompt from your words, with this project's house rules. You can change it before anything is sent. Off: your own words go as they are, and no model is asked.`, also: ["have my ai do it", "hand off", "prompt", "rewrite", "improve", "Cursor", "Codex", "Claude Code", "clear prompt"] },

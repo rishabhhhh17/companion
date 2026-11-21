@@ -28,6 +28,9 @@ import { reviewHead, type ReviewHead } from "./reviewHead.ts";
 import { CodePoint } from "./codePoint.tsx";
 import { keepWords, readinessOf, shapeFindings, type Shaped } from "./findingShape.ts";
 import { FindingList, LeadParts, ReadinessLine, SureLine } from "./findingList.tsx";
+import { toolName, type ToolId } from "./aiTools.ts";
+import { PUT_STAGES, type PutStage } from "./handoff.ts";
+import { lastTool, putInAfter, putInTool } from "./reviewPutIn.ts";
 
 export const REVIEW_ID = "home-review";
 const FIX_ID = "home-review-fix";
@@ -77,28 +80,70 @@ function ReviewWalk({ r, onPoint }: { r: ReviewCard; onPoint?: (s: TourStep) => 
   return <div className="row rv-walk"><WalkThrough tour={tourFromReview(r)} project={r.project} base={jobFile(r, "")} onCircle={onPoint && ((s) => onPoint({ ...s, file: jobFile(r, s.file) }))} id={`${REVIEW_ID}-walk`} /></div>;
 }
 
+/** M107: the tool Put it in names on this card (reviewPutIn.ts), or none when review.putIn is off. */
+function usePutTool(r: ReviewCard): ToolId | null {
+  const on = useSetting("review.putIn") !== false;
+  return on ? putInTool(r, lastTool(r.project)) : null;
+}
+
 /** Send back to my AI: copies the engine's ready message (secrets hidden again) on a press, and says it is copied. The Mac
- *  side writes the clipboard (copy_text); the page's own clipboard is the fallback, only for text the Mac side would take. */
-export function SendBack({ text, onCopied, label = S.review.sendBack }: { text: string; onCopied?: () => void; label?: string }) {
+ *  side writes the clipboard (copy_text); the page's own clipboard is the fallback, only for text the Mac side would take.
+ *  M107: `put` names the AI tool Put it in <tool> types the same text into, beside Copy (the shell's own Put it in of the
+ *  hand off: the light first, only a chat box the tool labels, never Return). Its answer is said in the same status line.
+ *  M107 review: once it is typed, the press says so and does nothing more, so the fix request is never typed twice; a copy
+ *  instead leaves it live, to try again. The hook hands back the presses and the status line apart, so the review card can
+ *  say the answer under all its presses (after Walk me through it), never between two rows of them. */
+type SendBackProps = { text: string; onCopied?: () => void; label?: string; put?: ToolId | null };
+function useSendBack({ text, onCopied, label = S.review.sendBack, put = null }: SendBackProps): { presses: ReactNode; status: ReactNode } {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  const [said, setSaid] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [putDone, setPutDone] = useState(false);
   // M76 (roadmap 16): once copied, Show me where to paste is offered (paste.showWhere). It stays after the copied words go,
   // until the text changes; a press only asks the shell to look, and the person pastes.
   const [copied, setCopied] = useState(false);
   const pasteOn = useSetting("paste.showWhere") !== false;
-  useEffect(() => setCopied(false), [text]);
-  if (!text) return null;
+  useEffect(() => { setCopied(false); setSaid(""); setPutDone(false); }, [text]);
+  if (!text) return { presses: null, status: null };
+  const putIn = () => {
+    if (!put || busy || putDone) return;
+    const ok = copyable(text);
+    if (ok === null) { setState("failed"); return; }
+    const name = toolName(put);
+    setState("idle"); setBusy(true); setSaid(S.m82.putting(name));
+    // The shell refused the press (not Home, an unknown tool): the page copies the text itself, as Copy would.
+    const copyHere = () => invoke("copy_text", { text: ok }).catch(() => navigator.clipboard?.writeText(ok) ?? Promise.reject(new Error("no clipboard")));
+    void invoke("handoff_put_in", { tool: put, text: ok, looking: S.m82.putting(name) })
+      .then((v) => ((PUT_STAGES as readonly unknown[]).includes(v) ? (v as PutStage) : "failed"), () => copyHere().then(() => "failed" as const, () => null))
+      .then((stage) => {
+        if (stage === null) { setSaid(""); setState("failed"); return; }
+        const a = putInAfter(stage, name);
+        setSaid(a.said);
+        if (stage === "typed") setPutDone(true);
+        if (a.copied) setCopied(true);
+        if (a.sentBack) onCopied?.();
+      })
+      .finally(() => setBusy(false));
+  };
   const copy = () => {
-    setState("idle");
+    setState("idle"); setSaid("");
     const ok = copyable(text);
     if (ok === null) { setState("failed"); return; }
     void invoke("copy_text", { text: ok }).catch(() => navigator.clipboard?.writeText(ok) ?? Promise.reject(new Error("no clipboard")))
       .then(() => { setState("copied"); setCopied(true); onCopied?.(); setTimeout(() => setState("idle"), 4000); }).catch(() => setState("failed"));
   };
-  return <>
+  const presses = <>
+    {put && <button className="btn put-in" type="button" title={putDone ? S.review.put.typed(toolName(put)) : S.review.putInHelp(toolName(put))} aria-disabled={busy || putDone || undefined} onClick={putIn}><Icon name={putDone ? "tick" : "bringOut"} size={14} />{putDone ? S.review.putInDone(toolName(put)) : S.m82.putIn(toolName(put))}</button>}
     <button className="btn" type="button" title={S.review.sendBackHelp} onClick={copy}><Icon name="copy" size={14} />{label}</button>
     {copied && pasteOn && <button className="btn paste-where" type="button" title={S.pasteHere.help} onClick={() => { void showWherePaste(); }}><Icon name="pointer" size={14} />{S.pasteHere.button}</button>}
-    <span className={state === "idle" ? "sr" : "line review-copied"} role="status">{state === "copied" ? S.review.copied : state === "failed" ? S.copyFailed : ""}</span>
   </>;
+  const status = <span className={state === "idle" && !said ? "sr" : "line review-copied"} role="status">{state === "copied" ? S.review.copied : state === "failed" ? S.copyFailed : said}</span>;
+  return { presses, status };
+}
+
+export function SendBack(p: SendBackProps) {
+  const { presses, status } = useSendBack(p);
+  return <>{presses}{status}</>;
 }
 
 /** M58 shortlist 3: what a finding's row adds under its four parts: Don't flag this kind here again where review.ts
@@ -128,6 +173,8 @@ export function ReviewCardView(p: Props) {
  *  See. */
 function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, onCancelFix, onSilence, onSentBack, onPoint, mark, titleId, head, undoPart, undoTook = false, undoDone = false }: Props & { head: ReviewHead }) {
   const res = r.result;
+  const put = usePutTool(r);
+  const back = useSendBack({ text: sendBackCopy(r), onCopied: onSentBack, put });
   const [open, setOpen] = useState<"why" | "files" | null>(null);
   const toggle = (k: "why" | "files") => setOpen((o) => (o === k ? null : k));
   const checks = res && res.checks ? checksLook(res.checks, res.rating, res.reasons.some((x) => x.kind === "secret_in_code")) : null;
@@ -187,12 +234,14 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
         {r.stage === "reviewed" && r.fix !== "sent" && !undoTook && (
           <div className="row result-actions rv-actions">
             {canFix(r) && r.fix !== "confirm" && <button id={FIX_ID} className="btn primary" type="button" onClick={onAskFix}>{S.review.fix}</button>}
-            <SendBack text={sendBackCopy(r)} onCopied={onSentBack} />
+            {back.presses}
             <button className="btn" type="button" onClick={onDismiss}>{res?.rating === "stop" ? keepWords(r) : S.review.looksFine}</button>
             <button className="btn quiet rv-whylink" type="button" aria-expanded={open === "why"} aria-controls={whyId} onClick={() => toggle("why")}>{S.homeNow.whyMatters}</button>
           </div>
         )}
         {r.fix !== "sent" && !undoTook && <ReviewWalk r={r} onPoint={onPoint} />}
+        {/* M107 review: what Copy or Put it in answered, under every press of the card, never between two rows of them. */}
+        {r.stage === "reviewed" && r.fix !== "sent" && !undoTook && back.status}
         {r.fix === "confirm" && (
           <ConfirmStep className="line" label={S.review.fixSure} back={FIX_ID} onCancel={onCancelFix}>
             <div>{S.review.fixSure}</div>
@@ -284,6 +333,8 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
 
 function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix, onSilence, onSentBack, onPoint, heroSays = false, heroHeadline, undoPart, undoTook = false, undoDone = false }: Props) {
   const res = r.result;
+  const put = usePutTool(r);
+  const back = useSendBack({ text: sendBackCopy(r), onCopied: onSentBack, put });
   const look = res ? ratingLook(res.rating) : null;
   const checks = res && res.checks ? checksLook(res.checks, res.rating, res.reasons.some((x) => x.kind === "secret_in_code")) : null;
   return (
@@ -374,12 +425,14 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
           {/* While its question is open, Fix it steps aside (the audit, item 7): the question has the keyboard, and Escape
               closes only it. It comes back, with the keyboard, when the question is answered or put away. */}
           {canFix(r) && r.fix !== "confirm" && <button id={FIX_ID} className="btn primary" type="button" onClick={onAskFix}><Icon name="wrench" size={14} />{S.review.fix}</button>}
-          <SendBack text={sendBackCopy(r)} onCopied={onSentBack} />
+          {back.presses}
           {/* On a stop it keeps the change as it is, so it says so, as a quiet text button (M65 step 4). */}
           <button className={res?.rating === "stop" ? "btn quiet" : "btn"} type="button" onClick={onDismiss}>{res?.rating === "stop" ? keepWords(r) : S.review.looksFine}</button>
         </div>
       )}
       {r.fix !== "sent" && !undoTook && <ReviewWalk r={r} onPoint={onPoint} />}
+      {/* M107 review: what Copy or Put it in answered, under every press of the card, never between two rows of them. */}
+      {r.stage === "reviewed" && r.fix !== "sent" && !undoTook && back.status}
       {r.fix === "confirm" && (
         <ConfirmStep className="line" label={S.review.fixSure} back={FIX_ID} onCancel={onCancelFix}>
           <div>{S.review.fixSure}</div>
