@@ -58,9 +58,53 @@ describe("Go to, from the live feed", () => {
     expect(app.sent()).toMatchObject([{ type: "tool.jump", project: PROJECT, tool: "claude" }]);
     expect(app.invoked("island_go")).toEqual([]);
   });
-  test("no Go to before a session is seen, or once it finished", async () => {
+  test("no Go to before a session is seen", async () => {
     await renderPage(<IslandPanel m={run([feed], atRest())} line="" shown />);
     expect(document.querySelector("button.lf-go")).toBeNull();
+  });
+  // M105 (changed on purpose, "Compared with the best"): a tool that finished its turn waits for the person's next words in
+  // its own window, so its finished block offers Go to as well (it was working blocks only).
+  test("a finished block of a session seen offers Go to too, and sends only tool.jump", async () => {
+    const done = { type: "feed.update", sessions: [{ ...feed.sessions[0]!, state: "done" }] };
+    await renderPage(<IslandPanel m={run([where("iTerm"), done], atRest())} line="" shown />);
+    expect(document.querySelector(".lf-block")!.getAttribute("data-state")).toBe("done");
+    const go = document.querySelector("button.lf-go")!;
+    expect(go.textContent).toBe(S.m115.goTo("iTerm"));
+    expect(go.getAttribute("aria-label")).toBe(S.m115.goToSay("Claude Code", "iTerm"));
+    app.calls.length = 0;
+    await click(go);
+    expect(app.sent()).toMatchObject([{ type: "tool.jump", project: PROJECT, tool: "claude" }]);
+    expect(app.invoked("island_go")).toEqual([]);
+  });
+  test("a finished block before a session is seen has no Go to, unless the tool is an app of its own", async () => {
+    await renderPage(<IslandPanel m={run([{ type: "feed.update", sessions: [{ ...feed.sessions[0]!, state: "done" }] }], atRest())} line="" shown />);
+    expect(document.querySelector("button.lf-go")).toBeNull();
+  });
+  // M105 review: the own app branch on a finished block, which the shot showed with no test behind it.
+  for (const [tool, name] of [["copilot", "VS Code (Copilot)"], ["cursor", "Cursor"]] as const) {
+    test(`a finished ${tool} block with no session seen offers Go to ${name}, and sends only tool.jump`, async () => {
+      expect(S.doneSignal.tool[tool]).toBe(name);
+      const done = { type: "feed.update", sessions: [{ ...feed.sessions[0]!, tool, state: "done" }] };
+      await renderPage(<IslandPanel m={run([done], atRest())} line="" shown />);
+      expect(document.querySelector(".lf-block")!.getAttribute("data-state")).toBe("done");
+      const go = document.querySelector("button.lf-go")!;
+      expect(go.textContent).toBe(S.m115.goTo(name));
+      expect(go.getAttribute("aria-label")).toBe(S.m115.goToOpenSay(name));
+      app.calls.length = 0;
+      await click(go);
+      expect(app.sent()).toMatchObject([{ type: "tool.jump", project: PROJECT, tool }]);
+      expect(app.sent()).toHaveLength(1);
+      expect(Object.keys(app.sent()[0]!).sort()).toEqual(["id", "project", "tool", "type", "v"]);
+      expect(app.invoked("island_go")).toEqual([]);
+    });
+  }
+  // M105 review: a stale where (the person quit the tool) must not keep offering Go to on its finished block.
+  test("after a Go to that did not go, the finished block stops offering it, and says why", async () => {
+    const done = { type: "feed.update", sessions: [{ ...feed.sessions[0]!, state: "done" }] };
+    const failed = { type: "tool.jumped", project: PROJECT, tool: "claude", ok: false, why: "unknown" };
+    await renderPage(<IslandPanel m={run([where("iTerm"), done, failed], atRest())} line="" shown />);
+    expect(document.querySelector("button.lf-go")).toBeNull();
+    expect(document.querySelector(".lf-said")!.textContent).toBe(S.m115.jumpUnknown("Claude Code"));
   });
 });
 

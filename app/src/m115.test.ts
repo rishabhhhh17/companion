@@ -145,6 +145,29 @@ describe("M115 review", () => {
     // A later Go to that went clears it.
     expect(jumpSaidNow(reduce(m, { type: "tool.jumped", project: P, tool: "claude", ok: true } as never), at)).toBeNull();
   });
+  // M105 review: once Go to shows on a finished block, a stale where must not keep offering it. A Go to that did not go
+  // forgets where that session ran, so the button goes (or, for a tool that is an app of its own, opens the tool) until
+  // the engine says where again; other projects and tools keep theirs, and a Go to that went keeps it.
+  test("a Go to that did not go forgets where that session ran, until the engine says it again", () => {
+    const seen = run([
+      { type: "tool.where", project: P, tool: "codex", app: "iTerm", tab: true },
+      { type: "tool.where", project: P, tool: "claude", app: "Terminal", tab: true },
+      { type: "tool.where", project: "/Users/me/other", tool: "codex", app: "Warp", tab: false },
+      { type: "tool.where", project: P, tool: "cursor", app: "Cursor", tab: false },
+    ]);
+    expect(reduce(seen, { type: "tool.jumped", project: P, tool: "codex", ok: true, app: "iTerm" } as never).toolWhere).toEqual(seen.toolWhere);
+    for (const why of ["unknown", "failed"] as const) {
+      const gone = reduce(seen, { type: "tool.jumped", project: P, tool: "codex", ok: false, why } as never);
+      expect(whereFor(gone, P, "codex")).toBeNull();
+      expect(goToFor(gone, P, "codex")).toBeNull();
+      expect(whereFor(gone, P, "claude")).toEqual({ app: "Terminal", tab: true });
+      expect(whereFor(gone, "/Users/me/other", "codex")).toEqual({ app: "Warp", tab: false });
+      expect(jumpSaidNow(gone, gone.jumpSaid!.at)?.text).toBe(why === "failed" ? S.m115.jumpFailed("Codex") : S.m115.jumpUnknown("Codex"));
+      expect(whereFor(reduce(gone, { type: "tool.where", project: P, tool: "codex", app: "iTerm", tab: true } as never), P, "codex")).toEqual({ app: "iTerm", tab: true });
+    }
+    const cur = reduce(seen, { type: "tool.jumped", project: P, tool: "cursor", ok: false, why: "failed" } as never);
+    expect(goToFor(cur, P, "cursor")).toEqual({ text: S.m115.goTo("Cursor"), say: S.m115.goToOpenSay("Cursor") });
+  });
   test("a watch tool says it shows nothing while reviews are Off or Fix is off", () => {
     expect(watchNote("zed", "ask", true)).toBeNull();
     expect(watchNote("zed", "automatic", undefined)).toBeNull();

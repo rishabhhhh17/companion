@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Go back to an AI tool that finished: 21 Nov 2026
+
+- **Go to, once it finished too.** When Codex, Claude Code or another connected AI tool finishes, its block in the notch's live feed now has Go to iTerm (or wherever it runs), as it did while it worked. One press takes you back to the window where it waits for your next words. The notch line still says which tool finished and whether it works, and its button opens the review with Undo.
+
 ## Every AI tool, and Go to it: 20 Nov 2026
 
 - **More AI tools.** Squibby now reaches Copilot CLI, OpenCode, Amp, Cline and Kiro, so a review starts the moment any of them finishes (Copilot CLI also gets the safety copy before a destructive command). Zed, Junie, the JetBrains AI Assistant and Xcode have no hooks, so Squibby shows their changes live from the folder and writes nothing in your project. Claude Desktop runs Claude Code, so connecting Claude Code covers it.

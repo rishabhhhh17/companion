@@ -1037,7 +1037,12 @@ function reduceRest(m: Model, e: Ev): Model {
     }
     case "tool.jumped": {
       if (typeof e.project !== "string" || !(DONE_SIGNAL_TOOLS as readonly unknown[]).includes(e.tool)) return m;
-      return e.ok === true ? { ...m, jumpSaid: null } : e.why === "unknown" || e.why === "failed" ? { ...m, jumpSaid: { project: e.project, tool: e.tool as DoneSignalTool, why: e.why, at: Date.now() } } : m;
+      if (e.ok === true) return { ...m, jumpSaid: null };
+      if (e.why !== "unknown" && e.why !== "failed") return m;
+      // M105 review: a Go to that did not go forgets where that session ran (the person may have quit the tool), so a
+      // finished block stops offering it until the engine says where again (goTo.ts goToFor).
+      const { [whereKey(e.project, e.tool as string)]: _stale, ...kept } = m.toolWhere ?? {};
+      return { ...m, toolWhere: m.toolWhere ? kept : m.toolWhere, jumpSaid: { project: e.project, tool: e.tool as DoneSignalTool, why: e.why, at: Date.now() } };
     }
     case "toolask.request": {
       const a = toolAskFrom(e);

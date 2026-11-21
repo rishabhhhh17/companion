@@ -1,6 +1,6 @@
 // M115 (docs/milestones/M115-every-tool-and-jump.md): Go to the session that needs you. The engine says where each session of
 // the person's own AI tools runs (tool.where: the app's own name, and whether its exact tab can be found), and the notch
-// offers Go to on that tool's card and on its working block in the live feed. A press sends tool.jump, which names no app and
+// offers Go to on that tool's card and on its block in the live feed (working, or finished: M105). A press sends tool.jump, which names no app and
 // no folder (the engine knows them). Pure, tested in m115.test.ts; notchAsk.tsx and notchFeed.tsx draw it.
 import { DONE_SIGNAL_TOOLS, OWN_APP_TOOLS, type DoneSignalTool, type ToolJumped } from "../../protocol/index.ts";
 import { S } from "./strings.ts";

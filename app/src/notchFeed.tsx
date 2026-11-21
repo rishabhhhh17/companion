@@ -62,15 +62,18 @@ export function NotchFeed({ m, project, where, tabIndex = 0, onOpen }: Props) {
     <div className="lf" data-where={where} role="group" aria-label={S.m113.label}>
       {blocks.map((b) => {
         // M115: Go to the app this session runs in, while it works, once the engine has seen where; for a tool that is an app
-        // of its own, at once (goTo.ts goToFor).
+        // of its own, at once (goTo.ts goToFor). M105: a finished block too, since the tool waits there for the next words.
         const s = m.feed?.find((x) => x.key === b.key);
-        const go = s?.tool && b.state === "working" ? goToFor(m, s.project, s.tool) : null;
+        const go = s?.tool ? goToFor(m, s.project, s.tool) : null;
         const jumpLine = jumped && s && jumped.project === s.project && jumped.tool === s.tool ? jumped.text : null;
         return (
         <section key={b.key} className="lf-block" data-state={b.state} aria-label={`${b.head}. ${b.stateWords}`}>
-          <div className="lf-head"><span className="lf-who" aria-hidden="true">{b.head}</span><span className="lf-state" aria-hidden="true">{b.stateWords}</span>
+          <div className="lf-head"><span className="lf-who" aria-hidden="true">{b.head}</span>
+            {/* M105 review: the state and Go to wrap as one group in the small chat, so the separator never dangles at a line's
+                end (in the notch the group lays out as if it were not there). */}
+            <span className="lf-end"><span className="lf-state" aria-hidden="true">{b.stateWords}</span>
             {/* M115 review: a separator VoiceOver does not hear, so the state and the button never read as one phrase. */}
-            {go && s?.tool && <><span className="lf-sep" aria-hidden="true">{S.m115.goSep}</span><button type="button" className="lf-go" tabIndex={tabIndex} aria-label={go.say} title={go.say} onClick={() => { void invoke("send_command", { cmd: jumpTo(s.project, s.tool!) }).catch(() => {}); }}>{go.text}</button></>}
+            {go && s?.tool && <><span className="lf-sep" aria-hidden="true">{S.m115.goSep}</span><button type="button" className="lf-go" tabIndex={tabIndex} aria-label={go.say} title={go.say} onClick={() => { void invoke("send_command", { cmd: jumpTo(s.project, s.tool!) }).catch(() => {}); }}>{go.text}</button></>}</span>
           </div>
           <ul className="lf-rows">
             {b.rows.map((r) => (

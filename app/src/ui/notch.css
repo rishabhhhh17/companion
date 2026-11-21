@@ -135,12 +135,14 @@
 .island-panel[data-feed] > .lf { display: grid; gap: var(--space-1); min-width: 0; margin: var(--space-2) -6px 0; }
 .island-panel .lf-block { display: grid; min-width: 0; }
 .island-panel .lf-head { margin: 0; display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; padding: 0 6px; color: var(--notch-fg-2); font: 500 11px / 16px var(--font); }
-.island-panel .lf-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.island-panel .lf-end { display: contents; }
+.island-panel .lf-who { flex: 1 1 40%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .island-panel .lf-state { flex: none; margin-left: auto; color: var(--chat-when); }
 .island-panel .lf-block[data-state="done"] .lf-state { color: var(--notch-ok); }
-/* M115: Go to the app a working session runs in: the notch's own quiet text button (as Answer in the tool on a card). */
+/* M115: Go to the app a session runs in: the notch's own quiet text button (as Answer in the tool on a card). M105 review:
+   the name keeps its room and the button gives way first (its whole words are in title and aria-label). */
 .island-panel .lf-sep { flex: none; color: var(--chat-when); }
-.island-panel .lf-go { flex: none; align-self: center; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: -2px -4px -2px -4px; padding: 2px 4px; border: 0; border-radius: 6px; background: transparent; color: var(--notch-fg-2); font: inherit; font-weight: var(--w-regular); cursor: pointer; transition: color var(--dur-hover) var(--ease-out), background-color var(--dur-hover) var(--ease-out); }
+.island-panel .lf-go { flex: 0 1 auto; min-width: 0; align-self: center; max-width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: -2px -4px -2px -4px; padding: 2px 4px; border: 0; border-radius: 6px; background: transparent; color: var(--notch-fg-2); font: inherit; font-weight: var(--w-regular); cursor: pointer; transition: color var(--dur-hover) var(--ease-out), background-color var(--dur-hover) var(--ease-out); }
 .island-panel .lf-go:hover { color: var(--notch-ink); background: var(--chat-icon-bg); }
 .island-panel .lf-go:focus-visible { outline: 2px solid var(--notch-ink); outline-offset: -2px; }
 .island-panel .lf-rows { list-style: none; margin: 0; padding: 0; display: grid; }

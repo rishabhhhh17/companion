@@ -533,10 +533,13 @@
 .notch-chat .lf-block { display: grid; min-width: 0; }
 .notch-chat .lf-head { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--space-2); padding: 0 6px; color: var(--notch-fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
 .notch-chat .lf-who { min-width: 0; overflow-wrap: anywhere; }
-.notch-chat .lf-state { margin-left: auto; color: var(--chat-when); }
+/* M105 review: the state, its separator and Go to wrap together, to the end of the line, so a long name never leaves the
+   separator alone at a line's end; a long app name then wraps inside the button. */
+.notch-chat .lf-end { display: flex; align-items: baseline; column-gap: var(--space-2); min-width: 0; max-width: 100%; margin-left: auto; }
+.notch-chat .lf-state { flex: none; color: var(--chat-when); }
 .notch-chat .lf-block[data-state="done"] .lf-state { color: var(--notch-ok); }
 /* M115: Go to, the chat's quiet text button. */
-.notch-chat .lf-sep { color: var(--chat-when); }
+.notch-chat .lf-sep { flex: none; color: var(--chat-when); }
 .notch-chat .lf-go { min-width: 0; overflow-wrap: anywhere; text-align: end; margin: 0 0 0 -4px; padding: 0 4px; border: 0; border-radius: 6px; background: transparent; color: var(--notch-fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); cursor: pointer; transition: color var(--dur-hover) var(--ease-out), background-color var(--dur-hover) var(--ease-out); }
 .notch-chat .lf-go:hover { color: var(--notch-ink); background: var(--chat-icon-bg); }
 .notch-chat .lf-go:focus-visible { outline: 2px solid var(--notch-ink); outline-offset: -2px; }
