@@ -599,6 +599,8 @@ export const S = {
     // M78
     "memory.triedAndFailed": "A fix that ended without proof leaves one line saying what was tried and what still failed.",
     "review.weakenedChecks": "A test skipped, a check told to pass anyway or a lint rule turned off is the first thing a review says.",
+    // M106
+    "review.jobs": "Changes in Claude's background jobs are reviewed too, each job on its own.",
     // M79
     "packages.check": "A new package's name and version are looked up on OSV.dev for known serious problems. Never your code.",
     "notch.waitingMinutes": "How long the notch says Claude is waiting for you when nothing else happens.",
@@ -1037,6 +1039,8 @@ export const S = {
     hiThere: "Hi there",
     questions: (n: number) => (n === 1 ? "1 question is waiting for you" : `${n} questions are waiting for you`),
     changes: (project: string, n: number) => `${project} has ${n} ${n === 1 ? "change" : "changes"} to review`,
+    /** M106 review findings: the changes are in one of Claude's background jobs, not the project's own folder. */
+    jobChanges: (project: string, n: number) => `${project} has ${n} ${n === 1 ? "change" : "changes"} to review in a background job`,
     allFine: "Everything checked is fine",
     changesShort: (n: number) => `${n} ${n === 1 ? "change" : "changes"}`,
     proven: "Proven",
@@ -1828,6 +1832,25 @@ export const S = {
     sideLabel: (state: string) => `Review changes. ${state}`,
     // Honest words (M57): Squibby cannot tell another tool's edits from the person's own, so nothing here says "your AI did".
     lead: (n: number) => (n === 1 ? "1 file changed in this project." : `${n} files changed in this project.`),
+    // M106: a Claude Code background job's own folder. Where the change is, never who wrote it (M57's honest words).
+    jobLead: (job: string, n: number) => `${n === 1 ? "1 file" : `${n} files`} changed in Claude's background job \u201c${job}\u201d.`,
+    /** M106: under a background job's presses, where Fix it is not offered. Review findings: it names the job. */
+    jobReassure: (job: string) => `Copy for my AI gives this review to \u201c${job}\u201d. Nothing is merged, and your project's history is not touched.`,
+    /** Review findings: on a job's card once the headline is the rating, where the changes are, in one muted line. */
+    jobWhere: (job: string) => `In Claude's background job \u201c${job}\u201d.`,
+    /** Review findings: the instant key warning on a job's card, under its headline. */
+    jobRiskyLine: (job: string, n: number, risky: number) => `In Claude's background job \u201c${job}\u201d. ${n === 1 ? "1 file" : `${n} files`} changed. ${risky === 1 ? (n === 1 ? "It looks risky." : "One looks risky.") : `${risky} look risky.`}`,
+    /** Review findings: other background jobs' changes wait behind this card (Coucou lists every session at once). */
+    jobsWaiting: (n: number) => (n === 1 ? "1 more background job waits for a review." : `${n} more background jobs wait for a review.`),
+    /** M106: two or more open background jobs changed the same file. jobs: this job first, then the others. Review findings:
+     *  the file's own name (the card puts the whole path in its title), and past two jobs, how many others. */
+    jobOverlap: (file: string, jobs: string[]) => {
+      const q = jobs.map((j) => `\u201c${j}\u201d`);
+      const names = q.length <= 2 ? q.join(" and ") : `${q[0]} and ${q.length - 1} other jobs`;
+      const count = ["Two", "Three", "Four", "Five", "Six", "Seven", "Eight"][jobs.length - 2] ?? String(jobs.length);
+      const name = file.split("/").filter(Boolean).at(-1) ?? file;
+      return `${count} background jobs changed ${name} (${names}). Merge one, then check again.`;
+    },
     // Under that, on Now's top while nobody has looked yet (homeHero.ts reviewLead).
     heroLine: (n: number) => `Changed since your last check: ${n === 1 ? "1 file" : `${n} files`}.`,
     // Must fix 8: a batch found when the project is opened, measured against the last snapshot from before.
@@ -2829,6 +2852,7 @@ export const S = {
     "review.autoQuietSeconds": { label: "Wait before an automatic review", help: `With reviews on Automatic, how long your project's files must stay unchanged before ${PRODUCT} reviews them by itself. Longer means a tool that pauses while it works is not reviewed half way through.`, also: ["review", "automatic", "wait", "quiet", "seconds"] },
     // M57 feature 5: the one check that runs without a press. Its help says so plainly (it changes M52's "nothing runs until asked").
     // M77 (the safety net)
+    "review.jobs": { label: "Review Claude's background jobs", help: `Claude Code can run jobs in the background, each in its own folder inside this project. ${PRODUCT} reviews each job's changes on its own card. It runs the checks in that job's folder when you ask, and says when two jobs changed the same file. Nothing is merged, and your project's history is not touched. Off: those folders are left alone.`, also: ["background", "job", "jobs", "worktree", "worktrees", "agent view", "parallel", "Claude Code", "merge", "branch"] },
     "review.weakenedChecks": { label: "Flag tests or checks a change weakens", help: `A skipped test, a run narrowed to one test, or checks removed from a test. A lower coverage threshold, a step told to pass anyway, or a lint rule turned off. The review says it first, as Fix this first, with the file and line. Plain rules on this Mac, no model.`, also: ["test", "skip", "it.skip", "only", "coverage", "lint", "eslint", "ci", "weakened", "quiet", "pass anyway", "ts-ignore"] },
     // M79 (T18): the package check on OSV.dev.
     "packages.check": { label: "Check new packages for known problems", help: `When a change adds a package or a new version, the review sends only its name and version to OSV.dev. OSV.dev is a free public list of known problems, run by Google. Never your code and never your files. A known serious problem is a Must fix or a Should fix. Answers are kept on this Mac for a day. If OSV.dev does not answer, the review says the packages were not checked. Off, nothing is looked up.`, also: ["packages", "dependencies", "npm", "pip", "cargo", "go", "vulnerability", "security", "osv", "cve", "lock file", "package.json", "requirements.txt"] },

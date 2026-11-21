@@ -122,6 +122,25 @@ export class CheckpointStore {
     if (!s) { s = new CheckpointStore(shadowDir, projectDir); stores.set(key, s); }
     return s;
   }
+  /** M106: removes the store of a folder that is gone: the shared one through its queue, or else its folder on disk. A
+   *  store cannot be opened for a folder that is gone, so this never makes one. */
+  static removeAt(shadowDir: string, projectDir: string): Promise<void> {
+    const s = stores.get(`${resolve(shadowDir)}|${resolve(projectDir)}`);
+    if (s) return s.remove();
+    const d = resolve(shadowDir);
+    if (d.endsWith(".git") && d !== resolve(projectDir, ".git")) rmSync(d, { recursive: true, force: true });
+    return Promise.resolve();
+  }
+  /** M106: removes this store from disk, after the work already in its queue, and forgets the shared one. Only for a
+   *  folder that is gone (a background job's): every copy of it goes. Only ever a shadow store's own folder (<id>.git). */
+  remove(): Promise<void> {
+    return this.serial(async () => {
+      if (this.maintainTimer) { clearTimeout(this.maintainTimer); this.maintainTimer = null; }
+      for (const [k, v] of stores) if (v === this) stores.delete(k);
+      if (!this.shadowDir.endsWith(".git") || this.shadowDir === resolve(this.projectDir, ".git")) return;
+      rmSync(this.shadowDir, { recursive: true, force: true });
+    }, { upkeep: true });
+  }
   readonly shadowDir: string;
   readonly projectDir: string;
   private queue: Promise<unknown> = Promise.resolve();

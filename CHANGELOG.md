@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Claude's background jobs get reviewed too: 21 Nov 2026
+
+- **Background jobs are no longer a blind spot.** Claude Code can run jobs in the background, each in its own folder inside your project. Squibby used to skip those folders. Now each job's changes get their own review card: "3 files changed in Claude's background job "fix-login"." with the usual rating, before you merge anything.
+- **Checked where the job works.** Review them runs your project's checks inside that job's folder. If the job's packages are not installed there, the card says so plainly instead of calling it a failure.
+- **Two jobs, one file.** When two background jobs changed the same file, the card says so in one line: "Two background jobs changed login.tsx ("fix-login" and "new-header"). Merge one, then check again."
+- **Always says which job.** After the review the card still names the job under its headline, the greeting says the changes are in a background job, and the card says how many more jobs wait for a review. Walk me through it opens the job's own copy of the file.
+- **Never in the way.** A job's card waits until your project's own card is closed, and only one job shows at a time. Fix it and Put these files back stay on your project's own cards; on a job's card, Copy for my AI hands the review to that job. Squibby never merges anything or touches your project's history.
+- **Your choice.** Settings, Fixing, more: Review Claude's background jobs (on).
+
 ## Go back to an AI tool that finished: 21 Nov 2026
 
 - **Go to, once it finished too.** When Codex, Claude Code or another connected AI tool finishes, its block in the notch's live feed now has Go to iTerm (or wherever it runs), as it did while it worked. One press takes you back to the window where it waits for your next words. The notch line still says which tool finished and whether it works, and its button opens the review with Undo.

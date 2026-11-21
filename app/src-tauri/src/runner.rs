@@ -1114,6 +1114,33 @@ mod tests {
         assert_eq!(named, ["codex", "codex", "cursor", "codex"]);
     }
     #[test]
+    fn m106_a_background_jobs_review_names_its_job_and_the_overlap_is_names_only() {
+        // M106: the shared fixtures (read by the runner's suite and the pages too). The shell passes these through as they are;
+        // here it checks the shape it may forward: `job` is a folder name (no path), the batch keeps its name, and the overlap
+        // note carries only file names in the project and other jobs' names, never a word of the change.
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let lines: Vec<Value> = events.lines().filter(|l| l.contains("\"id\":\"m106e")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(lines.len(), 3);
+        let name_ok = |s: &str| !s.is_empty() && s.len() <= 64 && s.chars().next().is_some_and(|c| c.is_ascii_alphanumeric()) && s.chars().all(|c| c.is_ascii_alphanumeric() || ".-_".contains(c));
+        for e in &lines {
+            assert!(e["job"].as_str().is_some_and(name_ok), "{e}");
+            assert!(e["batch"].as_str().is_some_and(|b| b.starts_with("rv_") && b.len() == 13));
+        }
+        let overlap = lines[1]["overlap"].as_array().unwrap();
+        assert_eq!(overlap.len(), 1);
+        for o in overlap {
+            let keys: Vec<&String> = o.as_object().unwrap().keys().collect();
+            assert_eq!(keys, ["file", "jobs"]);
+            let f = o["file"].as_str().unwrap();
+            assert!(!f.starts_with('/') && !f.split('/').any(|p| p == ".."));
+            assert!(o["jobs"].as_array().unwrap().iter().all(|j| j.as_str().is_some_and(name_ok)));
+        }
+        // Review findings: how many other jobs wait behind this card, a small whole number and nothing else.
+        assert_eq!(lines[2]["type"], "review.batch");
+        assert!(lines[2]["waiting"].as_u64().is_some_and(|n| (1..=8).contains(&n)));
+        assert!(lines[0].get("waiting").is_none());
+    }
+    #[test]
     fn m79_the_weekly_summary_passes_only_for_the_chosen_project_and_its_events_and_the_package_findings_read() {
         // M79: the shared fixtures (read by the runner's suite and the pages too).
         let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");

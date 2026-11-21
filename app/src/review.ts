@@ -5,7 +5,7 @@
 // (later), with their own review if one ran, and take its place once it is closed. Nothing here
 // starts work: Review them, Fix it and Looks fine are the person's presses (card.tsx sends them), and Fix it asks first.
 import { replayOf, type ReplayView } from "./replay.ts";
-import { DONE_SIGNAL_TOOLS, type DoneSignalTool, proofOk, REVIEW_AWAY, REVIEW_CHECKS, REVIEW_CLOSED_HOW, REVIEW_LANES, REVIEW_RATINGS, REVIEW_REASONS, REVIEW_SILENCE_LINES, REVIEW_TOUCHES, type Command, type CodeLine, type ReviewChecks, type ReviewFile, type ReviewKeyPlace, type ReviewProof, type ReviewRating, type ReviewReason, type ReviewReasonKind, type ReviewTouch, type ReviewUntold } from "../../protocol/index.ts";
+import { DONE_SIGNAL_TOOLS, type DoneSignalTool, proofOk, REVIEW_AWAY, REVIEW_JOB_NAME, type ReviewOverlap, REVIEW_CHECKS, REVIEW_CLOSED_HOW, REVIEW_LANES, REVIEW_RATINGS, REVIEW_REASONS, REVIEW_SILENCE_LINES, REVIEW_TOUCHES, type Command, type CodeLine, type ReviewChecks, type ReviewFile, type ReviewKeyPlace, type ReviewProof, type ReviewRating, type ReviewReason, type ReviewReasonKind, type ReviewTouch, type ReviewUntold } from "../../protocol/index.ts";
 import { addMemory } from "./commands.ts";
 import { untoldOf } from "./safetyNet.ts";
 import { hasKeyShape, redact } from "../../runner/src/redact.ts";
@@ -41,6 +41,8 @@ export type ReviewDone = {
   untold?: ReviewUntold;
   /** M86: Watch what changed, the review's replay from its own facts (replay.ts checks it again; dropped whole when off). */
   replay?: ReplayView;
+  /** M106: the files of a background job's batch that other open jobs changed too (overlapLines says them). */
+  overlap?: ReviewOverlap[];
 };
 /** The card. stage: ready (changes wait to be reviewed), reviewing, or reviewed (result is there). asked: Review them was
  *  pressed and the engine has not started yet. fix: Fix it's question is open, or its task was asked for. note: one plain
@@ -63,6 +65,10 @@ export type ReviewCard = {
   sentBack?: boolean;
   /** M105: the AI tool whose done signal said these changes (it finished then). Who finished, never who wrote each file. */
   by?: DoneSignalTool;
+  /** M106: the Claude Code background job whose own folder these changes are in (paths are from that folder down). */
+  job?: string;
+  /** Review findings: how many other background jobs' changes wait for a review behind this card. */
+  waiting?: number;
 };
 
 type Ev = Record<string, unknown> & { type?: string };
@@ -72,6 +78,17 @@ const isBatch = (v: unknown): v is string => typeof v === "string" && BATCH.test
 const isProject = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 /** M105: one of the seven tools' ids, or nothing. */
 const toolOf = (v: unknown): DoneSignalTool | undefined => ((DONE_SIGNAL_TOOLS as readonly unknown[]).includes(v) ? (v as DoneSignalTool) : undefined);
+/** M106: a background job's name, or nothing. */
+const jobOf = (v: unknown): string | undefined => (typeof v === "string" && REVIEW_JOB_NAME.test(v) ? v : undefined);
+/** Review findings: how many other jobs wait, a whole number above 0 (at most the 8 jobs followed), or nothing. */
+const waitingOf = (v: unknown): number | undefined => (typeof v === "number" && Number.isInteger(v) && v > 0 ? Math.min(v, 8) : undefined);
+/** M106: the overlap note, only of its known shape: at most 5 files in the project, each with 1 to 7 other jobs. */
+function overlapOf(v: unknown): ReviewOverlap[] | undefined {
+  if (!Array.isArray(v) || !v.length || v.length > 5) return undefined;
+  const ok = v.every((o) => !!o && typeof o === "object" && typeof o.file === "string" && o.file.length > 0 && o.file.length <= 1000 && !o.file.startsWith("/") && !o.file.split("/").includes("..")
+    && Array.isArray(o.jobs) && o.jobs.length >= 1 && o.jobs.length <= 7 && o.jobs.every((j: unknown) => !!jobOf(j)));
+  return ok ? (v as ReviewOverlap[]).map((o) => ({ file: o.file, jobs: [...o.jobs] })) : undefined;
+}
 const whole = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : null);
 const strings = (v: unknown, max: number): string[] | null => (Array.isArray(v) && v.every((x) => typeof x === "string") ? (v as string[]).slice(0, max).map((x) => x.slice(0, MAX_TEXT)) : null);
 function filesOf(v: unknown): ReviewFile[] | null {
@@ -132,8 +149,9 @@ function doneOf(e: Ev): (ReviewDone & { files: ReviewFile[]; count: number; capp
   const ruleFiles = strings(e.ruleFiles, 10), hidden = whole(e.hidden);
   const untold = untoldOf(e.untold);
   const replay = replayOf(e.replay);
+  const overlap = overlapOf(e.overlap);
   return {
-    ...(untold ? { untold } : {}), ...(replay ? { replay } : {}),
+    ...(untold ? { untold } : {}), ...(replay ? { replay } : {}), ...(overlap ? { overlap } : {}),
     rating: e.rating as ReviewRating, touches: [...new Set(e.touches as ReviewTouch[])], summary, notes, reasons, checks: e.checks as ReviewChecks,
     ...(checksNote ? { checksNote } : {}), ...(checksDetail ? { checksDetail: redact(checksDetail) } : {}), sendBack, lane, usdEstimate: typeof e.usdEstimate === "number" && e.usdEstimate >= 0 ? e.usdEstimate : 0, ...(note ? { note } : {}),
     ...(ruleFiles?.length ? { ruleFiles: ruleFiles.map((f) => f.slice(0, 200)) } : {}), ...(hidden ? { hidden } : {}),
@@ -175,10 +193,12 @@ function reduceOne(r: ReviewCard | null, e: Ev): ReviewCard | null {
       const base = same ? r! : fresh(e.project, e.batch);
       const away = (REVIEW_AWAY as readonly unknown[]).includes(e.away) ? (e.away as ReviewCard["away"]) : undefined;
       const keys = keysOf(e.keys);
-      const { away: _was, keys: _k, by: _b, ...rest } = base;
+      const { away: _was, keys: _k, by: _b, job: _j, waiting: _w, ...rest } = base;
       // M105: the tool that finished, as this event says it (a batch that grew keeps its tool on the engine's side).
       const by = toolOf(e.by);
-      return { ...rest, project: e.project, files, count, capped: e.capped === true, secretFiles, auto: e.auto === true, ...(away ? { away } : {}), ...(keys ? { keys } : {}), ...(by ? { by } : {}) };
+      // M106: the background job, as this event says it (the project's own folder says none).
+      const job = jobOf(e.job), waiting = waitingOf(e.waiting);
+      return { ...rest, project: e.project, files, count, capped: e.capped === true, secretFiles, auto: e.auto === true, ...(away ? { away } : {}), ...(keys ? { keys } : {}), ...(by ? { by } : {}), ...(job ? { job } : {}), ...(waiting ? { waiting } : {}) };
     }
     case "review.started": {
       if (!isProject(e.project) || !isBatch(e.batch)) return r;
@@ -199,10 +219,13 @@ function reduceOne(r: ReviewCard | null, e: Ev): ReviewCard | null {
       const d = doneOf(e);
       if (!d) return r;
       const { files, count, capped, secretFiles, ...result } = d;
-      const { fixAfter, ...base } = r ?? fresh(e.project, e.batch);
+      const { fixAfter, waiting: was, ...base } = r ?? fresh(e.project, e.batch);
       // M105: the result names the tool too (a done signal may come after the batch was said).
       const by = toolOf(e.by) ?? base.by;
-      const done: ReviewCard = { ...base, stage: "reviewed", files, count, capped, secretFiles, asked: false, fix: null, note: null, result, ...(by ? { by } : {}) };
+      const job = jobOf(e.job) ?? base.job;
+      // Review findings: the result's own count of the jobs that wait, when it says one (0: none any more), else the batch's.
+      const waiting = e.waiting === undefined ? was : waitingOf(e.waiting);
+      const done: ReviewCard = { ...base, stage: "reviewed", files, count, capped, secretFiles, asked: false, fix: null, note: null, result, ...(by ? { by } : {}), ...(job ? { job } : {}), ...(waiting ? { waiting } : {}) };
       // M69: Fix it was pressed on the key warning before the review: its own question shows now (never a fix unasked).
       return fixAfter && canFix(done) ? { ...done, fix: "confirm" } : done;
     }
@@ -289,8 +312,29 @@ export function closesQuietly(r: ReviewCard | null | undefined, whenNothing: unk
     && !r.fix && !r.asked && !r.sentBack && !r.later && !r.note;
 }
 
-/** Fix it is offered after a review that ran and found something, and only once. */
+/** M106: what changed, said on the card's head: in which background job, or in this project. */
+export function changedLead(r: ReviewCard): string {
+  return r.job ? S.review.jobLead(r.job, r.count) : S.review.lead(r.count);
+}
+/** M106: the overlap note, one plain line per file: this job and the others that changed it, and what to do. file: the
+ *  whole path, for the line's title (the line itself says the file's own name). */
+export function overlapLines(r: ReviewCard | null | undefined): { file: string; text: string }[] {
+  if (!r?.job || !r.result?.overlap) return [];
+  return r.result.overlap.map((o) => ({ file: o.file, text: S.review.jobOverlap(o.file, [r.job!, ...o.jobs.filter((j) => j !== r.job)]) }));
+}
+/** Review findings: a file of this card, as a path in the open project. A background job's paths are from its own folder
+ *  down, so its folder comes first; it stays inside the granted folder (runner.rs PROJECT_BOUND, pointat.rs file_in_project). */
+export function jobFile(r: Pick<ReviewCard, "job"> | null | undefined, file: string): string {
+  return r?.job ? `.claude/worktrees/${r.job}/${file}` : file;
+}
+
+/** Fix it is offered after a review that ran and found something, and only once. M106: never on a background job's card:
+ *  the fix would work in the project's own folder, not the job's (Copy for my AI hands the review to the job). */
 export function canFix(r: ReviewCard | null | undefined): boolean {
+  return findingsOpen(r) && !r!.job;
+}
+/** A review that ran and found something, and no fix was asked for yet: it leads Now (a background job's too, M106). */
+export function findingsOpen(r: ReviewCard | null | undefined): boolean {
   if (!r?.result || r.stage !== "reviewed" || r.fix === "sent") return false;
   return r.result.rating !== "safe" || r.result.reasons.length > 0;
 }

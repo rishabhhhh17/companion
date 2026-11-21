@@ -127,7 +127,8 @@ export function helloFact(m: Model, now: number): string | null {
   const name = nameOf(project);
   if (!name) return null;
   const rv = m.review;
-  if (rv && rv.stage !== "reviewed" && rv.count > 0) return S.hello.changes(name, rv.count);
+  // M106 review findings: changes in a background job say so, so they are never read as the project's own.
+  if (rv && rv.stage !== "reviewed" && rv.count > 0) return rv.job ? S.hello.jobChanges(name, rv.count) : S.hello.changes(name, rv.count);
   const s = homeStatus(m, project, now);
   if (s.kind === "failing") return S.home.failing(name);
   if (s.kind === "works") return S.hello.allFine;

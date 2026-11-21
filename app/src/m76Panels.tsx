@@ -74,7 +74,8 @@ export function ShareReport({ input, id = "share-report" }: { input: Omit<Report
 
 /** Walk me through it: one place at a time, Back and Next, then the summary. Open in my editor uses the existing open in
  *  editor path (main.rs open_in_editor); Circle it is Point at the problem's own ring, offered when the line is known. */
-export function WalkThrough({ tour, project, onCircle, id = "walk" }: { tour: Tour | null; project: string; onCircle?: (s: TourStep) => void; id?: string }) {
+/** base: the folder in the project the steps' files are from (M106: a background job's own folder), "" for the project. */
+export function WalkThrough({ tour, project, onCircle, id = "walk", base = "" }: { tour: Tour | null; project: string; onCircle?: (s: TourStep) => void; id?: string; base?: string }) {
   const [at, setAt] = useState<number | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const live = useRef<HTMLDivElement>(null);
@@ -82,7 +83,7 @@ export function WalkThrough({ tour, project, onCircle, id = "walk" }: { tour: To
   if (!tour || !tour.steps.length || !project) return null;
   if (at === null) return <button id={id} className="btn" type="button" title={S.tour.help} onClick={() => { setAt(0); setNote(null); }}><Icon name="explain" size={14} />{S.tour.button}</button>;
   const step = tour.steps[at];
-  const open = (s: TourStep) => { setNote(S.tour.opening); void invoke("open_in_editor", { project, file: s.file, line: s.line ?? 1 }).then((w) => setNote(typeof w === "string" && w ? w : null), (e) => setNote(String(e ?? ""))); };
+  const open = (s: TourStep) => { setNote(S.tour.opening); void invoke("open_in_editor", { project, file: base + s.file, line: s.line ?? 1 }).then((w) => setNote(typeof w === "string" && w ? w : null), (e) => setNote(String(e ?? ""))); };
   const move = (by: 1 | -1) => { setAt(tourMove(tour, at, by)); setNote(null); };
   return (
     <div className="tour" role="group" aria-labelledby={`${id}-title`} ref={live}>

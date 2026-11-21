@@ -38,7 +38,8 @@ const ours = (u: ReviewUndo | null, e: Ev): u is ReviewUndo => !!u && typeof e.p
 /** Offered on the card only once its batch is closed (the review ran): before that the batch may still grow. Never in the
  *  key practice's copy (its own Fix it is the practice's move). */
 export function undoOffered(r: ReviewCard | null | undefined, practice = false): boolean {
-  return !!r && r.stage === "reviewed" && !!r.result && r.fix !== "sent" && !practice;
+  // M106: never on a background job's card: its folder is Claude Code's to keep or throw away.
+  return !!r && r.stage === "reviewed" && !!r.result && r.fix !== "sent" && !practice && !r.job;
 }
 
 export function reviewUndoReduce(u: ReviewUndo | null, e: Ev): ReviewUndo | null {

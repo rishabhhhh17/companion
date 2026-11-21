@@ -176,6 +176,7 @@
     { "key": "review.maxFiles", "section": "watch", "kind": "choice", "default": "200", "options": ["50", "200", "500"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "spend.pauseAt", "section": "spending", "kind": "choice", "default": "3", "options": ["off", "3", "5"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "review.weakenedChecks", "section": "watch", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+    { "key": "review.jobs", "section": "watch", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "packages.check", "section": "watch", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "notch.peek", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true },
     { "key": "notch.peekSide", "section": "home", "kind": "choice", "default": "left", "options": ["left", "right"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true },

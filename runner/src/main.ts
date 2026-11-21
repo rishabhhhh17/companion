@@ -123,7 +123,7 @@ const liveFeed = new LiveFeed({ emit: (e) => say(e), hookless: (p) => doneSignal
 // M115: where each session of the person's own tools runs, from the process table as its hook runs (jump.ts), and Go to.
 const sessionWhere = new SessionWhere({ emit: (e) => say(e), tab: () => runnerSettings.get("notch.jumpTab") !== false, bundleOf: (t) => toolBundleOf(t) });
 const review = new ReviewService({
-  emit: (e) => say(e), seen: (p, rel) => liveFeed.folder(p, rel), setting: (k, p) => runnerSettings.get(k, p), store: (p) => runner.checkpointsFor(p),
+  emit: (e) => say(e), seen: (p, rel) => liveFeed.folder(p, rel), setting: (k, p) => runnerSettings.get(k, p), store: (p) => runner.checkpointsFor(p), dropStore: (d) => runner.dropCheckpoints(d),
   cheap: lanes && !settings.assistStub ? lanes.fast : null, strong: strongLane,
   spend: { room: (p) => runner.roomFor(p), book: (p, usd) => runner.bookSpend(p, usd) },
   check: (p, sig, o) => runner.checkForReview(p, sig, o), busy: (p) => runner.busyIn(p), sandboxed: nestedSandbox,

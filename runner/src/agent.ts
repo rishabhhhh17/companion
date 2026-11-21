@@ -1257,6 +1257,16 @@ export class AgentRunner {
   /** The shadow store every task of this project uses (T06), for the review of changes (review/service.ts), so its
    *  snapshots and a task's are always taken one at a time. */
   checkpointsFor(project: string): CheckpointStore { return this.store(project); }
+  /** M106: a background job's folder is gone: its shadow store (a full copy of it) and its yeses to scripts go too. Only a
+   *  folder that no longer exists; the open project's own store is never removed here. */
+  async dropCheckpoints(dir: string): Promise<void> {
+    const p = resolve(dir);
+    if (existsSync(p)) return;
+    const id = createHash("sha256").update(p).digest("hex").slice(0, 16);
+    const shadow = join(this.o.shadowRoot, `${id}.git`);
+    await CheckpointStore.removeAt(shadow, p);
+    try { rmSync(join(this.o.shadowRoot, `${id}.approved-runs.json`), { force: true }); } catch { /* a nicety */ }
+  }
   /** M104: the task started by this command is a review's Fix it: it calls check before its receipt (main.ts). */
   checkAfter(commandId: string, check: FixCheck): void { this.fixChecks.set(commandId, check); }
   /** M104: a check whose task never ran (refused, or the engine failed to start it) is let go. */

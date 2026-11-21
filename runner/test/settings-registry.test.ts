@@ -143,6 +143,8 @@ describe("the shipped list of settings", () => {
       // M77 (the safety net): weakened checks flagged first (on), the notch's waiting mark cleared after 15 minutes, and the
       // week's count shown (on, only when above zero).
       "review.weakenedChecks": true, "notch.waitingMinutes": "15", "history.thisWeek": true,
+      // M106: Claude Code's background jobs (its own folders under .claude/worktrees) are reviewed too (on).
+      "review.jobs": true,
       // M90 (F32, the founder, 14 Nov 2026: the notch at rest is no longer bare): Flowflow peeks out of the notch (on), from
       // its left side, and hides 2 minutes after the last thing that happened.
       "notch.peek": true, "notch.peekSide": "left", "notch.peekHideAfter": "2",
@@ -248,6 +250,8 @@ describe("the shipped list of settings", () => {
   });
   test("M77: the weakened check rule, the waiting mark's timeout and the week's count", () => {
     expect(defOf("review.weakenedChecks")).toMatchObject({ section: "watch", kind: "switch", default: true, scope: "app", applies: ["runner"] });
+    // M106: Review Claude's background jobs, on, read by the engine at each change.
+    expect(defOf("review.jobs")).toMatchObject({ section: "watch", kind: "switch", default: true, scope: "app", applies: ["runner"], store: "settings", live: true });
     expect(defOf("notch.waitingMinutes")).toMatchObject({ section: "home", kind: "choice", default: "15", options: ["5", "15", "60"], scope: "app", applies: ["runner"] });
     expect(validate(defOf("notch.waitingMinutes")!, "0").ok).toBe(false);
     expect(defOf("history.thisWeek")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });

@@ -74,7 +74,7 @@ export function reviewHead(r: ReviewCard | null | undefined): ReviewHead | null 
   // check too), so "1 of 2" never sits beside "Check these 3 things".
   const things = Math.max(1, res.reasons.length, readinessOf(r).n);
   return { tone, tag: tagOf(tone, 1, things), headline, why, whyMore: S.homeNow.whyMore[kind] ?? why, pointed, sure: lead ? proofLine({ kind: lead.kind, proof: lead.proof }, { shown: pointed }) ?? "" : "",
-    reassure: r.fix === "sent" ? "" : S.homeNow.reassure, others: withFine(others, r, named, res.checksNote), count: Math.max(1, res.reasons.length) };
+    reassure: r.fix === "sent" ? "" : r.job ? S.review.jobReassure(r.job) : S.homeNow.reassure, others: withFine(others, r, named, res.checksNote), count: Math.max(1, res.reasons.length) };
 }
 
 /** The files no finding names, as one Fine card: how many, and what the checks said. Only after a review ran and its checks

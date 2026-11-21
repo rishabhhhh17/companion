@@ -17,7 +17,7 @@ import { keyFiles } from "./changeRows.ts";
 import { copyable } from "./copytext.ts";
 import { Icon } from "./icons.tsx";
 import { CheckDetail } from "./checkDetail.tsx";
-import { canFix, checksLook, keyWarned, ratingLook, sendBackCopy, silenceOffered, type ReviewCard } from "./review.ts";
+import { canFix, changedLead, checksLook, jobFile, keyWarned, overlapLines, ratingLook, sendBackCopy, silenceOffered, type ReviewCard } from "./review.ts";
 import type { ReviewReasonKind } from "../../protocol/index.ts";
 import { untoldLines } from "./safetyNet.ts";
 import { ReplayView } from "./replayView.tsx";
@@ -73,7 +73,8 @@ function ReviewReplay({ r }: { r: ReviewCard }) {
 function ReviewWalk({ r, onPoint }: { r: ReviewCard; onPoint?: (s: TourStep) => void }) {
   const on = useSetting("tour.offer") !== false;
   if (!on || r.stage !== "reviewed") return null;
-  return <div className="row rv-walk"><WalkThrough tour={tourFromReview(r)} project={r.project} onCircle={onPoint} id={`${REVIEW_ID}-walk`} /></div>;
+  // M106 review findings: a background job's files are opened and pointed at in the job's own folder, never the project's.
+  return <div className="row rv-walk"><WalkThrough tour={tourFromReview(r)} project={r.project} base={jobFile(r, "")} onCircle={onPoint && ((s) => onPoint({ ...s, file: jobFile(r, s.file) }))} id={`${REVIEW_ID}-walk`} /></div>;
 }
 
 /** Send back to my AI: copies the engine's ready message (secrets hidden again) on a press, and says it is copied. The Mac
@@ -141,6 +142,8 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
             <h1 id={`${REVIEW_ID}-title`} className="rv-title"><span id={titleId}>{head.headline}</span></h1>
             {/* M101: once the files are back, the line under the headline says the findings no longer apply. */}
             {undoDone ? <p className="rv-why-line rv-gone">{S.reviewUndo.noLongerApplies}</p> : head.why && <p className="rv-why-line">{head.why}</p>}
+            {/* M106 review findings: the headline names the finding, so where the change is stays said under it. */}
+            {r.job && <p className="line muted rv-job">{S.review.jobWhere(r.job)}</p>}
           </div>
           {mark && <div className="rv-mark" aria-hidden="true">{mark}</div>}
         </div>
@@ -149,9 +152,13 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
             finding's parts and the line pointed at. */}
         {/* M77: what the changes did not tell you, up to three plain lines at the top, from the review's own data. */}
         {!undoDone && untoldLines(res?.untold).map((l) => <div className="line rv-untold" key={l}>{l}</div>)}
+        {/* M106: two open background jobs changed the same file, said at the top with the other untold lines. */}
+        {!undoDone && overlapLines(r).map((l) => <div className="line rv-untold rv-overlap" key={l.file} title={l.file}>{l.text}</div>)}
         <ReviewReplay r={r} />
         {r.note && <div className="line" role="status">{r.note}</div>}
         {r.later && <div className="line muted" role="status">{S.review.later(r.later.count)}</div>}
+        {/* M106 review findings: other background jobs' changes wait behind this card (the count can change, so a status). */}
+        {r.waiting ? <div className="line muted rv-waiting" role="status">{S.review.jobsWaiting(r.waiting)}</div> : null}
         {/* m67 bug 12: Fix it on a key warning runs the review first; the card says it is running, as the plain card does. */}
         {r.stage === "reviewing" && <div className="line review-busy" role="status">{r.proof ? S.review.reviewingChecks : S.review.reviewing}</div>}
         {r.stage === "ready" && r.asked && <div className="line review-busy" role="status">{S.review.asked}</div>}
@@ -162,7 +169,8 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
         {r.stage === "ready" && !r.asked && keyWarned(r) && (
           <>
             <div className="row result-actions rv-actions">
-              {onReviewFix && <button id={FIX_ID} className="btn primary" type="button" onClick={onReviewFix}>{S.review.fix}</button>}
+              {/* M106 review findings: never on a background job's card, as canFix: the fix would work in the project's folder. */}
+              {onReviewFix && !r.job && <button id={FIX_ID} className="btn primary" type="button" onClick={onReviewFix}>{S.review.fix}</button>}
               <SendBack text={S.homeNow.keyCopy((r.keys ?? []).map((k) => S.review.at(k.file, k.line)).join("; "))} label={S.fixRun.copyForAi} />
               <button className="btn quiet" type="button" onClick={onDismiss}>{keepWords(r)}</button>
               <button className="btn quiet rv-whylink" type="button" onClick={() => onReview(true)}>{S.homeNow.reviewAll}</button>
@@ -195,7 +203,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
           </ConfirmStep>
         )}
         {/* While the review runs, nothing waits on a press, so "Nothing changes until you press a button" is not said. M72: right under the presses. */}
-        {r.stage !== "reviewing" && !undoTook && <p className="rv-reassure">{r.stage === "ready" && keyWarned(r) ? S.homeNow.reassure : r.stage === "ready" ? (r.auto ? S.review.autoLine : S.review.askFirst) : head.reassure}</p>}
+        {r.stage !== "reviewing" && !undoTook && <p className="rv-reassure">{r.stage === "ready" && keyWarned(r) ? (r.job ? S.review.jobReassure(r.job) : S.homeNow.reassure) : r.stage === "ready" ? (r.auto ? S.review.autoLine : S.review.askFirst) : head.reassure}</p>}
         {/* M101: Put these files back, once the review ran (the batch is closed), under the reassurance that belongs to Fix it. */}
         {r.stage === "reviewed" && r.fix !== "sent" && r.fix !== "confirm" && undoPart}
         {/* M58 shortlist 3: the readiness line, in words, under the headline that already has its own tag. */}
@@ -223,7 +231,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
           {res && (
             <div className="answer">
               <div className="answer-lead">{S.review.whatChanged}</div>
-              <p className="answer-words">{res.summary || S.review.lead(r.count)}</p>
+              <p className="answer-words">{res.summary || changedLead(r)}</p>
               {r.away && <div className="line muted">{S.review.away[r.away]}</div>}
               {res.notes.map((n, i) => <div className="line muted" key={i}>{n}</div>)}
             </div>
@@ -328,13 +336,16 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
       <div className="sr" role="status">{look ? S.review.arrived(look.words, look.line) : ""}</div>
       {/* M77: what the changes did not tell you, up to three plain lines at the top. */}
       {untoldLines(res?.untold).map((l) => <div className="line rv-untold" key={l}>{l}</div>)}
+      {!undoDone && overlapLines(r).map((l) => <div className="line rv-untold rv-overlap" key={l.file} title={l.file}>{l.text}</div>)}
       <ReviewReplay r={r} />
       {/* Before a review, Home's top already says how much changed (M65 step 4: it was said three times), so the card goes
           straight to its presses and its list of files. */}
-      {(res || !heroSays) && (res?.summary || S.review.lead(r.count)) !== heroHeadline && (
+      {(res || !heroSays) && (res?.summary || changedLead(r)) !== heroHeadline && (
         <div className="answer">
           <div className="answer-lead">{S.review.whatChanged}</div>
-          <p className="answer-words">{res?.summary || S.review.lead(r.count)}</p>
+          <p className="answer-words">{res?.summary || changedLead(r)}</p>
+          {/* M106 review findings: the review's own summary does not say where; a background job's card says it once. */}
+          {r.job && res?.summary && <div className="line muted rv-job">{S.review.jobWhere(r.job)}</div>}
           {r.away && <div className="line muted">{S.review.away[r.away]}</div>}
           {res?.notes.map((n, i) => <div className="line muted" key={i}>{n}</div>)}
         </div>
@@ -343,6 +354,7 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
           never hides its buttons at its foot. The reasons, the checks and the files follow as the evidence. */}
       {r.note && <div className="line" role="status">{r.note}</div>}
       {r.later && <div className="line muted" role="status">{S.review.later(r.later.count)}</div>}
+      {r.waiting ? <div className="line muted rv-waiting" role="status">{S.review.jobsWaiting(r.waiting)}</div> : null}
       {r.stage === "reviewing" && <div className="line review-busy" role="status">{r.proof ? S.review.reviewingChecks : S.review.reviewing}</div>}
       {r.stage === "ready" && r.asked && <div className="line review-busy" role="status">{S.review.asked}</div>}
       {r.fix === "sent" && <div className="line review-busy" role="status">{S.review.fixSent}</div>}

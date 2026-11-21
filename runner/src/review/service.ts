@@ -52,6 +52,8 @@ import { dirname as dirOf } from "node:path";
 import { committedSince } from "./gitcommit.ts";
 import { findingsOf, outcomeOf, stillCount, type FixCheck, type FixOutcome } from "./fixcheck.ts";
 import type { DoneTool } from "../donesignal.ts";
+import { existsSync } from "node:fs";
+import { JobWatch, knownJobs, type JobBatch } from "./jobs.ts";
 
 /** The commands whose work can write in the project (a task, a plan, Undo, an install, a check or a ship step that builds
  *  it, the shared memory files): main.ts wraps each in around(), so nothing they change is ever counted as the other
@@ -109,6 +111,10 @@ export type ReviewDeps = {
   quietMs?: () => number;
   /** M75: the settle after the other tool's done signal (DONE_SETTLE_MS as usual). */
   doneSettleMs?: number;
+  /** M106: how long a new background job's folder settles before its starting point (jobs.ts JOB_SETTLE_MS as usual). */
+  jobSettleMs?: number;
+  /** M106: removes the shadow store of a background job's folder that is gone (agent.ts dropCheckpoints). Absent: kept. */
+  dropStore?: (dir: string) => Promise<void> | void;
   modelTimeoutMs?: number;
   checkTimeoutMs?: number;
   /** M77b: whether the engine runs inside another app's sandbox (box.ts nestedSandbox), so a Claude that could not be
@@ -143,7 +149,8 @@ type Away = (typeof REVIEW_AWAY)[number];
 /** began (M101): when the batch's first change was written (ms), for the commit check: never the starting point's time,
  *  which can be hours older than the change. */
 /** M105: by, the tool whose done signal said this batch (it finished then); absent when no tool said so. */
-type Batch = { id: string; project: string; from: string; to: string; files: FileChange[]; count: number; capped: boolean; secretFiles: string[]; frozen: boolean; away?: Away; began?: number; by?: DoneTool };
+/** M106: dir and job, a background job's batch: its versions are in that folder's own store, and its checks run there. */
+type Batch = { id: string; project: string; from: string; to: string; files: FileChange[]; count: number; capped: boolean; secretFiles: string[]; frozen: boolean; away?: Away; began?: number; by?: DoneTool; dir?: string; job?: string; keys?: ReviewKeyPlace[]; stops?: number; waitSaid?: boolean };
 /** Changes of the other tool set aside while the engine's own work, a review or an earlier batch was in the way: said as
  *  their own batch once that is over. to: null while the engine's work still runs. only: the files that are the other
  *  tool's (null: every file from..to). quiet: wait for the folder to be quiet first. stops: Stop everything's count when
@@ -193,6 +200,9 @@ const NOTHING = "Nothing has changed since the last review.";
 const STOPPED = "The review was stopped.";
 const COULD_NOT = `${PRODUCT} could not look at those changes just now. Try again.`;
 const NO_COPY = `${PRODUCT} could not keep a copy of this project to compare with, so its changes cannot be reviewed. Try opening the project again.`;
+/** M106: a background job's folder has a package.json but no node_modules: its checks would fail for that alone. */
+const JOB_NO_PACKAGES = "This background job's packages are not installed in its own folder, so its checks were not run.";
+const JOB_FIX = "Fix it works in the project's own folder. For a background job, use Copy for my AI and give it to that job.";
 const FULL = `Reviews of changes are paused for this project: ${PRODUCT_S} undo history for it is full (over 2 GB). Older undo points are removed as new ones are made, and reviews start again by themselves when there is room. Changes made meanwhile are not reviewed.`;
 /** The review's own versions kept from pruning (must fix 26), besides those of the open and the reviewed batches. */
 const KEEP_MADE = 20;
@@ -316,6 +326,8 @@ export class ReviewService {
   private watchedBefore = new Set<string>();
   /** M101: batches put back in this run of the engine (the task log's record is the lasting one). */
   private putBack = new Set<string>();
+  /** M106: Claude Code's background jobs in the project watched (jobs.ts). */
+  private jobs: JobWatch | null = null;
   constructor(private deps: ReviewDeps) {}
 
   /** A version for the review: it only needs to tell whether a .env file changed, so it keeps a salted hash of it, never a
@@ -364,7 +376,7 @@ export class ReviewService {
     return p === this.watching && this.batcher ? null : NOT_OPEN;
   }
   /** The starting point is taken (or could not be). For tests and for the engine's own start. */
-  async ready(): Promise<void> { await this.baseline; await this.chain.catch(() => undefined); }
+  async ready(): Promise<void> { await this.baseline; await this.chain.catch(() => undefined); await this.jobs?.ready(); await this.chain.catch(() => undefined); }
   /** M74: the mode in force for a project (the one watched, else the one the shell named): its own choice
    *  (review.modeHere), or Same as everywhere's review.mode. */
   modeFor(project?: string | null): string {
@@ -406,6 +418,37 @@ export class ReviewService {
     else if (by && this.open && !this.open.by) this.open.by = by;
     return moved;
   }
+  // ---------- M106: Claude Code's background jobs ----------
+
+  /** Review Claude's background jobs (review.jobs, on as usual). */
+  private jobsOn(): boolean { return this.deps.setting("review.jobs") !== false; }
+  /** A job's folder was quiet for the quiet time: its changes are measured, and said when nothing is in their way. */
+  private jobReady(gen: number, job: string): void {
+    const stops = this.stops;
+    void this.serial(async () => {
+      if (gen !== this.gen || !this.jobs) return;
+      const b = await this.jobs.measure(job, stops);
+      if (!b || gen !== this.gen) return;
+      if (this.deps.setting("review.keyWarning") === true) {
+        const keys = await this.keyPlaces(this.deps.store(b.dir), b.from, b.to, b.files).catch(() => []);
+        if (keys.length) b.keys = keys;
+      }
+      this.sayJobs();
+    }).catch(() => undefined);
+  }
+  /** Says the next background job's batch, only when the project's own card is not waiting and no review runs, so a job
+   *  never pushes that card aside. Automatic reviews it by itself, unless Stop everything was pressed since it was measured. */
+  private sayJobs(): void {
+    const jobs = this.jobs, p = this.watching;
+    if (!jobs || !p || this.open || this.reviewing || !this.jobsOn() || jobs.showing()) return;
+    const b: JobBatch | null = jobs.next();
+    if (!b) return;
+    jobs.said(b.id);
+    const waiting = jobs.waiting(b.id);
+    this.deps.emit({ type: "review.batch", project: p, batch: b.id, files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20), auto: this.auto(), ...(b.keys?.length ? { keys: b.keys } : {}), job: b.job, ...(waiting ? { waiting } : {}) });
+    if (this.auto() && b.stops === this.stops) void this.reviewBatch(b, true, b.stops, false).catch(() => undefined);
+  }
+
   /** M105: the tool whose done signal moved the batch that is being measured now, until that batch is said. */
   private doneBy: DoneTool | null = null;
   private ownOf(p: string): number { return this.ownBy.get(p) ?? 0; }
@@ -414,8 +457,12 @@ export class ReviewService {
     let store: CheckpointStore;
     try { store = this.deps.store(p); } catch { return; }   // a folder too broad to keep a copy of: nothing is watched
     const gen = ++this.gen;
-    const b = new ChangeBatcher({ project: p, quietMs: () => this.quietMs(), onReady: (paths, capped) => this.ready_(gen, paths, capped), busy: () => this.deps.busy?.(p) === true, watch: this.deps.watch, graceMs: this.deps.graceMs, ignore: () => this.ownIgnore(), ...(this.deps.seen ? { onPath: (rel: string) => this.deps.seen!(p, rel) } : {}) });
+    const b = new ChangeBatcher({ project: p, quietMs: () => this.quietMs(), onReady: (paths, capped) => this.ready_(gen, paths, capped), busy: () => this.deps.busy?.(p) === true, watch: this.deps.watch, graceMs: this.deps.graceMs, ignore: () => this.ownIgnore(), ...(this.deps.seen ? { onPath: (rel: string) => this.deps.seen!(p, rel) } : {}),
+      onJob: (job: string, rest: string) => { if (this.jobsOn()) this.jobs?.notice(job, rest); } });
     if (!b.start()) return;
+    this.jobs = new JobWatch({ project: p, store: (d) => this.deps.store(d), quietMs: () => this.quietMs(), settleMs: this.deps.jobSettleMs, ignore: () => this.ownIgnore(), maxFiles: () => this.maxFiles(),
+      busy: () => !!this.reviewing, ready: (job) => this.jobReady(gen, job), remove: this.deps.dropStore, known: knownJobs(store), closed: (jb) => { if (gen === this.gen) this.deps.emit({ type: "review.batch", project: p, batch: jb.id, files: [], count: 0, capped: false, secretFiles: [], auto: this.auto(), job: jb.job }); } });
+    if (this.jobsOn()) this.jobs.scan();
     for (let i = 0; i < this.ownOf(p); i++) b.holdOwn();
     this.batcher = b; this.watching = p;
     this.open = null; this.dirty.clear(); this.dirtyCapped = false; this.reviewed.clear(); this.doneBy = null;
@@ -454,6 +501,7 @@ export class ReviewService {
     this.gen++;
     this.unguard?.(); this.unguard = null; this.made = [];
     this.batcher?.stop();
+    this.jobs?.stop(); this.jobs = null;
     this.batcher = null; this.watching = null; this.open = null;
     this.dirty.clear(); this.dirtyCapped = false; this.held = null; this.win = null;
     this.reviewing?.abort.abort();
@@ -469,6 +517,7 @@ export class ReviewService {
   stopAll(): void {
     this.stops++;
     this.reviewing?.abort.abort();
+    this.jobs?.pause();
     if (!this.batcher) return;
     const waiting = this.batcher.take();
     for (const x of waiting.paths) this.dirty.add(x);
@@ -664,6 +713,7 @@ export class ReviewService {
       if (!this.held) { store.setNote(PENDING, null); store.setNote(PENDING_OWN, null); }
       if (!frozen) this.baseline = Promise.resolve(to);
       if (old) this.deps.emit({ type: "review.batch", project: p, batch: old.id, files: [], count: 0, capped: false, secretFiles: [], auto: this.auto() });
+      this.sayJobs();
       return null;
     }
     // Must fix 8 (review finding, 4 Nov 2026): a batch from while away is frozen from the start, so measure never grows it
@@ -681,7 +731,12 @@ export class ReviewService {
     const gen = this.gen;
     const keys = this.deps.setting("review.keyWarning") !== true ? [] : await this.keyPlaces(store, from, to, files).catch(() => []);
     if (gen !== this.gen || this.open !== b) return null;
-    this.deps.emit({ type: "review.batch", project: p, batch: b.id, files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20), auto: this.auto(), ...(away ? { away } : {}), ...(keys.length ? { keys } : {}), ...(b.by ? { by: b.by } : {}) });
+    // Review findings: the background jobs' changes that wait behind this card (said when there are any).
+    const waiting = this.jobsOn() ? this.jobs?.waiting() ?? 0 : 0;
+    if (waiting) b.waitSaid = true;
+    this.deps.emit({ type: "review.batch", project: p, batch: b.id, files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20), auto: this.auto(), ...(away ? { away } : {}), ...(keys.length ? { keys } : {}), ...(b.by ? { by: b.by } : {}), ...(waiting ? { waiting } : {}) });
+    // M106: this card takes the page, so a background job's batch said before is said again once it is closed.
+    this.jobs?.unsay();
     if (this.auto() && auto !== null && auto === this.stops && !away) void this.reviewBatch(b, true, auto, false).catch(() => undefined);
     return b;
   }
@@ -721,7 +776,9 @@ export class ReviewService {
 
   /** The open batch is closed (reviewed, or Looks fine): the next one starts where it ended. */
   private close(b: Batch): void {
-    if (this.open?.id === b.id) {
+    // M106: a background job's batch moves that job's starting point on; the project's own batch is untouched.
+    if (b.job) this.jobs?.close(b.id);
+    else if (this.open?.id === b.id) {
       if (!this.open.frozen) this.baseline = Promise.resolve(this.open.to);
       this.open = null;
       // Reviewed or closed: a restart starts after it. Changes set aside meanwhile begin where it ended.
@@ -729,6 +786,7 @@ export class ReviewService {
     }
     if (this.tryRelease()) return;
     if (this.dirty.size || this.dirtyCapped) void this.measure(this.gen).catch(() => undefined);
+    this.sayJobs();
   }
   /** Says the changes set aside, once nothing is in their way: the engine's work has ended, the folder is quiet (when
    *  they wait for that), and no review runs and no batch is open. True when they are being said. */
@@ -762,12 +820,12 @@ export class ReviewService {
     if (cmd.type === "review.undoPlan") return this.undoPlan(cmd);
     if (cmd.type === "review.undo") return this.undo(cmd);
     if (cmd.type === "review.dismiss") {
-      const b = this.open?.id === cmd.batch ? this.open : this.reviewed.get(cmd.batch)?.batch;
+      const b = this.open?.id === cmd.batch ? this.open : this.reviewed.get(cmd.batch)?.batch ?? this.jobs?.find(cmd.batch) ?? undefined;
       // M57 feature 1: a review that ran was closed: Looks fine, or after Copy for my AI. A skipped batch has no row.
       const ran = this.reviewed.get(cmd.batch);
       if (ran) this.said(ran.batch, cmd.how === "sentBack" ? "sent_back" : cmd.how === "quiet" ? "closed_quietly" : "looks_fine");
       this.reviewed.delete(cmd.batch);
-      if (b && b.id === this.open?.id) this.close(b);
+      if (b && (b.id === this.open?.id || b.job)) this.close(b);
       return;
     }
     return this.fix(cmd);
@@ -816,7 +874,7 @@ export class ReviewService {
     if (this.deps.store(p).full) { this.notReviewed(cmd.project, FULL, cmd.batch); return; }
     let b: Batch | null | undefined;
     if (cmd.batch) {
-      b = this.open?.id === cmd.batch ? this.open : this.reviewed.get(cmd.batch)?.batch;
+      b = this.open?.id === cmd.batch ? this.open : this.reviewed.get(cmd.batch)?.batch ?? this.jobs?.find(cmd.batch);
       if (!b) { this.notReviewed(cmd.project, MOVED_ON, cmd.batch); return; }
     } else {
       if (!this.open && this.held && !this.reviewing) b = await this.releaseHeld(false).catch(() => null);
@@ -829,7 +887,7 @@ export class ReviewService {
       if (!this.dirty.size && !this.open) this.dirty.add(".");
       const measured = b ? null : await this.measure(this.gen, { noAuto: true }).catch(() => null);
       if (stopped()) return;
-      b = b ?? measured ?? this.open;
+      b = b ?? measured ?? this.open ?? (this.jobsOn() ? this.jobs?.oldest() : null);
       if (!b) { this.notReviewed(cmd.project, NOTHING); return; }
     }
     // A batch from while away runs the project's checks only when the person asks for them, whatever review.mode says.
@@ -841,6 +899,8 @@ export class ReviewService {
     const fail = (reason: string) => this.deps.emit({ type: "protocol.error", reason, failed: "review.fix" });
     if (!rec || rec.batch.project !== resolve(cmd.project)) { fail("Review these changes first, then press Fix it."); return; }
     if (!this.deps.fix) { fail("Fixing is not available here."); return; }
+    // M106: a background job's change is in its own folder; Fix it would work in the project's.
+    if (rec.batch.job) { fail(JOB_FIX); return; }
     // A project reviewed by the rules alone (the key practice's copy) never gets a model fix, whatever the page sent: the
     // practice's own fixed move (practice.key) is its Fix it. Refused before the plan gate, so nothing is counted or spent.
     if (this.deps.rulesOnly?.(cmd.project) === true) { fail(PRACTICE_FIX); return; }
@@ -894,6 +954,8 @@ export class ReviewService {
     try { p = resolve(project); } catch { return { why: "gone" }; }
     if (this.open?.id === batch && !this.reviewed.has(batch)) return { why: "open" };
     const rec = this.reviewed.get(batch);
+    // M106: a background job's folder is Claude Code's to keep or throw away; its versions are not this project's.
+    if (rec?.batch.job || this.jobs?.find(batch)) return { why: "gone" };
     let pts: { from: string; to: string; undoneBy: string | null; began?: number | null } | null = null;
     try { pts = this.deps.history?.points?.(p, batch) ?? null; } catch { pts = null; }
     if (pts?.undoneBy || this.putBack.has(batch)) return { why: "done" };
@@ -964,9 +1026,11 @@ export class ReviewService {
    *  script) against the newer batch's version. Those that no longer hold are said (review.recheck); a review with nothing
    *  left closes, and its card gives way to the newer review. */
   private async recheck(newer: Batch): Promise<void> {
-    const store = this.deps.store(newer.project);
+    const dir = newer.dir ?? newer.project;
+    const store = this.deps.store(dir);
     for (const rec of [...this.reviewed.values()]) {
-      if (rec.batch.id === newer.id || rec.batch.project !== newer.project || rec.words.rating === "safe") continue;
+      // M106: only reviews of the same folder (the project's own, or that background job's).
+      if (rec.batch.id === newer.id || rec.batch.project !== newer.project || (rec.batch.dir ?? rec.batch.project) !== dir || rec.words.rating === "safe") continue;
       const open = rec.rechecks.map((_, i) => i).filter((i) => !rec.fixed.has(i));
       if (!open.length) continue;
       const ts = open.map((i) => rec.rechecks[i]);
@@ -1019,7 +1083,9 @@ export class ReviewService {
     this.deps.emit({ type: "review.started", project: b.project, batch: b.id, proof });
     let usd = 0;
     try {
-      const store = this.deps.store(b.project);
+      // M106: a background job's batch is read, and checked, in that job's own folder.
+      const dir = b.dir ?? b.project;
+      const store = this.deps.store(dir);
       // The text of the files that changed, from the two snapshots. Settings and key files, lock files, installed packages
       // and build output are never read (teach.ts teachable).
       const readable = b.files.filter((f) => teachable(f.file)).slice(0, READ_FILES);
@@ -1061,7 +1127,7 @@ export class ReviewService {
       const pk = await this.packagesOf(b, store, abort.signal);
       const found: Reason[] = [...weakened, ...page.page, ...open.map((x) => x.reason), ...house, ...pk.reasons];
       const deleted = b.files.filter((f) => f.kind === "deleted").map((f) => f.file);
-      const stillUsed = deleted.length ? importersOf(deleted, liveCode(b.project)) : [];
+      const stillUsed = deleted.length ? importersOf(deleted, liveCode(dir)) : [];
       // M102: the first file that made each touch, for the proof line of a change to a risky area.
       const touchAt = touchFiles(b.files, lines, b.secretFiles);
       const touches = TOUCHES.filter((t) => touchAt.has(t));
@@ -1074,11 +1140,12 @@ export class ReviewService {
       if (proof) {
         if (!this.deps.check) { checks = "unknown"; checksNote = "The project's checks cannot run here."; }
         else if (this.ownOf(b.project) > 0 || this.deps.busy?.(b.project)) { checks = "unknown"; checksNote = `${PRODUCT} is working on this project right now, so its checks were not run.`; }
+        else if (b.job && existsSync(join(dir, "package.json")) && !existsSync(join(dir, "node_modules"))) { checks = "unknown"; checksNote = JOB_NO_PACKAGES; }
         else {
           // Not the engine's own work in the folder: the checks only build (their output folders are ignored), and what the
           // other tool changes meanwhile must still be counted. A batch waits while a review runs.
           let r: CheckOutcome;
-          try { r = await later(this.deps.check(b.project, abort.signal, { asked }), this.deps.checkTimeoutMs ?? 10 * 60_000, abort.signal); }
+          try { r = await later(this.deps.check(dir, abort.signal, { asked }), this.deps.checkTimeoutMs ?? 10 * 60_000, abort.signal); }
           catch { r = abort.signal.aborted ? null : { outcome: "unknown", reason: "The checks took too long, so they were stopped." }; }
           if (abort.signal.aborted || r === null) throw new Error("stopped");
           if ("skip" in r) { checks = "unknown"; checksNote = r.skip; }
@@ -1161,15 +1228,25 @@ export class ReviewService {
       const sheet = this.deps.setting("replay.show") !== false ? factSheet({ files: b.files, count: b.count, checks, runs: checkRuns, shot: checkShot, rating: shown.rating }) : null;
       if (sheet) replay = { beats: ruleBeats(sheet), by: "rules", files: sheet.files, count: sheet.count, more: sheet.more, checks: sheet.checks, ...(sheet.shot ? { shot: sheet.shot } : {}) };
       if (gen !== this.gen || abort.signal.aborted) throw new Error("stopped");
+      // M106: the files of a background job's batch that other open jobs changed too.
+      const overlap = b.job ? this.jobs?.overlap(b) ?? [] : [];
+      // Review findings: the other jobs' changes that wait now. A job's result always says it (0 too, so an older count goes);
+      // the project's own says it when there are any, or when its batch said some.
+      const waiting = this.jobsOn() ? this.jobs?.waiting(b.id) ?? 0 : 0;
+      const sayWaiting = !!b.job || waiting > 0 || !!b.waitSaid;
       this.deps.emit({
         type: "review.result", project: b.project, batch: b.id, ok: true, rating: shown.rating, touches, summary: clip(redact(summary), 400), notes,
         reasons: withLines(shown.reasons, after), files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20),
         checks, ...(checksNote ? { checksNote } : {}), ...(checksDetail ? { checksDetail } : {}), sendBack: sendBackText(review), lane, usdEstimate: Math.round(usd * 1e6) / 1e6, ...(note ? { note } : {}),
         ...(ruleFiles.length ? { ruleFiles } : {}), ...(shown.hidden ? { hidden: shown.hidden } : {}), untold, ...(replay ? { replay } : {}), ...(b.by ? { by: b.by } : {}),
+        ...(b.job ? { job: b.job } : {}), ...(overlap.length ? { overlap } : {}), ...(sayWaiting ? { waiting } : {}),
       });
       if (sheet && this.deps.setting("replay.model") === true && !rulesOnly && !checksOnly) void this.replayByModel(b, sheet, abort.signal, gen);
       // M57 feature 1: one row in the task log. Names of files only, the summary with secrets hidden; no file text.
-      try { this.deps.history?.add({ project: b.project, batch: b.id, at: new Date().toISOString(), files: b.files.map((f) => f.file).slice(0, 20), count: b.count, rating: shown.rating, touches, checks, summary: clip(redact(summary), 400), kinds: [...new Set(shown.reasons.map((r) => r.kind))], from: b.from, to: b.to, ...(b.began ? { began: b.began } : {}) }); } catch { /* the row is a nicety */ }
+      try { this.deps.history?.add({ project: b.project, batch: b.id, at: new Date().toISOString(), files: b.files.map((f) => f.file).slice(0, 20), count: b.count, rating: shown.rating, touches, checks, summary: clip(redact(summary), 400), kinds: [...new Set(shown.reasons.map((r) => r.kind))],
+        // M106: a background job's versions are in the job's own shadow store, where the same ids mean other versions than in the
+        // project's: its row keeps none, so History never offers Put these files back for it, nor keeps project versions for it.
+        ...(b.job ? {} : { from: b.from, to: b.to, ...(b.began ? { began: b.began } : {}) }) }); } catch { /* the row is a nicety */ }
       const rechecks = shown.reasons.map((r) => recheckOf(r, { b, added, stillUsed, open }));
       this.reviewed.set(b.id, { batch: b, words: review, rechecks, fixed: new Set(), kinds: shown.reasons.map((r) => r.kind), at: Date.now() });
       // The oldest go first, but a review that found something may still be the card on the page (newer ones wait behind

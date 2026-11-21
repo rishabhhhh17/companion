@@ -778,7 +778,14 @@ export const REVIEW_AWAY = ["closed", "notWatching"] as const;
 export type ReviewKeyPlace = { file: string; line: number; lines?: CodeLine[] };
 /** M105: by, the AI tool whose done signal said this batch (it finished then); absent when no tool said so. It names who
  *  finished, never who wrote each file. */
-export type ReviewBatchEvent = Envelope & { type: "review.batch"; project: string; batch: string; files: ReviewFile[]; count: number; capped: boolean; secretFiles: string[]; auto: boolean; away?: (typeof REVIEW_AWAY)[number]; keys?: ReviewKeyPlace[]; by?: DoneSignalTool };
+/** M106: a Claude Code background job's name: its own folder under .claude/worktrees/ in the open project (letters, digits,
+ *  dot, dash and underscore, up to 64, never starting with a dot). */
+export const REVIEW_JOB_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/** M106: a file this job changed that other open jobs changed too, each since its own starting point (their names). */
+export type ReviewOverlap = { file: string; jobs: string[] };
+/** M106: job, the background job whose folder these changes are in (paths are from that folder down); absent for the
+ *  project's own folder. waiting: how many other background jobs' changes wait for a review behind this card (absent: none). */
+export type ReviewBatchEvent = Envelope & { type: "review.batch"; project: string; batch: string; files: ReviewFile[]; count: number; capped: boolean; secretFiles: string[]; auto: boolean; away?: (typeof REVIEW_AWAY)[number]; keys?: ReviewKeyPlace[]; by?: DoneSignalTool; job?: string; waiting?: number };
 export type ReviewStarted = Envelope & { type: "review.started"; project: string; batch: string; proof: boolean };
 /** M57 feature 4: when a newer batch was reviewed, the rules looked again at an earlier review's reasons that were still
  *  open, with no model. fixed: the places (in that review's reasons) of those that no longer hold ("Changed since, this no
@@ -810,6 +817,10 @@ export type ReviewResultEvent = Envelope & {
   type: "review.result"; project: string; batch?: string; ok: boolean; reason?: string;
   /** M105: the AI tool whose done signal said this batch (review.batch's by). */
   by?: DoneSignalTool;
+  /** M106: the background job this batch is from (review.batch's job), and the files other open jobs changed too. */
+  job?: string; overlap?: ReviewOverlap[];
+  /** Review findings: how many other background jobs' changes wait for a review now (0: none any more). */
+  waiting?: number;
   rating?: ReviewRating; touches?: ReviewTouch[]; summary?: string; notes?: string[]; reasons?: ReviewReason[]; files?: ReviewFile[]; count?: number; capped?: boolean;
   secretFiles?: string[]; checks?: ReviewChecks; checksNote?: string; sendBack?: string; lane?: (typeof REVIEW_LANES)[number]; usdEstimate: number;
   /** M77b: when the checks failed, their own output (secrets hidden), shown only behind Details; checksNote stays the plain line. */
@@ -966,6 +977,17 @@ const keyPlacesOk: Check = (m) => {
 export const REVIEW_BATCH_ID = /^rv_[0-9a-f]{10}$/;
 /** M101: a list of project files by name (from the folder down), at most `max`. */
 const fileNames = (k: string, max: number): Check => (m) => (Array.isArray(m[k]) && (m[k] as unknown[]).length <= max && (m[k] as unknown[]).every((f) => typeof f === "string" && f.length > 0 && f.length <= 1000 && !f.startsWith("/") && !(f as string).split("/").includes("..")) ? null : `"${k}" must be a list of at most ${max} file names in the project`);
+/** M106: a background job's name, and the overlap note: 1 to 5 files in the project, each with 1 to 7 other jobs. */
+const jobName = (v: unknown): boolean => typeof v === "string" && REVIEW_JOB_NAME.test(v);
+const jobOk: Check = (m) => (jobName(m.job) ? null : '"job" must be a background job\'s folder name');
+const overlapOk: Check = (m) => {
+  const o = m.overlap;
+  return Array.isArray(o) && o.length >= 1 && o.length <= 5 && o.every((x) => {
+    const r = x as Record<string, unknown> | null;
+    return !!r && typeof r === "object" && !Array.isArray(r) && Object.keys(r).every((n) => n === "file" || n === "jobs") && fileInProject("file")(r) === null
+      && Array.isArray(r.jobs) && r.jobs.length >= 1 && r.jobs.length <= 7 && r.jobs.every(jobName);
+  }) ? null : '"overlap" must be 1 to 5 files, each with the other background jobs that changed it';
+};
 const batchOk: Check = (m) => (typeof m.batch === "string" && REVIEW_BATCH_ID.test(m.batch) ? null : '"batch" must be a review batch (rv_ and 10 hex characters)');
 const cpOk = (k: string): Check => (m) => (typeof m[k] === "string" && /^cp_[A-Za-z0-9_-]{1,80}$/.test(m[k] as string) ? null : `"${k}" must be a saved version`);
 const reviewRowsOk: Check = (m) => {
@@ -1255,7 +1277,7 @@ const COMMANDS: Record<string, Check[]> = {
 
 const EVENTS: Record<string, Check[]> = {
   // M52, the review of every change (runner/src/review/service.ts).
-  "review.batch": [str("project"), str("batch"), filesListOk("files"), whole("count"), bool("capped"), textList("secretFiles"), bool("auto"), opt("away", oneOf("away", [...REVIEW_AWAY])), opt("keys", keyPlacesOk), opt("by", oneOf("by", [...DONE_SIGNAL_TOOLS]))],
+  "review.batch": [str("project"), str("batch"), filesListOk("files"), whole("count"), bool("capped"), textList("secretFiles"), bool("auto"), opt("away", oneOf("away", [...REVIEW_AWAY])), opt("keys", keyPlacesOk), opt("by", oneOf("by", [...DONE_SIGNAL_TOOLS])), opt("job", jobOk), opt("waiting", whole("waiting"))],
   "review.started": [str("project"), str("batch"), bool("proof")],
   "review.undoPlan": [str("project"), batchOk, bool("ok"), opt("why", oneOf("why", [...REVIEW_UNDO_WHY])), opt("files", fileNames("files", 50)), opt("count", whole("count")), opt("later", fileNames("later", 50)), opt("env", fileNames("env", 20)), opt("cannot", fileNames("cannot", 50)), opt("committed", bool("committed")),
     (m) => (m.ok === true ? (Array.isArray(m.files) && Number.isInteger(m.count) ? null : 'a plan that can be done names its "files" and "count"') : (m.why ? null : 'a plan that cannot be done says "why"'))],
@@ -1263,7 +1285,7 @@ const EVENTS: Record<string, Check[]> = {
     (m) => (m.ok === true || m.why ? null : 'a put back that did not happen says "why"')],
   "review.replay": [str("project"), str("batch"), replayOk],
   "review.recheck": [str("project"), str("batch"), str("by"), (m) => (Array.isArray(m.fixed) && m.fixed.length > 0 && m.fixed.every((n) => Number.isInteger(n) && (n as number) >= 0) ? null : '"fixed" must be a list of whole numbers from 0'), bool("closed")],
-  "review.result": [str("project"), bool("ok"), num("usdEstimate"), opt("batch", str("batch")), opt("checksNote", (m) => (typeof m.checksNote === "string" ? null : '"checksNote" must be text')), opt("checksDetail", (m) => (typeof m.checksDetail === "string" ? null : '"checksDetail" must be text')), opt("note", str("note")), opt("ruleFiles", textList("ruleFiles")), opt("hidden", whole("hidden")), opt("untold", untoldOk), opt("replay", replayOk), opt("by", oneOf("by", [...DONE_SIGNAL_TOOLS])), reviewOk],
+  "review.result": [str("project"), bool("ok"), num("usdEstimate"), opt("batch", str("batch")), opt("checksNote", (m) => (typeof m.checksNote === "string" ? null : '"checksNote" must be text')), opt("checksDetail", (m) => (typeof m.checksDetail === "string" ? null : '"checksDetail" must be text')), opt("note", str("note")), opt("ruleFiles", textList("ruleFiles")), opt("hidden", whole("hidden")), opt("untold", untoldOk), opt("replay", replayOk), opt("by", oneOf("by", [...DONE_SIGNAL_TOOLS])), opt("job", jobOk), opt("overlap", overlapOk), opt("waiting", whole("waiting")), reviewOk],
   // payments spec sections 2, 3 and 9 (runner/src/plan.ts); protocol/fixtures/plan-cases.jsonl is run by both suites.
   "plan.usage": [whole("used"), whole("limit"), day("resetsOn"), bool("everUsed")],
   "plan.limit": [oneOf("reason", [...PLAN_LIMITS]), opt("resetsOn", day("resetsOn")), opt("command", str("command")),

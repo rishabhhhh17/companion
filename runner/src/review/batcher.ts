@@ -8,6 +8,7 @@
 import { lstatSync, watch as fsWatch } from "node:fs";
 import { join } from "node:path";
 import { coveredBy } from "../pathglob.ts";
+import { REVIEW_JOB_NAME } from "../../../protocol/index.ts";
 
 /** Folders nobody writes by hand: git's, installed packages, build output and caches, the engine's own and Claude's. */
 const IGNORED_DIRS = new Set([
@@ -30,6 +31,21 @@ export function ignoredPath(rel: string, own: readonly RegExp[] = []): boolean {
   // M80: the VS Code agent's hook file Squibby adds sits beside the person's own workflows, so only it is left out.
   if (rel === ".github/hooks/companion.json") return true;
   return SCRATCH.test(rel) || coveredBy(rel, own);
+}
+
+/** M106: Claude Code's background jobs each work in their own folder here, inside the project (its agent view). */
+export const JOB_DIR = ".claude/worktrees/";
+/** M106: a path in a background job's own folder: the job's name and the rest of the path from that folder down ("" for
+ *  the folder itself). Null for anything else, the rest of .claude included. Only the folder's own name rules apply here;
+ *  whether the rest is reviewed is ignoredPath's, as for the project. */
+export function jobPath(rel: string): { job: string; rest: string } | null {
+  if (!rel.startsWith(JOB_DIR) || rel.includes("\0")) return null;
+  const tail = rel.slice(JOB_DIR.length);
+  const cut = tail.indexOf("/");
+  const job = cut < 0 ? tail : tail.slice(0, cut);
+  const rest = cut < 0 ? "" : tail.slice(cut + 1).replace(/\/+$/, "");
+  if (!REVIEW_JOB_NAME.test(job) || rest.split("/").some((x) => x === "..")) return null;
+  return { job, rest };
 }
 
 /** How the folder's file events are listened to (the real one, or a test's own). It names paths relative to the folder. */
@@ -59,6 +75,9 @@ export type BatcherOptions = {
   /** M113: each path counted in a batch (never the engine's own work, an ignored path or a folder), for the live feed of a
    *  tool with no hooks (livefeed.ts folder). Only the path from the folder down. */
   onPath?: (rel: string) => void;
+  /** M106: a path in a background job's folder (jobPath), never counted in this batch: the job's name and the rest of the
+   *  path, already checked against the ignore rules ("" for the folder itself). Absent: those paths are ignored. */
+  onJob?: (job: string, rest: string) => void;
 };
 
 export class ChangeBatcher {
@@ -136,6 +155,12 @@ export class ChangeBatcher {
   private seen(raw: string): void {
     if (!this.on) return;
     const rel = raw.replace(/\\/g, "/").replace(/^\.\//, "");
+    // M106: a background job's file is the job's, whatever the engine's own work in the project is doing.
+    const job = this.o.onJob ? jobPath(rel) : null;
+    if (job) {
+      if (job.rest === "" || !ignoredPath(job.rest, this.o.ignore?.() ?? [])) { try { this.o.onJob!(job.job, job.rest); } catch { /* the job's review is its own */ } }
+      return;
+    }
     if (ignoredPath(rel, this.o.ignore?.() ?? [])) return;
     if (this.own > 0) {
       if (!this.ownSeen.has(rel)) { if (this.ownSeen.size >= (this.o.maxPaths ?? MAX_PATHS)) this.ownCapped = true; else this.ownSeen.add(rel); }
