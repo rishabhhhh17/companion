@@ -34,6 +34,8 @@ export function doneStateFrom(e: unknown, project: string): DoneState | null {
 const CAN_ASK: readonly string[] = ["claude", "cursor", "copilot", "antigravity"];
 /** M103: the other tools whose guard hook also hands over a file read tool's file name (runner donesignal.ts matchers). */
 const READS: readonly string[] = ["copilot", "antigravity", "gemini", "copilotcli"];
+/** M108: the tools handed the start block again after they sum up a long conversation (Codex's compact source). */
+const COMPACTS: readonly string[] = ["claude", "codex"];
 export function doneAsk(row: DoneRow): { title: string; where: string; what: string; notes: string[]; yes: string } {
   const tool = S.doneSignal.tool[row.tool];
   // M85 review: Update on an older line of Squibby's says it replaces that line, and what the new one does.
@@ -45,6 +47,8 @@ export function doneAsk(row: DoneRow): { title: string; where: string; what: str
   if (row.hook === "answer") return { title: S.m114.answerTitle, where: S.doneSignal.askWhere(row.file, row.creates), what: row.adds, notes: [S.m114.answerWhat, S.doneSignal.askGit], yes: S.doneSignal.yes };
   // M113: the live feed: its own card (only the file's name and the counts are read, then the note is removed).
   if (row.hook === "feed") return { title: S.m113.askTitle(tool), where: S.doneSignal.askWhere(row.file, row.creates), what: row.adds, notes: [S.m113.askWhat(tool), S.doneSignal.askGit, ...(row.tool === "codex" ? [S.doneSignal.askCodex] : row.tool !== "claude" ? [S.doneSignal.askTool[row.tool]] : [])], yes: S.doneSignal.yes };
+  // M108: another tool's start block: its own card, in its name, with its own trust note.
+  if (row.hook === "start" && row.tool !== "claude") return { title: S.m108.askTitle(tool), where: S.doneSignal.askWhere(row.file, row.creates), what: row.adds, notes: [S.m108.askWhat(tool, COMPACTS.includes(row.tool)), S.doneSignal.askGit, row.tool === "codex" ? S.doneSignal.askCodex : S.doneSignal.askTool[row.tool], S.m108.checking(tool)], yes: S.doneSignal.yes };
   // M105: Codex's waiting signal: its own card (it touches an empty file; nothing of the question travels).
   if (row.hook === "waiting" && row.tool !== "claude") return { title: S.m105.askTitle(tool), where: S.doneSignal.askWhere(row.file, row.creates), what: row.adds, notes: [S.m105.askWhat(tool), S.doneSignal.askGit, ...(row.tool === "codex" ? [S.doneSignal.askCodex] : [])], yes: S.doneSignal.yes };
   // M80: another tool's guard names that tool; Claude Code's keeps its own words.
@@ -62,6 +66,7 @@ export function removedLine(row: Pick<DoneRow, "tool" | "hook">): string {
   const tool = S.doneSignal.tool[row.tool];
   if (row.hook === "waiting" && row.tool !== "claude") return S.m105.removed(tool);
   if (row.hook === "feed") return S.m113.removed(tool);
+  if (row.hook === "start" && row.tool !== "claude") return S.m108.removed(tool);
   if (row.hook === "watch") return S.m115.watchRemoved(tool);
   if (row.hook === "approve" || row.hook === "answer") return S.m114.removed(tool);
   return row.hook === "done" ? S.doneSignal.removed(tool) : row.hook === "guard" ? S.doneSignal.removedGuard(tool) : S.doneSignal.removedOther;
@@ -73,6 +78,8 @@ export function hookLabel(row: Pick<DoneRow, "tool" | "hook">): { label: string;
   if (row.hook === "guard") return { label: row.tool === "claude" ? S.doneSignal.hookTitle.guard : S.doneSignal.guardOther.title(S.doneSignal.tool[row.tool]), line: null };
   // M105: Codex's waiting row, in its name.
   if (row.hook === "waiting" && row.tool !== "claude") return { label: S.m105.waitTitle(S.doneSignal.tool[row.tool]), line: S.m105.waitRowLine(S.doneSignal.tool[row.tool]) };
+  // M108: another tool's start block row, in its name.
+  if (row.hook === "start" && row.tool !== "claude") return { label: S.m108.rowTitle(S.doneSignal.tool[row.tool]), line: S.m108.rowLine(S.doneSignal.tool[row.tool], COMPACTS.includes(row.tool)) };
   // M113: the live feed row, in the tool's name.
   if (row.hook === "feed") return { label: S.m113.rowTitle(S.doneSignal.tool[row.tool]), line: S.m113.rowLine(S.doneSignal.tool[row.tool]) };
   // M114: the notch's answer rows.

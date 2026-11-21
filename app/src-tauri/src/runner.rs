@@ -869,6 +869,21 @@ mod tests {
         assert_eq!(stages, ["opened", "done", "failed"]);
     }
     #[test]
+    fn m108_the_start_forms_name_a_tool_and_carry_its_text_and_pass_through_whole() {
+        // M108 review: memory.state.start.forms, what each AI tool set up is handed (the same shared fixture the runner and
+        // the pages read). The shell passes the event on untouched; each form is a tool's name and its exact text.
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let l = events.lines().find(|l| l.contains("\"id\":\"m108e1\"")).expect("the m108e1 fixture");
+        let e: Value = serde_json::from_str(l).unwrap();
+        let forms = e["start"]["forms"].as_array().expect("forms");
+        let tools: Vec<&str> = forms.iter().map(|f| f["tool"].as_str().unwrap()).collect();
+        assert_eq!(tools, ["claude", "gemini"]);
+        for f in forms { assert!(f["text"].as_str().is_some(), "{f}"); }
+        assert!(forms[1]["text"].as_str().unwrap().contains("payments go through Stripe"));
+        assert!(!forms[0]["text"].as_str().unwrap().contains("payments go through Stripe"));
+        assert!(check_project(&e, "p_9f2c").is_ok());
+    }
+    #[test]
     fn m88_the_week_carries_jobs_and_days_as_counts_and_they_fit_the_numbers_the_shell_sends() {
         // M88 (Your numbers): the same shared fixtures the runner and the pages read.
         let events = include_str!("../../../protocol/fixtures/events.jsonl");

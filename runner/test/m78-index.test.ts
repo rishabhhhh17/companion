@@ -105,7 +105,9 @@ describe("the SessionStart hook (Claude Code)", () => {
     expect(Object.keys(adds.hooks)).toEqual(["SessionStart"]);
     expect(adds.hooks.SessionStart[0]).toMatchObject({ matcher: "startup|clear|compact", hooks: [{ type: "command", timeout: 5 }] });
     expect(HOOK_EVENT.start).toBe("SessionStart"); expect(HOOK_MATCHER.start).toBe("startup|clear|compact");
-    expect(s.plan(project, "codex", "start").problem).toBeTruthy();
+    // M108 (changed on purpose): Codex, Gemini CLI and Antigravity have the start hook too; the parked tools still do not.
+    expect(s.plan(project, "codex", "start").problem).toBeUndefined();
+    expect(s.plan(project, "cursor", "start").problem).toBeTruthy();
   });
   test("adding keeps every other hook, adding twice adds once, and Remove takes out only Squibby's", () => {
     const project = tmp(), data = tmp(), s = new DoneSignals(data);

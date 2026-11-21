@@ -91,7 +91,8 @@ describe("the guard and waiting hooks Squibby adds, only after a yes", () => {
     // The Settings rows: the two done signals, then Claude Code's guard and waiting, and (M78) its start block.
     // M113 (changed on purpose): each tool with an after edit event has its live feed row too.
     // M114 (changed on purpose): Claude Code's approve and answer rows, and Codex's approve row.
-    expect(s.state(p).map((x) => `${x.tool}:${x.hook}`)).toEqual(["claude:done", "claude:guard", "claude:waiting", "claude:start", "claude:feed", "claude:approve", "claude:answer", "codex:done", "codex:guard", "codex:waiting", "codex:feed", "codex:approve", "cursor:done", "cursor:guard", "cursor:feed", "copilot:done", "copilot:guard", "copilot:feed", "antigravity:done", "antigravity:guard", "gemini:done", "gemini:guard", "gemini:feed", "windsurf:done", "windsurf:guard",
+    // M108 (changed on purpose): the start block rows of Codex, Antigravity and Gemini CLI.
+    expect(s.state(p).map((x) => `${x.tool}:${x.hook}`)).toEqual(["claude:done", "claude:guard", "claude:waiting", "claude:start", "claude:feed", "claude:approve", "claude:answer", "codex:done", "codex:guard", "codex:waiting", "codex:feed", "codex:approve", "codex:start", "cursor:done", "cursor:guard", "cursor:feed", "copilot:done", "copilot:guard", "copilot:feed", "antigravity:done", "antigravity:guard", "antigravity:start", "gemini:done", "gemini:guard", "gemini:feed", "gemini:start", "windsurf:done", "windsurf:guard",
       // M115 (changed on purpose): Copilot CLI's two rows, the done rows of the own file tools, and the watch rows.
       "copilotcli:done", "copilotcli:guard", "opencode:done", "amp:done", "cline:done", "kiro:done", "zed:watch", "junie:watch", "jetbrains:watch", "xcode:watch"]);
   });

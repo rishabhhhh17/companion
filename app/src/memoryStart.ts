@@ -6,7 +6,11 @@ import { S } from "./strings.ts";
 export const START_KINDS = ["rule", "decision", "failed", "note", "code"] as const;
 export type StartKind = (typeof START_KINDS)[number];
 export type StartLine = { kind: StartKind; text: string; source: string; date: string; id?: string };
-export type StartState = { hook: boolean; text: string; lines: StartLine[] };
+/** M108 review: what each AI tool set up here is handed, exactly (memory.state.start.forms). */
+export const START_FORM_TOOLS = ["claude", "codex", "antigravity", "gemini"] as const;
+export type StartFormTool = (typeof START_FORM_TOOLS)[number];
+export type StartForm = { tool: StartFormTool; text: string };
+export type StartState = { hook: boolean; text: string; lines: StartLine[]; forms?: StartForm[] };
 
 /** The engine's start block, or null for anything that is not one. */
 export function startFrom(v: unknown): StartState | null {
@@ -14,7 +18,25 @@ export function startFrom(v: unknown): StartState | null {
   if (!o || typeof o !== "object" || typeof o.hook !== "boolean" || typeof o.text !== "string" || !Array.isArray(o.lines)) return null;
   const lines = (o.lines as Record<string, unknown>[]).filter((l) => !!l && (START_KINDS as readonly unknown[]).includes(l.kind) && typeof l.text === "string" && typeof l.source === "string" && typeof l.date === "string" && (l.id === undefined || typeof l.id === "string"))
     .map((l) => ({ kind: l.kind as StartKind, text: l.text as string, source: l.source as string, date: l.date as string, ...(typeof l.id === "string" ? { id: l.id } : {}) }));
-  return { hook: o.hook, text: o.text, lines };
+  const raw = Array.isArray((o as { forms?: unknown }).forms) ? ((o as { forms: unknown[] }).forms as Record<string, unknown>[]) : [];
+  const forms = raw.filter((f) => !!f && (START_FORM_TOOLS as readonly unknown[]).includes(f.tool) && typeof f.text === "string").map((f) => ({ tool: f.tool as StartFormTool, text: f.text as string }));
+  return { hook: o.hook, text: o.text, lines, forms };
+}
+
+/** M108 review: the "Show it exactly" views under the rows: one per different text the tools set up are handed, named for
+ *  those tools, in the engine's order; a tool handed nothing has none. From an older engine, or before any tool is set up,
+ *  the one view of the block as it would be. */
+export function startSeen(st: StartState | null): { label: string; text: string }[] {
+  if (!st) return [];
+  const forms = st.forms ?? [];
+  if (!forms.length) return st.text ? [{ label: S.m78.startAsSeen, text: st.text }] : [];
+  const groups: { tools: StartFormTool[]; text: string }[] = [];
+  for (const f of forms) {
+    if (!f.text) continue;
+    const g = groups.find((x) => x.text === f.text);
+    if (g) g.tools.push(f.tool); else groups.push({ tools: [f.tool], text: f.text });
+  }
+  return groups.map((g) => ({ label: S.m78.startAsSeenBy(g.tools.map((t) => S.doneSignal.tool[t])), text: g.text }));
 }
 
 /** What the part shows: its line under the title, the rows (each line of the block in its order, a house rule offering
@@ -53,5 +75,6 @@ export const restoredWords = (r: NonNullable<ReturnType<typeof restoredFrom>>): 
 export const exportName = (projectName: string, now: Date): string =>
   S.m78.fileName(projectName, `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`);
 
-/** Where Set up in Settings and a house rule's Change go: the Start reviews sooner group on Fixing, and the house rules. */
-export const START_SETTINGS = { hook: "fixing.done", rules: "rules.house" } as const;
+/** Where Set up in Settings and a house rule's Change go: the Your notes at the start group on Fixing (M108 review: the
+ *  start rows have their own group), and the house rules. */
+export const START_SETTINGS = { hook: "fixing.start", rules: "rules.house" } as const;

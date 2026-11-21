@@ -108,6 +108,9 @@ export type MemoryRestore = Envelope & { type: "memory.restore"; project: string
  *  each line with its kind and source, and the memory line's id for Forget (a house rule has none). */
 export const START_KINDS = ["rule", "decision", "failed", "note", "code"] as const;
 export type StartLine = { kind: (typeof START_KINDS)[number]; text: string; source: string; date: string; id?: string };
+/** M108 review: memory.state.start.forms, what each AI tool set up here is handed as a session starts: the tool and exactly
+ *  the text of its start file, before any JSON around it. One per tool, in the engine's order; absent from an older engine. */
+export type StartForm = { tool: DoneSignalTool; text: string };
 export type RecapAsk = Envelope & { type: "recap.ask"; project: string; since: string };
 // Watch routines (F21): a watch is one project, one kind of read only check, a target and a schedule. They run only while
 // the engine runs and never call Claude. Every one names the project, so the app holds it to the folder the person chose.
@@ -1296,7 +1299,9 @@ const EVENTS: Record<string, Check[]> = {
   "settings.applied": [list("accepted"), list("refused")],
   // answers: the id of the command this state answers; refused: why that command could not do what it asked.
   "memory.state": [str("project"), bool("paused"), list("projectLines"), list("profileLines"), list("problems"), opt("answers", str("answers")), opt("refused", str("refused")),
-    opt("start", (m) => { const st = m.start as Record<string, unknown> | null; return st && typeof st === "object" && typeof st.hook === "boolean" && typeof st.text === "string" && Array.isArray(st.lines) && st.lines.every((l) => { const o = l as Record<string, unknown>; return !!o && (START_KINDS as readonly unknown[]).includes(o.kind) && typeof o.text === "string" && typeof o.source === "string" && typeof o.date === "string" && (o.id === undefined || typeof o.id === "string"); }) ? null : '"start" must have hook, text and lines'; })],
+    opt("start", (m) => { const st = m.start as Record<string, unknown> | null; return st && typeof st === "object" && typeof st.hook === "boolean" && typeof st.text === "string" && Array.isArray(st.lines) && st.lines.every((l) => { const o = l as Record<string, unknown>; return !!o && (START_KINDS as readonly unknown[]).includes(o.kind) && typeof o.text === "string" && typeof o.source === "string" && typeof o.date === "string" && (o.id === undefined || typeof o.id === "string"); })
+      // M108 review: forms, what each tool set up is handed (its tool and exact text); absent from an older engine.
+      && (st.forms === undefined || (Array.isArray(st.forms) && st.forms.every((f) => { const o = f as Record<string, unknown>; return !!o && (DONE_SIGNAL_TOOLS as readonly unknown[]).includes(o.tool) && typeof o.text === "string"; }))) ? null : '"start" must have hook, text and lines, and forms of a tool and its text'; })],
   "memory.saved": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text"), str("source")],
   "ship.status": [str("project"), oneOf("stage", ["checking_gates", "not_signed_in", "deploying", "checking_preview", "ready", "failed", "refused", "live", "rolled_back"]), str("detail"), needsOk],
   "doctor.report": [list("items")],

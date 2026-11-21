@@ -29,11 +29,15 @@ describe("every tool's own file, event and shape", () => {
     expect(HOOK_FILE.copilot).toBe(".github/hooks/companion.json");
     expect(HOOK_FILE.antigravity).toBe(".agents/hooks.json");
     // M113 (changed on purpose): the tools with an after edit event also have the live feed.
-    for (const t of ["cursor", "copilot", "gemini"] as const) expect([...TOOL_HOOKS[t]]).toEqual(["done", "guard", "feed"]);
-    for (const t of ["antigravity", "windsurf"] as const) expect([...TOOL_HOOKS[t]]).toEqual(["done", "guard"]);
+    // M108 (changed on purpose): Gemini CLI and Antigravity also have the start block at session start.
+    for (const t of ["cursor", "copilot"] as const) expect([...TOOL_HOOKS[t]]).toEqual(["done", "guard", "feed"]);
+    expect([...TOOL_HOOKS.gemini]).toEqual(["done", "guard", "feed", "start"]);
+    expect([...TOOL_HOOKS.antigravity]).toEqual(["done", "guard", "start"]);
+    expect([...TOOL_HOOKS.windsurf]).toEqual(["done", "guard"]);
     // M105 (changed on purpose): Codex also has a waiting signal, on its PermissionRequest hook.
     // M114 (changed on purpose): and approve, so its permission requests can be answered from the notch.
-    expect([...TOOL_HOOKS.codex]).toEqual(["done", "guard", "waiting", "feed", "approve"]);
+    // M108 (changed on purpose): and start, the start block at session start and after it compacts.
+    expect([...TOOL_HOOKS.codex]).toEqual(["done", "guard", "waiting", "feed", "approve", "start"]);
     expect(eventOf("cursor", "guard")).toBe("beforeShellExecution");
     expect(eventOf("cursor", "done")).toBe("stop");
     expect(eventOf("codex", "guard")).toBe("PreToolUse");

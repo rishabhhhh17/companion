@@ -328,7 +328,8 @@ function dispatch(cmd: Command) {
       const done = cmd.type === "donesignal.add" ? doneSignals.add(cmd.project, cmd.tool, cmd.hook ?? "done") : cmd.type === "donesignal.remove" ? doneSignals.remove(cmd.project, cmd.tool, cmd.hook ?? "done") : null;
       // M78: the start hook prints a file: it is written as the hook goes in, and removed with the index as it goes out.
       if (cmd.type === "donesignal.add" && cmd.hook === "start") sessionNotes.refresh(cmd.project);
-      if (cmd.type === "donesignal.remove" && cmd.hook === "start") sessionNotes.forget(cmd.project);
+      // M108: removing one tool's start hook keeps another tool's file; refresh drops only what no tool prints any more.
+      if (cmd.type === "donesignal.remove" && cmd.hook === "start") sessionNotes.refresh(cmd.project);
       doneState(cmd.project, doneSignals.state(cmd.project), done?.problem);
     } catch (e) { say({ type: "protocol.error", ...failure(e as Error, cmd.type) }); }
     return;

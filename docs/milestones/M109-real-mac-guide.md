@@ -4,6 +4,15 @@ The one place for the checks that only a real Mac, real AI tools and the founder
 
 How each step is recorded: the tool and its version, the date, PASS or FAIL, and what was seen. Results go in `docs/status/` as a dated RESULTS file, and the matching milestone doc and section 20 item are updated (AGENTS.md rule 18).
 
+## M108: house rules at session start in Codex, Gemini CLI and Antigravity
+
+Script: `scripts/m108-check-start.sh <codex|gemini|antigravity>` makes a new practice folder with a `hello.txt` and that tool's start line, and a separate throwaway data folder outside it that holds the one decided note with a practice word (PLUM-7) and the start file, all with Squibby's own code. The word is in no file of the practice folder (the script removes the note file it made there once the start file is written, and checks with `grep -r PLUM-7` before you start the tool), so a tool that searches the folder cannot find it. `scripts/m108-check-start.sh show <folder> <data folder>` prints exactly what the hook hands the tool. Record the tool and its version, PASS or FAIL.
+
+1. **Codex**: trust the new line with `/hooks`, start a new session, ask "What is the practice word in your notes? Do not read any file." PASS: it says PLUM-7. Then `/compact` and ask again, then `/clear` and ask again.
+2. **Gemini CLI**: say yes when it asks to trust the project's settings, then ask the same. PASS: PLUM-7. Then quit and resume the session (`gemini --resume`) and note whether the notes now show twice.
+3. **Antigravity**: open the folder, check Customizations lists `companion-start`, start a new conversation and ask the same. If it does not know the word, change the start file to the string form (`{"injectSteps":[{"systemMessage":"..."}]}`) by hand and try once more; note which form worked.
+4. **A small Codex lab** before any claim that Codex keeps the rules: the 11 Nov memory lab's reversed decision task, six runs with the line and six without. Founder's own Codex account.
+
 ## M107: Put it in on the review card
 
 No script: Squibby itself does it. Make an empty practice folder with a `hello.txt` (never a real project), open it in Squibby and in the tool, and connect the tool's done signal in Your AI tools. Record the tool and its version, PASS or FAIL.

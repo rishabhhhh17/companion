@@ -30,7 +30,8 @@ pub const OWN_FILES: &[(&str, &str)] = &[
 /// M115: the words every own file of Squibby's carries (donesignal.ts OWN_TAG).
 pub const OWN_TAG: &str = "companion-done-signal";
 /// M80: Antigravity's file holds named hooks at the top level; these are Squibby's (donesignal.ts ANTIGRAVITY_KEY).
-pub const ANTIGRAVITY_KEYS: &[&str] = &["companion-done", "companion-guard"];
+/// M108: and companion-start, the start block at session start.
+pub const ANTIGRAVITY_KEYS: &[&str] = &["companion-done", "companion-guard", "companion-start"];
 /// M80: the files whose version line does not count as content (donesignal.ts VERSIONED).
 const VERSIONED: &[&str] = &["cursor", "copilot", "copilotcli"];
 /// The index of tokens and what Squibby made, in the engine's data folder (donesignal.ts DONE_INDEX).
@@ -416,7 +417,28 @@ mod tests {
         let ag: serde_json::Value = serde_json::from_str(&fs::read_to_string(t.project.join(".agents/hooks.json")).unwrap()).unwrap();
         assert_eq!(ag.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["my-linter"]);
         let ts = include_str!("../../../runner/src/donesignal.ts");
-        assert!(ts.contains("cursor: \".cursor/hooks.json\", copilot: \".github/hooks/companion.json\", antigravity: \".agents/hooks.json\"") && ts.contains("{ done: \"companion-done\", guard: \"companion-guard\" }") && ts.contains("new Set([\"cursor\", \"copilot\", \"copilotcli\"])"), "the runner writes the same files and keys");   // M115 (changed on purpose): and Copilot CLI's file
+        assert!(ts.contains("cursor: \".cursor/hooks.json\", copilot: \".github/hooks/companion.json\", antigravity: \".agents/hooks.json\"") && ts.contains("{ done: \"companion-done\", guard: \"companion-guard\", start: \"companion-start\" }") && ts.contains("new Set([\"cursor\", \"copilot\", \"copilotcli\"])"), "the runner writes the same files and keys");   // M115 (changed on purpose): and Copilot CLI's file. M108 (changed on purpose): and Antigravity's companion-start
+    }
+    #[test]
+    fn m108_the_start_lines_of_codex_gemini_and_antigravity_go_and_the_persons_own_stay() {
+        let t = t("m108");
+        let start = |f: &str| format!("s='{}/start'; f=\"$s/0123456789abcdef01234567.{f}\"; [ -f \"$f\" ] && /bin/cat -- \"$f\" 2>/dev/null; exit 0", t.data.display());
+        create_dir_all(t.project.join(".codex")).unwrap();
+        fwrite(t.project.join(".codex/hooks.json"), format!("{{ \"hooks\": {{ \"SessionStart\": [ {{ \"matcher\": \"startup\", \"hooks\": [ {{ \"type\": \"command\", \"command\": \"./mine.sh\" }} ] }}, {{ \"matcher\": \"startup|clear|compact\", \"hooks\": [ {{ \"type\": \"command\", \"command\": {}, \"timeout\": 5 }} ] }} ] }} }}", serde_json::to_string(&start("md")).unwrap())).unwrap();
+        create_dir_all(t.project.join(".gemini")).unwrap();
+        fwrite(t.project.join(".gemini/settings.json"), format!("{{ \"theme\": \"Dracula\", \"hooks\": {{ \"SessionStart\": [ {{ \"hooks\": [ {{ \"name\": \"companion-start\", \"type\": \"command\", \"command\": {}, \"timeout\": 5000 }} ] }} ] }} }}", serde_json::to_string(&start("gemini.json")).unwrap())).unwrap();
+        create_dir_all(t.project.join(".agents")).unwrap();
+        fwrite(t.project.join(".agents/hooks.json"), format!("{{ \"my-init\": {{ \"SessionStart\": [ {{ \"command\": \"./init.sh\" }} ] }}, \"companion-start\": {{ \"SessionStart\": [ {{ \"type\": \"command\", \"command\": {}, \"timeout\": 5 }} ] }} }}", serde_json::to_string(&start("antigravity.json")).unwrap())).unwrap();
+        index_with(&t, &[], &[]);
+        assert_eq!(remove(&t.project, &t.data), vec![".codex/hooks.json", ".agents/hooks.json", ".gemini/settings.json"]);
+        let codex: serde_json::Value = serde_json::from_str(&fs::read_to_string(t.project.join(".codex/hooks.json")).unwrap()).unwrap();
+        assert_eq!(codex, serde_json::json!({ "hooks": { "SessionStart": [ { "matcher": "startup", "hooks": [ { "type": "command", "command": "./mine.sh" } ] } ] } }));
+        let gemini: serde_json::Value = serde_json::from_str(&fs::read_to_string(t.project.join(".gemini/settings.json")).unwrap()).unwrap();
+        assert_eq!(gemini, serde_json::json!({ "theme": "Dracula" }));
+        let ag: serde_json::Value = serde_json::from_str(&fs::read_to_string(t.project.join(".agents/hooks.json")).unwrap()).unwrap();
+        assert_eq!(ag.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["my-init"]);
+        let ts = include_str!("../../../runner/src/donesignal.ts");
+        assert!(ts.contains("{ done: \"companion-done\", guard: \"companion-guard\", start: \"companion-start\" }"), "the runner names the same Antigravity keys");
     }
     #[test]
     fn m81_gemini_cli_and_windsurf_lose_only_squibbys_lines() {

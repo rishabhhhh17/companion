@@ -34,7 +34,8 @@ describe("the start block on the Memory page", () => {
     expect(v.setUp).toBe(false); expect(v.search).toBe(false); expect(v.line).toBe(S.m78.startOn);
     expect(startView({ ...startFrom(fixture("m78e1").start)!, text: `${fixture("m78e1").start.text}More notes: run x\n` }).search).toBe(true);
     expect(placeOf(START_SETTINGS.rules)).not.toBeNull();
-    expect(placeOf(START_SETTINGS.hook)).toMatchObject({ page: "fixing", group: "fixing.done" });
+    // M108 review: the start rows moved to a group of their own, Your notes at the start, on the same page.
+    expect(placeOf(START_SETTINGS.hook)).toMatchObject({ page: "fixing", group: "fixing.start" });
   });
   test("a block that is not set up says so and offers Set up in Settings", () => {
     const v = startView({ hook: false, text: "", lines: [] });
@@ -48,7 +49,8 @@ describe("the start block on the Memory page", () => {
     const card = read("./card.tsx"), part = read("./memoryStart.tsx");
     expect(card.indexOf("<StartBlockPart")).toBeGreaterThan(0);
     expect(card.indexOf("<StartBlockPart")).toBeLessThan(card.indexOf('<MemoryList title={S.screens.aboutProject'));
-    expect(part).toContain("<pre tabIndex={0} aria-label={S.m78.startAsSeen}>{start.text}</pre>");
+    // M108 review: one details per tool set up, each its exact text (startSeen, tested in m108.test.ts).
+    expect(part).toContain("<pre tabIndex={0} aria-label={w.label}>{w.text}</pre>");
   });
 });
 

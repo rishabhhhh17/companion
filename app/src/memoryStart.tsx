@@ -1,4 +1,4 @@
-// M78 (memory that is never lost): the Memory page's start block part ("What Claude Code is told at the start") and the
+// M78 (memory that is never lost): the Memory page's start block part ("What your AI tools are told at the start") and the
 // two rows that export and restore every note. The words and the choices are in memoryStart.ts (tested); this draws them
 // with the M71 parts. Forget is the same short Undo as the lists below it; a house rule is changed where it lives, in
 // Settings. Export and restore go through the shell's own save and open dialogs, each on a press, and a restore asks first.
@@ -10,7 +10,7 @@ import { memoryDate } from "./memorySettings.ts";
 import { ConfirmStep } from "./confirm.tsx";
 import { Button, ListGroup, ListRow, Row, Toast } from "./ui/parts.tsx";
 import type { Colour } from "./meaning.ts";
-import { exportCount, exportName, restoredFrom, restoredWords, START_SETTINGS, startView, type StartKind, type StartLine, type StartState } from "./memoryStart.ts";
+import { exportCount, exportName, restoredFrom, restoredWords, START_SETTINGS, startSeen, startView, type StartKind, type StartLine, type StartState } from "./memoryStart.ts";
 
 const FORGET_MS = 6000;
 const COLOUR: Record<StartKind, Colour> = { rule: "orange", decision: "blue", failed: "red", note: "pink", code: "grey" };
@@ -39,7 +39,8 @@ export function StartBlockPart({ start, project, send, onSettings }: { start: St
       <p className="page-caption">{rows.length ? v.line : S.m78.startEmpty}</p>
       {rows.length > 0 && v.search && <p className="page-caption">{S.m78.startSearch}</p>}
       {v.setUp && <div className="row"><Button size="sm" onClick={() => onSettings(START_SETTINGS.hook)}>{S.m78.startSetUp}</Button></div>}
-      {start?.text && <details className="mem-start-raw"><summary>{S.m78.startAsSeen}</summary><pre tabIndex={0} aria-label={S.m78.startAsSeen}>{start.text}</pre></details>}
+      {/* M108 review: one view per tool set up (tools handed the same notes share one), each exactly what it is handed. */}
+      {startSeen(start).map((w) => <details key={w.label} className="mem-start-raw"><summary>{w.label}</summary><pre tabIndex={0} aria-label={w.label}>{w.text}</pre></details>)}
     </div>
   );
 }

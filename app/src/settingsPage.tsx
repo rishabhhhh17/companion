@@ -753,6 +753,7 @@ function FixedRows({ fixed }: { fixed: Fixed }) {
     case "usedOften": return <UsedOftenRow />;
     case "reviewKeep": return <ReviewKeepRow />;
     case "doneSignal": return <DoneSignalRows />;
+    case "startNotes": return <DoneSignalRows only="start" />;
     case "aiTools": return <AiToolsRows />;
     // An account already connected always shows, to be seen and disconnected; connecting a new one needs watch routines on.
     case "google": return placeShown("google") ? <GoogleSection connecting={setting("watch.on") === true} /> : null;
@@ -766,7 +767,8 @@ function AiToolsRows() { const c = useCtx(); return <AiToolsScreen project={c.pr
 
 /** M75 (roadmap 19, F30): the other tool's done signal, one row per tool. Set up opens the card that shows exactly what is
  *  written where, and only its yes sends the add; Remove is one press. What is set up is read from the files themselves. */
-function DoneSignalRows() {
+/** M108 review: only "start" draws the start block rows alone (Your notes at the start); otherwise every other row. */
+function DoneSignalRows({ only }: { only?: "start" } = {}) {
   const c = useCtx();
   const project = c.project;
   const [st, setSt] = useState<DoneState | null>(null);
@@ -779,16 +781,18 @@ function DoneSignalRows() {
     const off = listen("runner-event", (e) => { const d = doneStateFrom(e.payload, project); if (d) setSt(d); });
     return () => { off.then((f) => f()); };
   }, [project]);
-  if (!project) return <Row id={fixedAnchor("doneSignal")} label={S.doneSignal.title} description={S.doneSignal.noProject} />;
-  const rows = st?.tools ?? [];
+  const anchor = fixedAnchor(only === "start" ? "startNotes" : "doneSignal");
+  if (!project) return <Row id={anchor} label={only === "start" ? S.setFixed.startNotes.title : S.doneSignal.title} description={S.doneSignal.noProject} />;
+  const rows = (st?.tools ?? []).filter((r) => (only === "start") === (r.hook === "start"));
   const ask = asking ? rows.find((r) => r.tool === asking.tool && r.hook === asking.hook) : undefined;
   const rowId = (r: Pick<DoneRow, "tool" | "hook">) => `done-set-${r.tool}${r.hook === "done" ? "" : `-${r.hook}`}`;
   // M77: the two more Claude Code hooks (a saved copy before a destructive command, Claude is waiting for you) sit in the
   // same group, each with the same card and the same one press Remove.
   return (<>
-    <Row id={fixedAnchor("doneSignal")} label={S.doneSignal.title} description={`${S.doneSignal.line} ${S.doneSignal.fallback} ${S.m105.waitingNote} ${S.m114.groupNote}`} />
-    {rows.map((r) => { const l = hookLabel(r); return (
-      <Row key={`${r.tool}-${r.hook}`} indent label={l.label} description={`${r.on ? `${S.doneSignal.on}: ${r.file}` : S.doneSignal.off}${l.line ? `. ${l.line}` : ""}${r.stale ? `. ${S.doneSignal.stale}` : ""}`}
+    {only !== "start" && <Row id={anchor} label={S.doneSignal.title} description={`${S.doneSignal.line} ${S.doneSignal.fallback} ${S.m105.waitingNote} ${S.m114.groupNote}`} />}
+    {/* M108 review: the start group has its own title and line, so its first row carries the anchor. */}
+    {rows.map((r, i) => { const l = hookLabel(r); return (
+      <Row key={`${r.tool}-${r.hook}`} id={only === "start" && i === 0 ? anchor : undefined} indent={only !== "start"} label={l.label} description={`${r.on ? `${S.doneSignal.on}: ${r.file}` : S.doneSignal.off}${l.line ? `. ${l.line}` : ""}${r.stale ? `. ${S.doneSignal.stale}` : ""}`}
         control={r.on
           ? <>{r.stale && <Button size="sm" id={rowId(r)} onClick={() => { setSaid(""); setAsking({ tool: r.tool, hook: r.hook }); }}>{S.doneSignal.update}</Button>}<Button size="sm" onClick={() => { setSaid(removedLine(r)); void send(removeDoneSignal(project, r.tool, r.hook)); }}>{S.doneSignal.remove}</Button></>
           : <Button size="sm" id={rowId(r)} onClick={() => { setSaid(""); setAsking({ tool: r.tool, hook: r.hook }); }}>{S.doneSignal.setUp}</Button>} />

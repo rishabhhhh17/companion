@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Your notes reach Codex, Gemini CLI and Antigravity too: 21 Nov 2026
+
+- **House rules at the start, in more tools.** Squibby could already hand Claude Code your project's notes as each session starts: house rules, decisions with their reason, and fixes that did not work, up to 30 lines. Now Codex, Gemini CLI and Antigravity can get the same notes. Codex also gets them again after it sums up a long conversation to make room. Each tool is still being checked on a real Mac, so this does not yet promise that a tool keeps to them.
+- **Your yes, per tool.** Settings, Fixing, Your notes at the start has one row per tool, all four together. Set up shows the exact lines added to that tool's own settings file in this project, and Remove takes them out again. Nothing is read from the tool and nothing is sent anywhere.
+- **The Memory page shows each tool's notes.** It now reads What your AI tools are told at the start, lists every line any of them is handed, and has one Show it exactly as Gemini CLI sees it (or Claude Code, Codex, Antigravity) for each tool you set up, since Gemini CLI and Antigravity also get your AGENTS.md shared lines. Long lines now wrap there instead of widening the page.
+
 ## Put the fix straight into your AI tool: 21 Nov 2026
 
 - **One press from the review.** When a review finds something in a change Cursor, VS Code with Copilot, Windsurf or Antigravity made, the card now has Put it in Cursor (or that tool) beside Copy for my AI. Squibby brings the tool to the front and tries to put the fix request into its chat box. If it cannot be sure the box is the chat box, it copies the text instead. It never presses Return: you read it and send it yourself. Each of the four tools is still being checked on a real Mac.

@@ -10,7 +10,7 @@ import { wordsOf } from "./settingsRows.ts";
 
 export type PageId = "account" | "general" | "look" | "fixing" | "flowflow" | "keys" | "privacy" | "about" | "more";
 /** The parts that are not settings. Each is drawn by the page (settingsPage.tsx) and found by search. */
-export type Fixed = "plan" | "key" | "setup" | "permissions" | "kept" | "danger" | "updates" | "replay" | "practice" | "made" | "logs" | "acknowledgements" | "google" | "preview" | "usedOften" | "reviewKeep" | "doneSignal" | "aiTools";
+export type Fixed = "plan" | "key" | "setup" | "permissions" | "kept" | "danger" | "updates" | "replay" | "practice" | "made" | "logs" | "acknowledgements" | "google" | "preview" | "usedOften" | "reviewKeep" | "doneSignal" | "aiTools" | "startNotes";
 export type Item = string | { fixed: Fixed };
 /** A Group on a page: its anchor (#account.plan) is its id; its words are S.setGroupTitles[id] and S.setGroupFoot[id]. */
 export type GroupDef = { id: string; items: readonly Item[] };
@@ -88,6 +88,9 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       // M82: Your AI tools, one Connect per tool found on this Mac, above the rows of each hook.
       { id: "fixing.tools", items: [f("aiTools")] },
       { id: "fixing.done", items: [f("doneSignal")] },
+      // M108 review: the start block rows (Claude Code, Codex, Gemini CLI, Antigravity) in a small group of their own, where
+      // the Memory page's Set up in Settings goes, instead of among the review rows.
+      { id: "fixing.start", items: [f("startNotes")] },
       { id: "fixing.tries", items: ["work.tries"] },
       { id: "fixing.rules", items: ["rules.house", "check.install"] },
       { id: "fixing.checks", items: ["check.pageSize", "explain.mode"] },

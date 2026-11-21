@@ -18,6 +18,13 @@
 // M78 (memory that is never lost): a fourth, start, a SessionStart hook for Claude Code (matcher startup|clear|compact). It
 // prints <data>/start/<token>.md, the start block Squibby wrote earlier (memory/sessionstart.ts), and exits 0. Claude Code adds
 // a SessionStart hook's plain stdout to Claude's context. It reads nothing else and needs no running engine.
+// M108 (house rules in the other tools): the same start block for Codex (SessionStart, startup|clear|compact, plain stdout
+// becomes context: learn.chatgpt.com/docs/hooks), Gemini CLI (SessionStart, its JSON's hookSpecificOutput.additionalContext:
+// geminicli.com/docs/hooks/reference; no compact source, and lifecycle matchers are exact strings, so no matcher) and
+// Antigravity (SessionStart, its JSON's injectSteps: antigravity.google/docs/hooks; no matcher). Each prints a file Squibby
+// wrote earlier in that tool's own form (startFileName) and never reads its input. Cursor, the VS Code agent and Windsurf
+// stay without it, unconfirmed: Cursor's sessionStart does not wait and nothing re-sends after compaction, Copilot does not
+// say what its sessionStart output does, and no source says Windsurf's hook output reaches the model. No per turn hook.
 // M80 (the safety net in every AI tool): the done signal and the guard for four more tools, each in its own file and shape,
 // each after its own yes. Every hook ends with its tool's own "go on", so a closed or slow Squibby never blocks any of them:
 //  - Codex: PreToolUse on Bash in .codex/hooks.json, the same shape and payload as Claude Code (developers.openai.com/codex/
@@ -66,7 +73,7 @@ import { PRODUCT } from "./names.ts";
 export const DONE_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf", "copilotcli", "opencode", "amp", "cline", "kiro", "zed", "junie", "jetbrains", "xcode", "any"] as const;
 export type DoneTool = (typeof DONE_TOOLS)[number];
 /** M77: the kinds of hook. done: the Stop hook (both tools). guard and waiting: Claude Code only. M78: start, Claude Code
- *  only: the start block (memory/startblock.ts) printed as a session starts. */
+ *  first: the start block (memory/startblock.ts) printed as a session starts; M108 adds Codex, Gemini CLI and Antigravity. */
 /** M115: watch, for a tool with no hooks: nothing is written in the project; Squibby's own index keeps the yes, and the live
  *  feed fills in from the folder for that project. */
 export const HOOK_KINDS = ["done", "guard", "waiting", "start", "feed", "approve", "answer", "watch"] as const;
@@ -89,13 +96,16 @@ export const FEED_MATCHER: Readonly<Partial<Record<DoneTool, string>>> = { claud
 export const DONE_TIMEOUT_S = 5;
 /** M113: how long a tool gives the feed hook, in seconds (it never waits, so it ends in a moment). */
 export const FEED_TIMEOUT_S = 5;
-/** The hooks each tool may have. M80: the other tools have the done signal and the guard (their waiting and start contracts
- *  differ or are missing, so those stay Claude Code's). */
+/** The hooks each tool may have. M80: the other tools have the done signal and the guard. M108: the start block for Codex,
+ *  Gemini CLI and Antigravity too, whose SessionStart hooks hand their output to the model (each [verify] on a real Mac);
+ *  Cursor's, the VS Code agent's and Windsurf's start contracts are unconfirmed, so they have none. */
 /** M113: the feed for the tools with an after edit event; Antigravity and Windsurf are covered by the folder watcher. */
 /** M114: approve for Claude Code and Codex (their PermissionRequest), answer for Claude Code (AskUserQuestion). */
-export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting", "start", "feed", "approve", "answer"], codex: ["done", "guard", "waiting", "feed", "approve"], cursor: ["done", "guard", "feed"], copilot: ["done", "guard", "feed"], antigravity: ["done", "guard"], gemini: ["done", "guard", "feed"], windsurf: ["done", "guard"],
+export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting", "start", "feed", "approve", "answer"], codex: ["done", "guard", "waiting", "feed", "approve", "start"], cursor: ["done", "guard", "feed"], copilot: ["done", "guard", "feed"], antigravity: ["done", "guard", "start"], gemini: ["done", "guard", "feed", "start"], windsurf: ["done", "guard"],
   // M115: Copilot CLI's hooks (docs.github.com, Copilot CLI hooks: agentStop and preToolUse, which can deny but not ask).
   copilotcli: ["done", "guard"], opencode: ["done"], amp: ["done"], cline: ["done"], kiro: ["done"], zed: ["watch"], junie: ["watch"], jetbrains: ["watch"], xcode: ["watch"], any: [] };
+/** M108: the tools that can be handed the start block, in their Settings order. */
+export const START_TOOLS = DONE_TOOLS.filter((t) => TOOL_HOOKS[t].includes("start"));
 /** M115: the tools whose done signal is one whole file of Squibby's own in the tool's own folder (its plugin or hook file),
  *  written and removed whole, and only when it is Squibby's. */
 export const OWN_FILE_TOOLS = ["opencode", "amp", "cline", "kiro"] as const satisfies readonly DoneTool[];
@@ -106,6 +116,8 @@ export const WATCH_TOOLS = ["zed", "junie", "jetbrains", "xcode"] as const satis
 /** M80: the event a hook sits under in each tool. Cursor names its own; the rest use Claude Code's names. */
 export const eventOf = (tool: DoneTool, hook: HookKind): string =>
   tool === "cursor" ? (hook === "guard" ? "beforeShellExecution" : hook === "feed" ? "afterFileEdit" : "stop")
+  // M108: every tool with a start hook names it SessionStart.
+  : hook === "start" ? HOOK_EVENT.start
   : tool === "gemini" ? (hook === "guard" ? "BeforeTool" : hook === "feed" ? "AfterTool" : "AfterAgent")
   : tool === "codex" && hook === "waiting" ? CODEX_WAITING_EVENT
   // M115: Copilot CLI names its events in camelCase.
@@ -113,7 +125,7 @@ export const eventOf = (tool: DoneTool, hook: HookKind): string =>
   : HOOK_EVENT[hook];
 /** M80: Antigravity's file holds named hooks at the top level; Squibby's are named with the internal name (never the product
  *  name, which changes: protocol/names.json). */
-export const ANTIGRAVITY_KEY: Readonly<Record<"done" | "guard", string>> = { done: "companion-done", guard: "companion-guard" };
+export const ANTIGRAVITY_KEY: Readonly<Record<"done" | "guard" | "start", string>> = { done: "companion-done", guard: "companion-guard", start: "companion-start" };
 /** Where each tool's project hook file lives, from the project folder down. */
 export const HOOK_FILE: Readonly<Record<DoneTool, string>> = { claude: ".claude/settings.local.json", codex: ".codex/hooks.json", cursor: ".cursor/hooks.json", copilot: ".github/hooks/companion.json", antigravity: ".agents/hooks.json", gemini: ".gemini/settings.json", windsurf: ".devin/hooks.v1.json",
   // M115: Copilot CLI reads every file in .github/hooks, so its own file sits beside the VS Code agent's ([verify] that the VS
@@ -255,9 +267,22 @@ export const askEntryFor = (tool: DoneTool, guardDir: string, token: string, kin
 /** M78: the start hook's command: it prints the project's start block, a file Squibby wrote earlier, and always ends with 0.
  *  It reads nothing else and needs no running engine, so the block reaches Claude while Squibby is closed too. Claude Code
  *  adds a SessionStart hook's plain stdout to Claude's context (code.claude.com/docs/en/hooks). */
-export const startCommand = (startDir: string, token: string): string =>
-  `s=${shQuote(startDir)}; f="$s/${token}.md"; [ -f "$f" ] && /bin/cat -- "$f" 2>/dev/null; exit 0`;
+/** M108: the file each tool's start hook prints, in that tool's own form: the plain block for Claude Code and Codex (both
+ *  add plain stdout to the context), JSON for Gemini CLI and Antigravity (memory/sessionstart.ts startPayload writes them). */
+export const startFileName = (token: string, tool: DoneTool = "claude"): string =>
+  tool === "gemini" || tool === "antigravity" ? `${token}.${tool}.json` : `${token}.md`;
+export const startCommand = (startDir: string, token: string, tool: DoneTool = "claude"): string =>
+  `s=${shQuote(startDir)}; f="$s/${startFileName(token, tool)}"; [ -f "$f" ] && /bin/cat -- "$f" 2>/dev/null; exit 0`;
 export const startEntry = (startDir: string, token: string) => ({ matcher: HOOK_MATCHER.start, hooks: [{ type: "command", command: startCommand(startDir, token), timeout: START_TIMEOUT_S }] });
+/** M108: the start entry in each tool's own shape. Codex's is Claude Code's (its matcher takes compact too). Gemini CLI names
+ *  each hook and counts in milliseconds; its lifecycle matchers are exact strings, so it has none (startup, resume and clear
+ *  all print the block). Antigravity's SessionStart ignores a matcher and lists the command itself. */
+export const startEntryFor = (tool: DoneTool, startDir: string, token: string): Json => {
+  const command = startCommand(startDir, token, tool);
+  if (tool === "gemini") return { hooks: [{ name: "companion-start", type: "command", command, timeout: START_TIMEOUT_S * 1000 }] };
+  if (tool === "antigravity") return { type: "command", command, timeout: START_TIMEOUT_S };
+  return startEntry(startDir, token);
+};
 export const guardEntry = (guardDir: string, token: string) => ({ matcher: HOOK_MATCHER.guard, hooks: [{ type: "command", command: guardCommand(guardDir, token), timeout: GUARD_TIMEOUT_S }] });
 export const waitingEntry = (guardDir: string, token: string) => ({ matcher: HOOK_MATCHER.waiting, hooks: [{ type: "command", command: waitingCommand(guardDir, token), timeout: WAITING_TIMEOUT_S }] });
 
@@ -415,7 +440,7 @@ export class DoneSignals {
     if (kind === "guard") return guardEntryFor(tool, this.guardDir, t);
     // M105: Codex's waiting hook only touches its own marker; Claude Code's hands over its short notice, as before.
     if (kind === "waiting") return tool === "claude" ? waitingEntry(this.guardDir, t) : waitTouchEntry(join(this.dir, markerName(t, tool, true)));
-    if (kind === "start") return startEntry(this.startDir, t);
+    if (kind === "start") return startEntryFor(tool, this.startDir, t);
     if (kind === "feed") return feedEntryFor(tool, this.guardDir, t);
     if (kind === "approve" || kind === "answer") return askEntryFor(tool, this.guardDir, t, kind);
     return doneEntryFor(tool, join(this.dir, markerName(t, tool)));
@@ -425,14 +450,15 @@ export class DoneSignals {
     // M105: a done line of before M105 (<token>) and of today (<token>.<tool>) are both ours.
     if (kind === "done") return ours(entry, join(this.dir, token));
     if (kind === "waiting" && ours(entry, `${join(this.dir, token)}.`)) return true;
-    if (kind === "start") return commandsOf(entry).some((c) => c.startsWith(`s=${shQuote(this.startDir)};`) && c.includes(`/${token}.md"`));
+    // M108: any of the start files of this project's token (each tool prints its own form).
+    if (kind === "start") return commandsOf(entry).some((c) => c.startsWith(`s=${shQuote(this.startDir)};`) && c.includes(`/${token}.`));
     // M114: one of the guard folder's kinds, by what its command names (kindOf), so the guard and answer under one event,
     // or Codex's waiting and approve, are never taken for each other.
     return commandsOf(entry).some((c) => c.startsWith(`d=${shQuote(this.guardDir)};`) && c.includes(`/${token}.`) && kindOf(c) === kind);
   }
   /** M80: the key of the object that holds a hook's event lists: `hooks` for most tools, or Squibby's own named hook at the
    *  top of Antigravity's file. */
-  private holderKey(tool: DoneTool, hook: HookKind): string { return tool === "antigravity" ? ANTIGRAVITY_KEY[hook as "done" | "guard"] : tool === "windsurf" ? "" : "hooks"; }
+  private holderKey(tool: DoneTool, hook: HookKind): string { return tool === "antigravity" ? ANTIGRAVITY_KEY[hook as "done" | "guard" | "start"] : tool === "windsurf" ? "" : "hooks"; }
   /** That object, null when it is not there, or "bad" when it is there but is not an object. M81: Windsurf's
    *  hooks.v1.json is the event lists itself, with no key around them (""). */
   private holder(j: Json, tool: DoneTool, hook: HookKind): Json | null | "bad" {

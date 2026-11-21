@@ -740,7 +740,7 @@ export const S = {
     "look.home": "Home", "look.details": "Details",
     "more.look.extras": "Light and gloss",
     "general.setup": "Finish setting up", "general.start": "Starting", "general.notch": "Notch and Home", "general.tools": "Tools",
-    "fixing.review": "Reviews of changes to your project", "fixing.tools": "Your AI tools", "fixing.done": "Start reviews sooner", "fixing.tries": "Fixes", "fixing.rules": "Rules", "fixing.checks": "Checks", "fixing.undo": "Undo",
+    "fixing.review": "Reviews of changes to your project", "fixing.tools": "Your AI tools", "fixing.done": "Start reviews sooner", "fixing.start": "Your notes at the start", "fixing.tries": "Fixes", "fixing.rules": "Rules", "fixing.checks": "Checks", "fixing.undo": "Undo",
     "flowflow.preview": "", "flowflow.lively": "Movement", "flowflow.look": "Size and name", "flowflow.place": "Where it lives", "flowflow.sound": "Sound",
     "keys.keys": "Keys", "keys.talking": "Talking", "keys.prompt": "Prompt help",
     "privacy.see": `What ${PRODUCT} may see`, "privacy.sharing": "Sharing and calls", "privacy.tools": "Your AI tools", "privacy.memory": "Memory", "privacy.claude": "What goes to Claude", "privacy.copies": "Safety copies and history", "privacy.danger": "Danger zone",
@@ -759,6 +759,8 @@ export const S = {
     "account.plan": `${PRODUCT} pays for the AI it uses. There is nothing else to set up.`,
     "general.tools": `A tool that is off keeps its settings. ${PRODUCT} always fixes; that can't be turned off here.`,
     "fixing.rules": `${PRODUCT} always asks before it sends, pays, deletes or goes live. That can't be turned off.`,
+    // M108 review: the four start rows, together.
+    "fixing.start": "Each AI tool you set this up for is handed your house rules, decisions and fixes that did not work as a session starts. The Memory page shows exactly what each one is handed.",
     "keys.talking": "Your voice is turned into words on this Mac. Nothing you say is kept.",
     // M74: the notch's settings in one place, said plainly.
     "general.notch": `The notch is where ${PRODUCT} shows what it is doing. Point at it for a small panel; click it for Home.`,
@@ -783,7 +785,9 @@ export const S = {
     acknowledgements: { title: "Acknowledgements", also: ["licence", "license", "open source", "legal"] },
     google: { title: "Google connections", also: ["google", "sign in", "gmail", "email", "calendar", "drive", "connect"] },
     preview: { title: "Preview the character", also: ["preview", "resting", "working", "done", "character"] },
-    doneSignal: { title: "When your AI tool says it is done", also: ["done", "finished", "signal", "Claude Code", "Codex", "Cursor", "VS Code", "Copilot", "Antigravity", "Gemini", "Windsurf", "Devin", "Xcode", "settings.local.json", "review", "quiet time", "faster", "sooner", "snapshot", "saved copy", "destructive", "reset", "delete", "waiting", "notch", "session", "start", "notes", "memory", "house rules", "decisions"] },
+    doneSignal: { title: "When your AI tool says it is done", also: ["done", "finished", "signal", "Claude Code", "Codex", "Cursor", "VS Code", "Copilot", "Antigravity", "Gemini", "Windsurf", "Devin", "Xcode", "settings.local.json", "review", "quiet time", "faster", "sooner", "snapshot", "saved copy", "destructive", "reset", "delete", "waiting", "notch", "session"] },
+    // M108 review: the start rows have their own group, Your notes at the start.
+    startNotes: { title: "Your notes at the start", also: ["start", "session start", "notes", "memory", "house rules", "decisions", "Claude Code", "Codex", "Gemini", "Antigravity", "AGENTS.md"] },
     aiTools: { title: "Your AI tools", also: ["connect", "disconnect", "ai tools", "Claude Code", "Codex", "Cursor", "VS Code", "Copilot", "Antigravity", "Gemini", "Windsurf", "Devin", "done", "saved copy", "installed", "found", "live", "show edits live", "edits"] },
     reviewKeep: { title: "How long reviews stay in History", also: ["review", "history", "keep", "days", "privacy", "retention", "delete"] },
     usedOften: { title: "Ways you use most", also: ["reset", "order", "most used", "more ways to ask", "forget", "learned", "habit"] },
@@ -2214,7 +2218,7 @@ export const S = {
     askWhatFor: {
       guard: `Before each shell command or file read, Claude Code hands the command, or the file's name, to ${PRODUCT_S} own folder and waits up to 5 seconds for an answer. ${PRODUCT} saves a copy first when the command is destructive, then answers. When it reaches for saved logins, Claude Code asks you first. The command always runs as you decide; if ${PRODUCT} is closed or slow, Claude Code goes on without waiting. The words are read once and not kept, apart from a short form in the History row's name. ${PRODUCT} never opens the file. ${LOGINS_WHERE}`,
       waiting: `When Claude Code waits for you, it hands its own short notice to ${PRODUCT_S} own folder. Only that notice travels. Nothing is blocked.`,
-      start: `As a session starts, Claude Code shows Claude a file of notes ${PRODUCT} keeps in its own folder: the same lines the Memory page shows under What Claude Code is told at the start. Nothing is read from Claude Code and nothing is sent anywhere. It works while ${PRODUCT} is closed too.`,
+      start: `As a session starts, Claude Code shows Claude a file of notes ${PRODUCT} keeps in its own folder: the same lines the Memory page shows under What your AI tools are told at the start. Nothing is read from Claude Code and nothing is sent anywhere. It works while ${PRODUCT} is closed too.`,
     } as Record<"guard" | "waiting" | "start", string>,
     line: `${PRODUCT} can start a review the moment your AI tool finishes (Claude Code, Codex, Cursor, Copilot, OpenCode, Kiro and the others in Your AI tools), instead of waiting for your files to be quiet. It can also save a copy of the project before your AI tool runs a command that throws work away: the command still runs as your tool decides, and Undo in History brings the files back. Connecting a tool adds one line to its own settings in this project, or one small file of ${PRODUCT_S} own for a tool that reads such files. A tool that cannot tell ${PRODUCT} anything gets nothing written: ${PRODUCT} watches the folder instead. Nothing is added until you say yes.`,
     // M115: and every tool Squibby reaches now (their own names; any is the open tag any tool can run).
@@ -3145,12 +3149,15 @@ export const S = {
   setNeedsProject: "Choose a project folder to change this",
   // M78 (memory that is never lost): the start block on the Memory page, and export and restore.
   m78: {
-    startTitle: "What Claude Code is told at the start",
-    startOn: "Claude Code reads this once as each session starts in this project, and it stays the same for the whole session. Only what your code does not show is in it.",
-    startOff: "Not set up yet. Claude Code is told this only after you set it up.",
+    // M108: the notes go to every AI tool set up for them (Claude Code, Codex, Gemini CLI, Antigravity), so the words name none.
+    startTitle: "What your AI tools are told at the start",
+    startOn: "Each AI tool you set this up for reads it once as a session starts in this project, and it stays the same until the next start. Only what your code does not show is in it.",
+    startOff: "Not set up yet. Your AI tools are told this only after you set it up for them.",
     startSetUp: "Set up in Settings",
-    startEmpty: "Nothing to tell Claude yet. House rules, decisions with their reason, and fixes that did not work show here.",
-    startAsSeen: "Show it exactly as Claude sees it",
+    startEmpty: "Nothing to tell your AI tools yet. House rules, decisions with their reason, and fixes that did not work show here.",
+    startAsSeen: "Show it exactly as your AI tools see it",
+    // M108 review: one view per AI tool set up (tools handed the same notes share one): "Claude Code, Codex and Gemini CLI".
+    startAsSeenBy: (tools: string[]) => `Show it exactly as ${tools.length > 1 ? `${tools.slice(0, -1).join(", ")} and ${tools.at(-1)}` : tools[0]} ${tools.length > 1 ? "see" : "sees"} it`,
     startSearch: "Claude can search the rest of the notes with one command. Claude Code asks you the first time it runs it.",
     startRule: "Change",
     startRuleLabel: (text: string) => `Change this house rule in Settings: ${text}`,
@@ -3202,7 +3209,7 @@ export const S = {
       proven: (n: number) => (n === 1 ? "1 fix proven by its checks." : `${n} fixes proven by their checks.`),
       undone: (n: number) => (n === 1 ? "1 Undo used." : `${n} Undos used.`),
       saved: (n: number, used: number) => `${n === 1 ? "1 copy" : `${n} copies`} saved before a destructive command${used ? `, ${used === 1 ? "1 of them" : `${used} of them`} used by Undo` : ""}.`,
-      decisionsTitle: "Decisions Claude Code is told at the start",
+      decisionsTitle: "Decisions your AI tools are told at the start",
       decisionsNone: "No decisions or house rules are saved for this project yet.",
       againstRules: (n: number) => (n === 1 ? "1 review found a change against your house rules." : `${n} reviews found a change against your house rules.`),
       noneAgainstRules: "No review found a change against your house rules.",
@@ -4539,6 +4546,16 @@ export const S = {
     liveSaid: (tool: string) => `${tool}'s edits will show live in the notch.`,
   },
   // M115: every tool Squibby can reach (aiTools.ts), and Go to the session that needs you (goTo.ts).
+  // M108: the start block for Codex, Gemini CLI and Antigravity. compacts: Codex is also handed it after it sums up a long
+  // conversation (its compact source). Never a claim that the rules are kept: that waits for a real run (M109).
+  m108: {
+    rowTitle: (tool: string) => `Give ${tool} my notes as each session starts`,
+    rowLine: (tool: string, compacts: boolean) => `When ${tool} starts a session here${compacts ? ", and after it sums up a long conversation to make room" : ""}, it is handed up to 30 lines of ${PRODUCT_S} notes: house rules, decisions with their reason, and fixes that did not work. The notes stay the same until the next start.`,
+    askTitle: (tool: string) => `Give ${tool} your notes at the start?`,
+    askWhat: (tool: string, compacts: boolean) => `As a session starts${compacts ? ", and after it sums up a long conversation" : ""}, ${tool} is handed a file of notes ${PRODUCT} keeps in its own folder: the lines the Memory page shows. Nothing is read from ${tool} and nothing is sent anywhere. It works while ${PRODUCT} is closed too.`,
+    checking: (tool: string) => `This is new for ${tool} and is still being checked on a real Mac. The Memory page shows exactly what ${tool} is handed.`,
+    removed: (tool: string) => `Removed. ${tool} is no longer handed your notes here.`,
+  },
   m115: {
     // One plain line per kind of tool, on its row in Your AI tools: what Squibby does with it.
     supports: {
