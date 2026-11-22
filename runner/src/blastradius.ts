@@ -4,6 +4,7 @@
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { extname, join, relative, resolve } from "node:path";
 import { clip, redact } from "./redact.ts";
+import type { Reason } from "./review/rate.ts";
 
 const CODE_EXTS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", "target", ".next", ".turbo", ".cache", "coverage"]);
@@ -226,4 +227,15 @@ export function formatBlastFindings(findings: readonly BlastFinding[]): string[]
       : `Changing ${f.symbol} in ${f.file} may break ${places}${more}, which still pass ${f.callers[0].passedArgs ?? 0} argument${(f.callers[0].passedArgs ?? 0) === 1 ? "" : "s"} instead of ${f.newMin}.`;
     return clip(redact(msg), 240);
   });
+}
+
+/** Converts blast-radius findings into ReviewService Reason rows (uses existing removed_still_used stop kind). */
+export function blastRadiusReasons(projectDir: string, changed: readonly ChangedFile[]): Reason[] {
+  const findings = checkBlastRadius(projectDir, changed);
+  return findings.map((f) => ({
+    kind: "removed_still_used",
+    file: f.callers[0]?.file ?? f.file,
+    line: f.callers[0]?.line,
+    say: formatBlastFindings([f])[0],
+  }));
 }

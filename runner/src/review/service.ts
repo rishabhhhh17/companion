@@ -46,6 +46,7 @@ import { fixPrompt, sendBackText, type ReviewWords } from "./sendback.ts";
 import { parseWords, plainSummary, wordsRequest, type Words } from "./words.ts";
 import { SANDBOXED_WORDS } from "../proof/box.ts";
 import { claimedPassedReason, hasGitRemote, untoldOf, weakenedChecks, withPushRisk, type FileDelta } from "./weakened.ts";
+import { blastRadiusReasons } from "../blastradius.ts";
 import { changedPackages, isManifest } from "./packages.ts";
 import { PACKAGE_NOTES, packageReasons, type PackageLookup } from "./osv.ts";
 import { dirname as dirOf } from "node:path";
@@ -1123,9 +1124,15 @@ export class ReviewService {
       const house = houseRuleReasons(loadRules(b.project).rules, b.files);
       // M77: a check the change weakened comes first of all (review.weakenedChecks, on as usual).
       const weakened = this.deps.setting("review.weakenedChecks") === false ? [] : weakenedChecks(deltas, after);
+      // M118: whole-codebase blast-radius check for breaking export arity changes or removed exports.
+      const blast = blastRadiusReasons(
+        dir,
+        readable.filter((f) => f.kind === "modified" && before[f.file] !== undefined && after[f.file] !== undefined)
+          .map((f) => ({ file: f.file, before: before[f.file], after: after[f.file] })),
+      );
       // M79 (T18): known serious problems in the packages this change added (only names and versions leave the Mac).
       const pk = await this.packagesOf(b, store, abort.signal);
-      const found: Reason[] = [...weakened, ...page.page, ...open.map((x) => x.reason), ...house, ...pk.reasons];
+      const found: Reason[] = [...weakened, ...blast, ...page.page, ...open.map((x) => x.reason), ...house, ...pk.reasons];
       const deleted = b.files.filter((f) => f.kind === "deleted").map((f) => f.file);
       const stillUsed = deleted.length ? importersOf(deleted, liveCode(dir)) : [];
       // M102: the first file that made each touch, for the proof line of a change to a risky area.

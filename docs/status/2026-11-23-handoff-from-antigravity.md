@@ -44,16 +44,16 @@
 ### 2. M118: Whole-codebase blast-radius check (`docs/milestones/M118-blast-radius.md`)
 - **Files:** `runner/src/blastradius.ts`, `runner/test/m118-blast-radius.test.ts` (5 tests, 0 fail).
 - **What it does:** Compares exported function and arrow-function signatures before/after an edit (`diffExports`), ignores newly added optional/default parameters (no false positives), and scans all project TS/JS files locally (`checkBlastRadius`, skipping symlinks, `node_modules`, `.git`, `dist`, `build`, `target`, `.next`, and files > 256 KB) to report broken callers in other files with exact file + line number (`formatBlastFindings`, plain language, redacted, no em dashes).
-- **Next wiring step for Claude:** Hook `checkBlastRadius()` into the automatic review pipeline (`runner/src/review/`) so every review card automatically surfaces cross-file signature breakage alongside build/test/security findings, and expose a UI row on the review card.
+- **Live wiring (completed):** `blastRadiusReasons()` is wired directly into `runner/src/review/service.ts` alongside `weakenedChecks`, using the existing `removed_still_used` stop reason (zero protocol changes needed), so automatic code reviews surface cross-file breakage on the review card automatically.
 
 ### 3. M119: Cross-repo shared context board and multi-agent attention state (`docs/milestones/M119-multi-agent-board.md`)
 - **Files:** `runner/src/sharedboard.ts`, `runner/src/attention.ts`, `runner/test/m119-multi-agent-board.test.ts` (4 tests, 0 fail).
 - **What it does:**
   - `SharedBoard`: Atomic JSON persistence in Squibby's own data folder (never writes user repos' git, rule 10), redacting secrets on write (`redact`, rule 15). `formatBoardForStart(board, currentRepo)` produces a <= 20-line plain-words context block for session-start injection across linked repos (`web`, `api`, `ios`, `infra`).
   - `rankSessions()` + `attentionSummary()`: Ranks multi-agent sessions across tools/repos by urgency (`needs_approval` > `blocked` > `finished_with_issues` > `working` > `idle`), flags attention rings (`ring: true`), and produces a plain one-line notch headline.
-- **Next wiring step for Claude:**
-  - Append `formatBoardForStart()` to M108's session-start context generator when a user has linked multiple repos.
-  - Feed `attentionSummary()` into the notch live-feed panel (M113/M114) so blocked/approval-waiting agent panes get a clear attention ring and one-click jump/approve.
+- **Live wiring (completed + remaining):**
+  - `formatBoardForStart()` is wired directly into `runner/src/memory/sessionstart.ts` (`SessionStartNotes.refresh`), automatically appending active cross-repo tasks and decisions to session-start context for Claude Code, Codex, Gemini CLI, and Antigravity when the board is non-empty (and emitting nothing when empty).
+  - Remaining UI wiring for Claude: feed `attentionSummary()` into the notch live-feed panel (M113/M114) so blocked/approval-waiting agent panes get a clear attention ring and one-click jump/approve.
 
 ---
 

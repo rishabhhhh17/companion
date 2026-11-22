@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkBlastRadius, diffExports, formatBlastFindings } from "../src/blastradius.ts";
+import { blastRadiusReasons, checkBlastRadius, diffExports, formatBlastFindings } from "../src/blastradius.ts";
 
 function makeTempProject(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "m118-blast-"));
@@ -82,6 +82,11 @@ describe("M118 checkBlastRadius across the whole codebase", () => {
       expect(findings.length).toBe(1);
       expect(findings[0].kind).toBe("removed");
       expect(findings[0].callers.map((c) => c.file)).toEqual(["routes/login.ts"]);
+      const reasons = blastRadiusReasons(dir, [{ file: "lib/auth.ts", before, after }]);
+      expect(reasons.length).toBe(1);
+      expect(reasons[0].kind).toBe("removed_still_used");
+      expect(reasons[0].file).toBe("routes/login.ts");
+      expect(reasons[0].line).toBe(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
       rmSync(outside, { recursive: true, force: true });

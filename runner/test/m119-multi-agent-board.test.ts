@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SharedBoard, formatBoardForStart } from "../src/sharedboard.ts";
 import { attentionSummary, rankSessions, type AgentSession } from "../src/attention.ts";
+import { DoneSignals } from "../src/donesignal.ts";
+import { SessionStartNotes } from "../src/memory/sessionstart.ts";
 
 describe("M119 cross-repo shared context board", () => {
   test("persists tasks and decisions across repos and redacts secrets", () => {
@@ -41,6 +43,26 @@ describe("M119 cross-repo shared context board", () => {
       }
       const block = formatBoardForStart(board.snapshot(), "web");
       expect(block.split("\n").length).toBeLessThanOrEqual(20);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("SessionStartNotes.refresh appends shared cross-repo board when non-empty and stays quiet when empty", () => {
+    const dir = mkdtempSync(join(tmpdir(), "m119-start-"));
+    const data = join(dir, "data");
+    const proj = join(dir, "web");
+    try {
+      const signals = new DoneSignals(data);
+      const start = new SessionStartNotes({ data, signals, memoryDir: join(dir, "mem") });
+      const emptyView = start.refresh(proj);
+      expect(emptyView.text).not.toContain("Shared work across repos");
+
+      const board = new SharedBoard(data);
+      board.upsertTask({ id: "T1", repo: "api", title: "Ship billing v2", status: "in_progress", owner: "claude" });
+      const filledView = start.refresh(proj);
+      expect(filledView.text).toContain("Shared work across repos (current: web):");
+      expect(filledView.text).toContain("api: Ship billing v2");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
