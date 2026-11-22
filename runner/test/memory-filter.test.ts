@@ -34,3 +34,14 @@ describe("health, money, relationships and moods are refused, even when worded d
 describe("personal contact details and oversize lines are refused", () => {
   test.each(["Email is maya@example.com", "Call 415-555-0134", "x".repeat(400), "", "   "])("%s", (t) => no(t));
 });
+
+// Bug hunt 20 Nov 2026: money and health worded plainly slipped through.
+describe("plain money and health lines are refused (hunt 20 Nov)", () => {
+  test.each([
+    "I owe $3,000 on my card", "Short on money this month", "Paid 40k a year", "Has the flu this week", "Allergic to penicillin", "Feeling tired all the time",
+    "Owes his brother money", "Makes €4000 a month", "Had covid last week", "Back pain when sitting",
+  ])("%s", no);
+});
+describe("project facts about payments stay fine (hunt 20 Nov)", () => {
+  test.each(["Uses Stripe for payments", "The payment page is /checkout", "Payments go through Dodo", "Painted the header blue"])("%s", ok);
+});

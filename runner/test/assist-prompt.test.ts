@@ -228,3 +228,17 @@ describe("Prompt help settings", () => {
     expect(odd.calls[0].extra).toContain("studio-site");
   });
 });
+
+// Hunt 20 Nov 2026: Prompt help stopped or failed after the API took the request still books what it likely cost.
+describe("a paid request that ends badly is still booked (hunt 20 Nov)", () => {
+  test("the cost the lane says it spent goes into the day's count", async () => {
+    const { withCost } = await import("../src/spent.ts");
+    const booked: number[] = [];
+    const events: Event[] = [];
+    const fast = { async run() { throw withCost(new Error("claude_stopped:overloaded: busy"), 0.0123); } } as unknown as FastLike;
+    const svc = new AssistService({ fast, vision: { locate: async () => ({ point: null, costUsd: 0 }) }, images: new ImageStore(), emit: (e) => events.push(e), spend: { room: () => 10, book: (_p, usd) => booked.push(usd) } });
+    await svc.handle({ v: 1, id: "c1", type: "assist.prompt", req: "r1", text: "make this better", app: "x", target: "x", style: "clear" } as never);
+    expect(booked).toEqual([0.0123]);
+    expect(events.some((e) => e.type === "assist.error")).toBe(true);
+  });
+});

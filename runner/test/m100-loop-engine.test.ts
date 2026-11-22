@@ -252,6 +252,14 @@ describe("money", () => {
     expect(turns[0].usage).toEqual({ in: 2000, cacheRead: 0, out: 200 });
     expect(turns[0].sessionId).toMatch(/^loop-/);
   });
+  test("hunt 20 Nov: an answer the server billed but that could not be read is still booked", async () => {
+    const fetchFn = (async () => new Response("{not json", { headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
+    const booked: number[] = [];
+    const err = await drain(new MessagesLoopEngine({ auth: async () => ({ token: TOKEN, base: BASE }), fetchFn }).start(opts({ unbilled: (u) => booked.push(u) }))).catch((e) => e as Error);
+    expect(String((err as Error).message)).toMatch(/could not be read/);
+    expect(booked.length).toBe(1);
+    expect(booked[0]).toBeGreaterThan(0);
+  });
   test("the server's 'used up' answer is a spending limit; a refused sign in is said without the token", async () => {
     const used = standIn([{ status: 402, error: { type: "billing_error", message: "This month's included use is used up." } }]);
     await expect(drain(new MessagesLoopEngine({ auth: async () => ({ token: TOKEN, base: BASE }), fetchFn: used.fetchFn }).start(opts()))).rejects.toThrow(/^error_max_budget_usd: This month/);

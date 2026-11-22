@@ -92,7 +92,9 @@ export function hoverLine(m: Model, now: number, o: LineInput = {}): HoverLine |
   if (o.note) return line(o.note, "note");
   if (m.connected === "none") return line(L.notReady, "notConnected");
   if (o.job) return line(o.job, "working");
-  if (m.approvals.length > 0) return line(L.questions(m.approvals.length), "questions");
+  // Hunt 20 Nov: an AI tool's waiting ask (M114) is a question too.
+  const asks = m.approvals.length + (m.toolAsks?.length ?? 0);
+  if (asks > 0) return line(L.questions(asks), "questions");
   if (claudeWaitsHere(m)) return line(waitsWords(m), "waiting");
   const project = projectOf(m);
   if (!nameOf(project)) return null;
@@ -144,7 +146,7 @@ export function hoverAction(m: Model, now: number, o: ActionInput): HoverAction 
   if (o.layout === "job") return make("stop");
   if (!m.runnerUp) return make("seeWhy");
   if (m.connected === "none") return make("home");
-  if (m.approvals.length > 0) return make("answer");
+  if (m.approvals.length > 0 || (m.toolAsks?.length ?? 0) > 0) return make("answer");
   // M105: Codex waiting says so in Codex's name (its question is in Codex; Home says where to answer).
   if (claudeWaitsHere(m)) return waitingTool(m) === "claude" ? make("claude") : { ...make("claude"), label: S.m105.waitingAct(S.doneSignal.tool[waitingTool(m)]) };
   const project = projectOf(m);

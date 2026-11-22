@@ -10,6 +10,30 @@ export const normalize = (cmd: string): string => cmd.replace(/\\\r?\n/g, "");
 // this quoting always asks at least (hasAnsiQuote), since such an escape can spell a word no reader sees.
 const ANSI: Record<string, string> = { "\\": "\\", "'": "'", '"': '"', "?": "?", n: "\n", t: "\t", r: "\r" };
 
+// Brace spellings expand to every alternative ({a,b} and nesting), capped so a crafted line cannot blow up.
+export function expandBraces(s: string, out: string[] = [], depth = 0): string[] {
+  if (out.length > 64 || depth > 8) return out;
+  let open = -1, level = 0, comma = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === "{") { if (level === 0) { open = i; comma = false; } level++; }
+    else if (c === "}" && level > 0) {
+      level--;
+      if (level === 0 && open >= 0 && comma) {
+        const inner = s.slice(open + 1, i), parts: string[] = [];
+        let lv = 0, start = 0;
+        for (let j = 0; j < inner.length; j++) { if (inner[j] === "{") lv++; else if (inner[j] === "}") lv--; else if (inner[j] === "," && lv === 0) { parts.push(inner.slice(start, j)); start = j + 1; } }
+        parts.push(inner.slice(start));
+        for (const part of parts) expandBraces(s.slice(0, open) + part + s.slice(i + 1), out, depth + 1);
+        return out;
+      }
+      if (level === 0) open = -1;
+    } else if (c === "," && level === 1) comma = true;
+  }
+  out.push(s);
+  return out;
+}
+
 // Split into commands and words. Quote aware; `$(...)`, backticks, subshells, pipes and `;` all start a new command.
 export function parseShell(raw: string): string[][] {
   const cmd = normalize(raw);
@@ -17,8 +41,9 @@ export function parseShell(raw: string): string[][] {
   let words: string[] = [];
   let word = "";
   let has = false;
+  let brace = false;   // an unquoted { inside this word: the shell expands {a,b} into separate words (Hunt, 20 Nov 2026)
   let q: "" | "'" | '"' | "$" = "";   // "$": inside $'...'
-  const endWord = () => { if (has) words.push(word); word = ""; has = false; };
+  const endWord = () => { if (has) { if (brace && /\{[^]*,[^]*\}/.test(word)) words.push(...expandBraces(word)); else words.push(word); } word = ""; has = false; brace = false; };
   const endCmd = () => { endWord(); if (words.length) commands.push(words); words = []; };
   for (let i = 0; i < cmd.length; i++) {
     const c = cmd[i];
@@ -40,6 +65,9 @@ export function parseShell(raw: string): string[][] {
     if (c === "'" || c === '"') { q = c; has = true; continue; }
     if (c === "\\" && i + 1 < cmd.length) { word += cmd[++i]; has = true; continue; }
     if (/\s/.test(c) && c !== "\n") { endWord(); continue; }
+    // { starts a group only as its own word ("{ cmd; }"); inside or at the start of a word it is brace expansion.
+    if (c === "{" && (has || (i + 1 < cmd.length && !/\s/.test(cmd[i + 1])))) { word += c; has = true; brace = true; continue; }
+    if (c === "}" && has) { word += c; continue; }
     if (c === "\n" || c === ";" || c === "|" || c === "&" || c === "(" || c === ")" || c === "{" || c === "}") { endCmd(); continue; }
     word += c; has = true;
   }

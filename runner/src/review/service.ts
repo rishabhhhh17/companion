@@ -922,15 +922,15 @@ export class ReviewService {
 
   /** M104: what the fix's task calls once its last change is saved: each problem of this review checked again by its rules
    *  (no model, no script) against that version. Those gone are marked; a review with nothing still there is closed, and
-   *  one with something still there stays for Try again. Null when there is nothing to say (no problems, or the versions
-   *  are gone). Never throws: the receipt goes out without it. */
+   *  one with something still there stays for Try again. Null when there is nothing to check; "unchecked" when the versions
+   *  are gone or a read failed (never counted as proven). Never throws: the receipt goes out without it. */
   private fixCheckOf(rec: Reviewed): FixCheck {
     return async ({ after, proof }) => {
       try {
         const says = rec.words.reasons.map((r) => redact(r.say));
         if (!says.length || !rec.rechecks.length) return null;
         const store = this.deps.store(rec.batch.project);
-        if (!store.has(after) || !store.has(rec.batch.from) || !store.has(rec.batch.to)) return null;
+        if (!store.has(after) || !store.has(rec.batch.from) || !store.has(rec.batch.to)) return "unchecked";
         const want = new Set(recheckFiles(rec.rechecks));
         const text = want.size ? await store.readFiles(after, (x) => want.has(x)) : {};
         const migrations = rec.rechecks.some((t) => t.how === "table") ? await store.readFiles(after, (x) => MIGRATION.test(x)) : {};
@@ -942,7 +942,7 @@ export class ReviewService {
         const findings = findingsOf(says.slice(0, outcomes.length), outcomes);
         if (!stillCount(findings) && this.reviewed.get(rec.batch.id) === rec) this.reviewed.delete(rec.batch.id);
         return { batch: rec.batch.id, findings };
-      } catch { return null; }
+      } catch { return "unchecked"; }
     };
   }
 

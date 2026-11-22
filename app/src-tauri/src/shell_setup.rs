@@ -162,7 +162,8 @@ fn google_push(app: &AppHandle) {
 
 /// Saves the person's own key into the Keychain. The page clears its box right after; nothing here is ever logged.
 #[tauri::command]
-fn save_api_key(app: AppHandle, key: String) -> Result<(), String> {
+fn save_api_key(app: AppHandle, window: tauri::WebviewWindow, key: String) -> Result<(), String> {
+    settings::only_card(window.label()).map_err(|e| e.to_string())?;   // hunt 20 Nov: the key is changed from Home only
     keystore::save(&key, &data_dir())?;
     log("api_key_saved", json!({}));
     hand_key_over(&app, Some(&key));

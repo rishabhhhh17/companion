@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { DirectFastLane, DirectVisionLane, type DirectAuth } from "../src/direct.ts";
+import { DirectFastLane, DirectVisionLane, spentOf, type DirectAuth } from "../src/direct.ts";
 import { DESCRIBE_SYSTEM, FAST_SYSTEM, VISION_SYSTEM, wrapUserText, type Image } from "../src/lanes.ts";
 import { estimateUsd, MODELS } from "../src/models.ts";
 import { PRODUCT_S } from "../src/names.ts";
@@ -152,5 +152,35 @@ describe("failures, Stop, and what is never kept", () => {
   test("the direct lanes never write a picture or a reply to disk: no file system, no in memory drive, no saved conversation", () => {
     const src = readFileSync(new URL("../src/direct.ts", import.meta.url), "utf8");
     for (const banned of ["node:fs", "writeFile", "ramdisk", "persistSession", "console.log", "claude-agent-sdk"]) expect(src, banned).not.toContain(banned);
+  });
+});
+
+// Hunt 20 Nov 2026: a request the API took and then was stopped, or failed part way, was still paid for. The error carries
+// what it likely cost, so the caller books it against the daily limit instead of nothing.
+describe("a sent request that ends badly still carries its cost (hunt 20 Nov)", () => {
+  const M = "claude-sonnet-5-5";
+  test("Stop after the reply started: the error says what the tokens so far cost", async () => {
+    const ac = new AbortController();
+    const body = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(enc.encode(sse([{ type: "message_start", message: { usage: { input_tokens: 1000, output_tokens: 1 } } }, { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hel" } }]))); } });
+    const r = rig(() => new Response(body, { headers: { "content-type": "text/event-stream" } }));
+    const p = new DirectFastLane({ ...r.deps, model: M }).run({ text: "x" }, () => ac.abort(), ac.signal);
+    const e: any = await p.catch((x) => x);
+    expect(e).toBeInstanceOf(Error);
+    expect(spentOf(e)).toBeGreaterThanOrEqual(estimateUsd(M, { input_tokens: 1000, output_tokens: 1 }) - 1e-9);
+  });
+  test("an error event mid reply carries the cost so far", async () => {
+    const r = rig(() => new Response(sse([{ type: "message_start", message: { usage: { input_tokens: 500, output_tokens: 1 } } }, { type: "error", error: { type: "overloaded_error", message: "busy" } }]), { headers: { "content-type": "text/event-stream" } }));
+    const e: any = await new DirectFastLane({ ...r.deps, model: M }).run({ text: "x" }, () => {}, sig()).catch((x) => x);
+    expect(spentOf(e)).toBeGreaterThan(0);
+  });
+  test("a full reply that said nothing about the picture is still paid for", async () => {
+    const r = rig(() => json({ content: [{ type: "text", text: "  " }], usage: { input_tokens: 2000, output_tokens: 3 } }));
+    const e: any = await new DirectVisionLane({ ...r.deps, model: M }).describe({ images: [IMG], question: "what is it" } as never, sig()).catch((x) => x);
+    expect(spentOf(e)).toBeCloseTo(estimateUsd(M, { input_tokens: 2000, output_tokens: 3 }), 6);
+  });
+  test("a request the API refused costs nothing", async () => {
+    const r = rig(() => json({ error: { type: "invalid_request_error", message: "bad" } }, 400));
+    const e: any = await new DirectFastLane({ ...r.deps, model: M }).run({ text: "x" }, () => {}, sig()).catch((x) => x);
+    expect(spentOf(e)).toBe(0);
   });
 });

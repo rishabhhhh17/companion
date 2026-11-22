@@ -70,7 +70,10 @@ fn shareable() -> Result<Retained<SCShareableContent>, String> {
         } else {
             // Keep the object alive past the callback.
             let kept = unsafe { Retained::retain(content) };
-            let _ = tx.send(Ok(kept.map_or(0, |k| Retained::into_raw(k) as usize)));
+            // Nobody listening any more (the wait timed out): taken back and released, never leaked (hunt 20 Nov).
+            if let Err(mpsc::SendError(Ok(p))) = tx.send(Ok(kept.map_or(0, |k| Retained::into_raw(k) as usize))) {
+                if p != 0 { drop(unsafe { Retained::from_raw(p as *mut SCShareableContent) }); }
+            }
         }
     });
     unsafe { SCShareableContent::getShareableContentWithCompletionHandler(&block) };
@@ -151,7 +154,11 @@ fn capture_display(exclude: &[R], small: Option<usize>) -> Result<(Frame, R), St
         } else {
             // Keep the picture alive past the callback.
             let kept: Option<CFRetained<CGImage>> = unsafe { CFRetained::retain(std::ptr::NonNull::new_unchecked(img)) }.into();
-            let _ = tx.send(Ok(kept.map_or(0, |k| CFRetained::into_raw(k).as_ptr() as usize)));
+            // Nobody listening any more (the wait timed out): the full screen picture is taken back and released, never
+            // leaked (hunt 20 Nov).
+            if let Err(mpsc::SendError(Ok(p))) = tx.send(Ok(kept.map_or(0, |k| CFRetained::into_raw(k).as_ptr() as usize))) {
+                if p != 0 { drop(unsafe { CFRetained::from_raw(std::ptr::NonNull::new_unchecked(p as *mut CGImage)) }); }
+            }
         }
     });
     unsafe { SCScreenshotManager::captureImageWithFilter_configuration_completionHandler(&filter, &config, Some(&block)) };
@@ -253,5 +260,18 @@ mod pointer_tests {
         // Your turn reads it sixty times a second from its own thread. It used to ask AppKit's screen list from there.
         let p = std::thread::spawn(super::pointer).join().expect("reading the pointer must not panic off the main thread");
         assert!(p.x.is_finite() && p.y.is_finite());
+    }
+}
+
+#[cfg(test)]
+mod late_answer_tests {
+    #[test]
+    fn a_picture_or_screen_list_that_comes_after_the_timeout_is_released_not_leaked() {
+        // Hunt 20 Nov 2026: a completion that fires after recv_timeout gave up used to turn the full screen picture into a raw
+        // pointer nobody ever released. Every completion block now takes it back when nobody is listening any more.
+        let src = include_str!("macos_see.rs");
+        let src = &src[..src.find("#[cfg(test)]").unwrap()];
+        assert!(!src.contains("let _ = tx.send(Ok("), "no raw pointer is sent without handling a failed send");
+        assert_eq!(src.matches("if let Err(mpsc::SendError(Ok(p))) = tx.send(Ok(").count(), 2, "both completion blocks release what nobody took");
     }
 }

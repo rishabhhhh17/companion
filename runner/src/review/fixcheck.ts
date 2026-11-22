@@ -15,7 +15,9 @@ export type FixFinding = { say: string; outcome: FixOutcome };
 /** What the proof ladder said about the fix: the review's own "the checks failed" problems are answered by it. */
 export type FixProof = "passed" | "partial" | "failed" | "skipped";
 /** What Fix it hands the task that runs it: called once the fix's last change is saved (after), with its proof. */
-export type FixCheck = (o: { after: string; proof: FixProof }) => Promise<{ batch: string; findings: FixFinding[] } | null>;
+/** Null: nothing to check. "unchecked": there was something to check but the recheck could not run (a version gone, a
+ *  read failed), so the fix must not count as proven on it (hunt 20 Nov). */
+export type FixCheck = (o: { after: string; proof: FixProof }) => Promise<{ batch: string; findings: FixFinding[] } | null | "unchecked">;
 
 /** Problems that are about the checks, not a place in the code: the fix's own proof answers them. */
 const ABOUT_CHECKS = new Set(["checks_failed", "risky_with_failing_checks", "claimed_passed"]);

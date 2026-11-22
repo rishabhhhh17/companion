@@ -74,7 +74,8 @@ fn showme_stop_rest(app: &AppHandle) {
 /// to stop changing (showme::wait_to_settle). The page asks for it only when its settings say so (anywhere.ts waitsForPage).
 /// `mode`: an everyday stuck moment's look (everyday.rs): "everyday" or "recheck"; anything else is an ordinary question.
 /// `before`: with "recheck", the spreadsheet error code the first look read (only one of the table's codes).
-fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, settle: Option<bool>, mode: Option<String>, before: Option<String>) {
+fn showme_start(app: AppHandle, window: tauri::WebviewWindow, question: String, all_screens: Option<bool>, settle: Option<bool>, mode: Option<String>, before: Option<String>) {
+    if settings::only_card(window.label()).is_err() { return; }   // hunt 20 Nov: a capture starts from Home only
     let mode = everyday::mode(mode.as_deref());
     let before = everyday::before_code(before.as_deref());
     // Nothing of Companion can be seen (hidden, with Home closed): the light could not be seen either, so nothing is looked
@@ -465,7 +466,8 @@ fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str
 /// sends, pays, deletes, publishes, signs in or connects an account: the label is checked again on the real element at the
 /// moment of pressing.
 #[tauri::command]
-fn do_it_for_me(app: AppHandle) {
+fn do_it_for_me(app: AppHandle, window: tauri::WebviewWindow) {
+    if settings::only_card(window.label()).is_err() { return; }   // hunt 20 Nov: a press in another app starts from Home only
     let Some((target, label)) = TURN.lock().unwrap_or_else(|e| e.into_inner()).clone() else { return };
     let gen = TURN_GEN.load(std::sync::atomic::Ordering::SeqCst);
     // Off the main thread: an app that is not answering can hold Accessibility for seconds, and Stop must still work.

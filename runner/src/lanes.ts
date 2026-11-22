@@ -3,6 +3,7 @@
 // pointer tool. Plumbing for M5 and M6; untried against real Claude until then.
 // Images are held in memory only and never written to disk (rule 5).
 
+import { spentOf } from "./spent.ts";
 import { tmpdir } from "node:os";
 import { ensure as ensureShotDrive, wipe as wipeShotDrive } from "./ramdisk.ts";
 import { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
@@ -564,6 +565,7 @@ export class AssistService {
       const question = cmd.noQuestion ? undefined : parsed.question;
       this.emit({ type: "assist.prompt.done", req: cmd.req, text: final, ...(question ? { question, ...(parsed.options ? { options: parsed.options } : {}) } : {}), diff: wordDiff(cmd.text, final), usdEstimate: round(cost), handback: handBack(adapter, this.o.settings?.get("ph.handBack")) });
     } catch (e) {
+      book(spentOf(e));   // a request taken and then stopped or failed was still paid for (hunt 20 Nov)
       // Claude out of reach, or a failed request of a known kind, is named (reach.ts), so the card says it in plain words;
       // Prompt help has no Try again, so it says to ask again.
       const msg = String((e as Error).message ?? e);
@@ -608,6 +610,7 @@ export class AssistService {
       // And, when the question asked for it, whether the step before worked (Did that work? only when unsure).
       this.emit({ type: "assist.point", req: cmd.req, step: 1, ...list[0], ...(list.length > 1 ? { targets: list } : {}), ...(r.lastStepWorked ? { lastStepWorked: r.lastStepWorked } : {}) });
     } catch (e) {
+      this.book(cmd.project, spentOf(e));
       const msg = String((e as Error).message ?? e);
       this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : ac.signal.aborted ? "cancelled" : isClaudeStop(msg) ? withoutTryAgain(msg) : `Could not find it (${msg})` });
     } finally {
@@ -636,7 +639,7 @@ export class AssistService {
       this.book(cmd.project, cost);
       labels = parseLabels(got.text, { w: image.w ?? cmd.image.w, h: image.h ?? cmd.image.h });
       if (!labels?.length) failure = "No clear labels came back";
-    } catch (e) { failure = String((e as Error).message ?? e); }
+    } catch (e) { this.book(cmd.project, spentOf(e)); failure = String((e as Error).message ?? e); }
     finally { clearTimeout(timer); dropAll(); this.active.delete(cmd.req); this.kind.delete(cmd.req); }
     if (ac.signal.aborted && !timedOut) return this.emit({ type: "assist.error", req: cmd.req, reason: "cancelled" });
     if (!labels?.length) return this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to label that. Try again." : isClaudeStop(failure) ? withoutTryAgain(failure) : `Could not label it (${failure})` });
@@ -664,7 +667,7 @@ export class AssistService {
       this.book(cmd.project, cost);
       answer = parseEveryday(got.text, pictures);
       if (!answer) failure = "No clear answer came back";
-    } catch (e) { failure = String((e as Error).message ?? e); }
+    } catch (e) { this.book(cmd.project, spentOf(e)); failure = String((e as Error).message ?? e); }
     finally { clearTimeout(timer); dropAll(); this.active.delete(cmd.req); this.kind.delete(cmd.req); }
     if (ac.signal.aborted && !timedOut) return this.emit({ type: "assist.error", req: cmd.req, reason: "cancelled" });
     const failed = (what: string) => this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to find that. Try again." : isClaudeStop(failure) ? withoutTryAgain(failure) : `${what} (${failure})` });

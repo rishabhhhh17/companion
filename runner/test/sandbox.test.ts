@@ -26,7 +26,7 @@ describe("places agents may never read", () => {
   });
   // The deploy tools' logins, the shell's start up files (they often export API keys) and the other tools' key files.
   test("deploy tool logins, shell start up files and other key files", () => {
-    for (const s of ["Library/Application Support/com.vercel.cli", ".local/share/com.vercel.cli", "Library/Preferences/netlify", ".config/netlify", ".config/.wrangler", ".wrangler", ".config/configstore", ".supabase", ".config/stripe", ".cargo/credentials.toml", ".cargo/credentials", ".pgpass", ".zshrc", ".zprofile", ".zshenv", ".bash_profile", ".bashrc", ".profile"]) expect(p, s).toContain(`${HOME}/${s}`);
+    for (const s of ["Library/Application Support/com.vercel.cli", ".local/share/com.vercel.cli", "Library/Preferences/netlify", ".config/netlify", ".config/.wrangler", ".wrangler", ".config/configstore", ".supabase", ".config/stripe", ".cargo/credentials.toml", ".cargo/credentials", ".gem/credentials", ".pgpass", ".zshrc", ".zprofile", ".zshenv", ".bash_profile", ".bashrc", ".profile"]) expect(p, s).toContain(`${HOME}/${s}`);
   });
   test("shell history", () => { expect(p).toContain(`${HOME}/.zsh_history`); expect(p).toContain(`${HOME}/.bash_history`); });
   test("every entry is a full path inside the home folder", () => { for (const x of p) { expect(x.startsWith(HOME + "/"), x).toBe(true); expect(x.includes("..")).toBe(false); } });
@@ -59,7 +59,9 @@ describe("the sandbox settings", () => {
   test("the package caches of Go, Rust, Maven, Gradle, Swift and Xcode are writable, and only those", () => {
     const w = s.filesystem.allowWrite as string[];
     for (const c of ["go/pkg/mod", ".cargo/registry", ".cargo/git", ".cargo/.package-cache", ".cargo/.global-cache", ".m2/repository", ".gradle/caches", ".gradle/native", ".gradle/daemon", "Library/Caches", "Library/Developer/Xcode/DerivedData"]) expect(w, c).toContain(`${HOME}/${c}`);
-    for (const bad of ["go", ".cargo", ".rustup", ".m2", ".gradle", ".swiftpm", "Library/Developer", "Library/Developer/Xcode", ".cargo/credentials.toml", ".cargo/config.toml", ".m2/settings.xml", ".gradle/gradle.properties", ".gradle/init.d", "Library/org.swift.swiftpm", "Library/org.swift.swiftpm/configuration", "Library/org.swift.swiftpm/security", ".gradle/wrapper", ".gradle/wrapper/dists", ".m2/wrapper", ".m2/wrapper/dists", ".m2/settings-security.xml"]) expect(w, bad).not.toContain(`${HOME}/${bad}`);
+    for (const bad of ["go", ".cargo", ".rustup", ".m2", ".gradle", ".swiftpm", "Library/Developer", "Library/Developer/Xcode", ".cargo/credentials.toml", ".cargo/config.toml", ".m2/settings.xml", ".gradle/gradle.properties", ".gradle/init.d", "Library/org.swift.swiftpm", "Library/org.swift.swiftpm/configuration", "Library/org.swift.swiftpm/security", ".gradle/wrapper", ".gradle/wrapper/dists", ".m2/wrapper", ".m2/wrapper/dists", ".m2/settings-security.xml", ".gem", ".gem/credentials"]) expect(w, bad).not.toContain(`${HOME}/${bad}`);
+    // Hunt 20 Nov: RubyGems downloads only, never the folder holding its push key.
+    for (const ok of [".gem/ruby", ".gem/specs"]) expect(w).toContain(`${HOME}/${ok}`);
     expect(w.every((x) => x.startsWith(HOME + "/") && !x.includes(".."))).toBe(true);
   });
   test("the places those tools download from are open, and not a whole code host", () => {
