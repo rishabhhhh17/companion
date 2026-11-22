@@ -74,31 +74,31 @@ From the founder's Instagram Reel (for both non-engineers and engineers):
   - `m117/cost-guard` (M117 money and fines check) — **merged cleanly** into `m48/launch` (resolved 9 additive conflicts; fixed one machine-word lint hit in `app/src/strings.ts`: `hooks.server.ts` -> `your SvelteKit server file`; verified across runner, app, DOM, Vite build, and 1,437 Rust tests)
 - **Still parked (not merged yet):**
   - `m116/accounts` (accounts and payments + account deletion fix)
-- **Website (`site3/final` -> `site-preview`):** Untouched in this session per founder's request ("Don't worry about the website right now"). Staged `site3/upload/` (fun front page, restored Trust pins, privacy/terms) is still waiting on the founder's "go", followed by Round 5 across all other pages.
+- **Website (`getsquibby.com`):** **DEPLOYED LIVE** on Cloudflare (Version ID `445a0253-6e16-4845-ac81-34b2edee481d`). Full source (`final/` + `waitlist/`) backed up out of `/tmp` into `/Users/rishabhkapadia17/Developer/companion-wt/site-preview/source/`.
 - **Founder-only items:** Apple Developer account / signing, Anthropic written agreement, and running the real Mac session (`M109`).
 
 ---
 
-## Coframe Website Audit (`getsquibby.com` — Score 68/100) & Action Plan
+## Coframe Website Audit (`getsquibby.com` — Score 68/100) & Live Deploy Summary
 
 The founder ran `getsquibby.com` through Coframe (`coframe.com`). Scores: **Overall 68/100** (Conversion 66, Accessibility 96, Search & AI search 82, **Agent usability 42**, Growth stack 0, Speed 96).
 
-### High-priority website fixes applied & QA'd in `site3/final` + `site3/upload/` (23 Nov 2026 — NOT deployed live yet; design language untouched)
+### Website fixes applied, QA'd, backed up, and DEPLOYED LIVE (23 Nov 2026)
 1. **Technical SEO & AI-Agent usability (all 14 pages via `tools/apply-chrome.mjs` & `tools/pack.mjs`):**
    - Set `"site": "https://getsquibby.com"` in `tools/chrome/meta.json` (plus added `privacy` and `terms` rows) -> added `<link rel="canonical">`, `<meta property="og:url">`, and absolute `og:image` (`https://getsquibby.com/assets/og-card.png`) to every HTML page.
    - Created `site3/final/llms.txt` (packed into `site3/upload/`) and added `<link rel="alternate" type="text/markdown" href="https://getsquibby.com/llms.txt">` on every page.
    - Upgraded `index.html` JSON-LD to `@graph` (`Organization` + `SoftwareApplication` with `url`, `email`, `founder`, Free/Pro offers).
    - Updated `tools/chrome/footer.html` with `privacy.html`, `terms.html`, and `mailto:hello@getsquibby.com`.
    - Fixed the 3 axe-core `label-content-name-mismatch` elements (`stopkey` in `end.html`, `.bar__clock` in `header.html`, `.demo-notch` in `index.html`).
-   - **Founder Cloudflare toggle still needed:** allow verified AI assistants (`ChatGPT-User`, `Claude-User`, `Perplexity-User`) through Cloudflare Bot Fight Mode in the Cloudflare dashboard.
-2. **Conversion upgrades on `index.html` (strictly using existing `tokens.css` & design language across all 6 looks):**
+   - **Cloudflare AI crawlers verified:** Founder confirmed `ChatGPT-User`, `Claude-User`, and `Perplexity-User` are allowed on `getsquibby.com`.
+2. **Conversion & visual upgrades (`index.html`, `pricing.html`, `assets/home.css`, `assets/home.js`):**
    - Updated hero primary CTA to `"join the free mac beta"`, added right-arrow SVG to `"see what it does"`, surfaced `"free to start, pro $15 a month."` right in `.hero__fine`.
-   - Added `#try-check` right below the hero (`assets/home.css` + `assets/home.js`):
-     - Interactive 3-card claim picker (`"your ai said done. pick what it did."`: payment file, settings file, admin page -> live 3-step receipt + plain verdict + why).
-     - Side-by-side comparison table (`"believing done, or checking it."`: `your ai alone` vs `with squibby`).
+   - Built `#try-check` right below the hero in Squibby's own frosted-glass double-bezel visual system (concentric radius, soft hairline capsule divider, 3 product stages with Squibby's 7-ray gradients, 40px+ interactive claim picker pills for payment file / settings file / admin page, and the `"believing done, or checking it."` comparison table).
    - Added frosted mobile sticky bottom CTA bar (`.mob-cta`, `< 48rem`).
-   - Verified with `bun tools/final-qa.mjs index`: **0 console/CSP errors, 0 overflow, 0 broken links, all 6 looks + reduced motion green**.
-   - **Not deployed yet:** `site3/upload/` is packed (20 entries including `llms.txt`); sync into `site-preview/public`, run `version-assets.py`, and deploy via `wrangler.live.jsonc` when the founder gives the go.
+   - Fixed `pricing.html` stale `"one key, up to 3 macs"` lines (`LEGAL-OPEN.md` #44 resolved -> `"one account, sign in with google"` matching `terms.html`).
+   - Verified with `bun tools/final-qa.mjs index pricing how features proof`: **0 console/CSP errors, 0 overflow, 0 broken links, all 6 looks + reduced motion green**.
+   - **Backed up & deployed live:** Source synced to `/Users/rishabhkapadia17/Developer/companion-wt/site-preview/source/` (`final/` + `waitlist/`); `site-preview/public/` versioned (14 pages) and deployed live via `wrangler.live.jsonc` (Version ID `445a0253-6e16-4845-ac81-34b2edee481d`).
+   - **Waitlist KV:** `WAITLIST` (`d9f2564e9e08457390a70880337342fd`) checked live — 1 test signup (`rishabhkapadia2007@gmail.com`). Export commands documented for the founder.
 3. **Coframe suggestions to REJECT (would break Squibby's honesty rules):**
    - **Never add fake testimonials, user counts, ratings, or customer logos.** Keep the honest small print on the 87% practice-project stat and link it to `/proof`.
 
