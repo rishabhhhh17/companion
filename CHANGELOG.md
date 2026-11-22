@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Whole-codebase blast-radius check, cross-repo board, and multi-agent attention: 23 Nov 2026
+
+- **Whole-codebase blast-radius check (M118).** When an AI tool changes an exported function's required arguments or removes an export, Squibby scans the rest of the project locally in milliseconds and flags every caller in other files that would break, in plain words, before you commit or open a pull request.
+- **Cross-repo shared context board (M119).** A local-first task and decision board kept in Squibby's own data folder (never touching your git) so parallel AI agents across `web`, `api`, `ios`, and `infra` repos can share active work and decisions at session start without configuring Linear or MCP.
+- **Multi-agent attention ring model (M119).** Tracks active agent sessions across repos and tools, highlights which ones need approval or are blocked, and ranks them by urgency for the notch.
+
 ## Feels like a daily app: 23 Nov 2026
 
 - **Speed budgets measured on this Mac.** A new check (`scripts/m110-speed.sh`) measures launch to notch ready, hover to small notch, click to open, ask box key to typing, tool done signal to notch lighting, and idle processor and memory. Removed a 30 ms wait before focusing the ask box so keyboard opens are ready to type in 13 ms.
