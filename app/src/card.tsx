@@ -44,6 +44,7 @@ import { ASKED_NOTICE_MS, arrivalFrom, closesOnClickAway, homeReduce, homeStart,
 import { jobStep, needMainWords, goLiveAnswer, reviewHeroSays, askHintNow, askRoute, blockerOf, blockLineFor, blockMainFor, fixOffered, MAIN_TOOL, heroCompact, homeFixRoute, jobLive, timeLine, clockOnly, HELLO_GRACE_MS, reviewLead, aboutWorthACard, needMainFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
 import { notePress, orderWays, readCounts, type Counts, type Way } from "./usedOften.ts";
 import { homeKey } from "./homeKeys.ts";
+import { rememberTab, savedTab } from "./dailyFeel.ts";
 import { paletteMove, paletteRows, paletteShown, type PaletteAction, type PaletteRow } from "./palette.ts";
 import { SetupList } from "./setupList.tsx";
 import { setupList } from "./setupList.ts";
@@ -703,7 +704,7 @@ export function Card() {
   // Home (F18): the card in tabs. Each part of the old card shows only on its own tab, or on every tab (home.ts); a tab
   // that needs the person is shown by itself, once per new need, and said out loud because the keyboard focus does not
   // move there.
-  const [home, homeDispatch] = useReducer(homeReduce, undefined, homeStart);
+  const [home, homeDispatch] = useReducer(homeReduce, undefined, () => homeStart(savedTab()));
   const show = (p: Panel) => shownOn(p, home.tab, m);
   // Round 2: an Undo that finished with nothing left to answer clears itself after a short read, and one that failed or
   // finished clears when the person goes to another place, so no Undone or error line stays up for good.
@@ -1584,7 +1585,7 @@ export function Card() {
       // Opened from the Settings window's "Walk me through it" or "Open the practice list": do that now.
       const then = arrivalFrom(e.payload);
       if (then) onArrival.current(then);
-      else if (keyboard) setTimeout(() => box.current?.focus(), 30);
+      else if (keyboard) setTimeout(() => box.current?.focus(), 16);
       if (changesNow.current) rememberVersion(changesNow.current.remember);   // what changed has been on screen once
       warmSoon();
       // Coming back after a break: ask what happened while away. Only Companion's own history is used. The folder is read
@@ -1787,7 +1788,7 @@ export function Card() {
             // With files added, the words wait in the box for Start: they never go with files by themselves. Words that mean
             // wait or stop, or ask about the screen, wait too (askbox.ts sendsItself).
             else if (autoSend && attachedNow.current.length === 0 && !into.joined && sendsItself(ev.text, lang)) setTimeout(() => submitNow.current(), 0);
-            else setTimeout(() => box.current?.focus(), 30);
+            else setTimeout(() => box.current?.focus(), 0);
           }
         }
         dispatch({ type: "ui.voiceClosed" });
@@ -1801,7 +1802,7 @@ export function Card() {
   const askModeRef = useRef(askMode); askModeRef.current = askMode;
   const showMeRef = useRef<(q: string, g: string, s: string[]) => void>(() => {});
   useEffect(() => {
-    const off = listen("showme-mode", (e) => { setAskMode("showme"); if (boxTakesKeyboard(e.payload)) setTimeout(() => box.current?.focus(), 30); });
+    const off = listen("showme-mode", (e) => { setAskMode("showme"); if (boxTakesKeyboard(e.payload)) setTimeout(() => box.current?.focus(), 0); });
     // Stop everything ends the Show me key's question too: words heard after it are never a question about the screen.
     const offStop = listen("runner-event", (e) => { if ((e.payload as { type?: string } | null)?.type === "app.stop_everything") setAskMode("task"); });
     return () => { off.then((f) => f()); offStop.then((f) => f()); };
@@ -1942,7 +1943,7 @@ export function Card() {
     return () => { off.then((f) => f()); };
   }, []);
   // Guided lessons: each step is pointed at once (the light comes on first), and the person's own click moves it on.
-  const pickTab = (t: Tab) => homeDispatch({ type: "pick", tab: t });
+  const pickTab = (t: Tab) => { rememberTab(t); homeDispatch({ type: "pick", tab: t }); };
   // Feel round 2: a place in the row pressed while it is open goes back to its top (smoothly, unless motion is reduced),
   // never away to another place.
   const pressPlace = (t: Tab) => { if (t === home.tab) { root.current?.scrollTo?.({ top: 0, behavior: reducedMotion() ? "auto" : "smooth" }); return; } pickTab(t); };
@@ -3014,6 +3015,9 @@ export function Card() {
         const t = e.target as HTMLElement;
         const hk = homeKey({ key: e.key, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, composing: composing(e) }, { inField: !(t === e.currentTarget || t.matches?.("button.ui-mrow-main, .ui-mrow-act")), places: navPlaces });
         if (hk && "go" in hk) { e.preventDefault(); pickTab(hk.go); return; }
+        if (hk && "ask" in hk) { e.preventDefault(); if (chat) chatBox.current?.focus(); else { pickTab("now"); setTimeout(() => box.current?.focus(), 0); } return; }
+        if (hk && "stop" in hk) { if (stopCan(m)) { e.preventDefault(); void stopNow(); } return; }
+        if (hk && "undo" in hk) { if (m.receipt && undoCan(m, project)) { e.preventDefault(); pickTab("now"); dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); } return; }
         if (hk && "rows" in hk) { if (moveRow(hk.rows)) e.preventDefault(); return; } }}>
       {/* M71: Home is one black surface; the rooms' light (data-element, RoomLight) is retired. */}
       {/* GLASS: the black strip with the greeting and the corner buttons, then the tabs, over the whole width and outside

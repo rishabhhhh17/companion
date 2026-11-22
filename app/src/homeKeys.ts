@@ -5,16 +5,22 @@
 import type { KeyIn } from "./ui/partsLogic.ts";
 import type { Tab } from "./home.ts";
 
-export type HomeKeyDo = { go: Tab } | { rows: 1 | -1 } | null;
+export type HomeKeyDo = { go: Tab } | { rows: 1 | -1 } | { ask: true } | { stop: true } | { undo: true } | null;
 
 export function homeKey(k: KeyIn, o: { inField: boolean; places: readonly Tab[] }): HomeKeyDo {
   if (k.composing || k.ctrl || k.alt || k.shift) return null;
   if (k.meta) {
     const n = /^[1-4]$/.test(k.key) ? Number(k.key) : 0;
     const go = n ? o.places[n - 1] : undefined;
-    return go ? { go } : null;
+    if (go) return { go };
+    const low = k.key.toLowerCase();
+    if (low === "k") return { ask: true };
+    if (k.key === ".") return { stop: true };
+    if (low === "z" && !o.inField) return { undo: true };
+    return null;
   }
   if (o.inField) return null;
+  if (k.key === "/") return { ask: true };
   if (k.key === "ArrowDown") return { rows: 1 };
   if (k.key === "ArrowUp") return { rows: -1 };
   return null;

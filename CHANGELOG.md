@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Feels like a daily app: 23 Nov 2026
+
+- **Speed budgets measured on this Mac.** A new check (`scripts/m110-speed.sh`) measures launch to notch ready, hover to small notch, click to open, ask box key to typing, tool done signal to notch lighting, and idle processor and memory. Removed a 30 ms wait before focusing the ask box so keyboard opens are ready to type in 13 ms.
+- **The notch remembers where you were.** Reopening Home brings back the place you left open (Now, Learn, History or Memory), while keyboard shortcuts still jump straight to Now ready to type.
+- **A short plain recap once a day.** On your first open of a new day, Squibby asks Where was I once and shows a card only when something actually happened. No streaks, no mood check ins.
+- **Keyboard reach inside Home.** Command K (or `/` outside a text field) focuses the ask box, Command period stops running work, and Command Z outside a text field opens the Undo confirmation when Undo is ready.
+- **Polish pass.** Fixed the Learn page alignment for "Not this one" and "What you have learned", and stopped scrolled cards on Now from bleeding through the sticky ask box in Glass mode.
+
 ## Getting ready to prove every AI tool on a real Mac: 21 Nov 2026
 
 - **A guided check for each of the seven tools.** Claude Code, Codex, Cursor, the VS Code agent, Gemini CLI, Windsurf and Antigravity each get a short session on a real Mac, one step at a time, in a throwaway practice folder. It checks the done signal, the safety copy before a risky command, the ask before a live key, and the ask (or note) before reading saved logins.

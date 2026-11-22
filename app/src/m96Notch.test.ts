@@ -162,7 +162,8 @@ describe("the keys: never taken at rest or while pointing", () => {
     expect(panel).not.toMatch(/\.focus\(|autoFocus|makeKey/);
     expect(panel).toContain('invoke("island_chat")');
     // Home's own field takes the keys only when the shell says a key opened it (opened.keyboard), as before.
-    expect(read("./card.tsx")).toContain("else if (keyboard) setTimeout(() => box.current?.focus(), 30);");
+    // Changed on purpose (M110, 23 Nov 2026): focus after one frame (16 ms) instead of 30 ms, so keyboard open stays under budget.
+    expect(read("./card.tsx")).toContain("else if (keyboard) setTimeout(() => box.current?.focus(), 16);");
     // Changed on purpose (QA1, 19 Nov 2026): the one focus call is Tab going round the chat's own controls, on the person's
     // own Tab press inside it (tabRound); nothing else in the chat ever moves the keys.
     const chatSrc = read("./notchChat.tsx");

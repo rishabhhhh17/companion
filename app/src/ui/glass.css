@@ -68,6 +68,9 @@
 
 /* Rows, cards and fields are steps of glass (tokens.css glass block), never a second glass (G1.6, G1.12): no shadow on them. */
 [data-material="glass"] .home :is(.ui-card, .panel, .ui-group) { box-shadow: none; }
+/* M110 polish pass: the sticky ask box at the foot of Now uses the near-solid glass tokens so scrolled rows never bleed through it. */
+[data-material="glass"] .home[data-side] .work > .askwrap { --band: var(--mat-tint-solid); }
+[data-material="glass"] .home .askwrap .ask { background: var(--mat-overlay); }
 /* The small chat out of the notch: the same glass under its words (the mockup's chat), its dotted grid kept faint. */
 [data-material="glass"] .home[data-chat] .notch-chat { background-color: transparent; }
 

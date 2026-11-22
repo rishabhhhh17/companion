@@ -135,7 +135,7 @@ export function arrivalFrom(opened: unknown): HomeArrival | null {
 }
 
 export type HomeState = { tab: Tab; needKey: string };
-export const homeStart = (): HomeState => ({ tab: "now", needKey: "" });
+export const homeStart = (tab: Tab = "now"): HomeState => ({ tab, needKey: "" });
 // typing: the person is typing in Home right now, so a need on another tab marks that tab and is said, but does not move them.
 // markOnly: When something needs me is set to only mark the tab (home.goToNeeds), so the same, except for a question
 // waiting for an answer, which still opens its tab: it is never hidden. Neither ever holds back a need that must show.
