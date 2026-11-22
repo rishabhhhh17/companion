@@ -146,3 +146,4 @@
 {"v":1,"id":"m115c3","type":"donesignal.anyLine","project":"p_9f2c"}
 {"v":1,"id":"m115c4","type":"donesignal.add","project":"p_9f2c","tool":"zed","confirm":true,"hook":"watch"}
 {"v":1,"id":"m115c5","type":"donesignal.add","project":"p_9f2c","tool":"copilotcli","confirm":true,"hook":"guard"}
+{"v":1,"id":"m117c1","type":"memory.add","project":"p_9f2c","scope":"project","text":"Rate limit for app/api/chat/route.ts is set up outside the code (you told me).","source":"you told me, from the go live check"}

@@ -15,7 +15,8 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { REVIEW_SILENCE_LINES, REVIEW_STRICTNESS, type ReviewStrictness } from "../../../protocol/index.ts";
+import { REVIEW_SILENCE_LINES, REVIEW_STRICTNESS, type MoneyKind, type ReviewStrictness } from "../../../protocol/index.ts";
+import { moneyHolds } from "../money/review.ts";
 import { clip, redact } from "../redact.ts";
 import { pathMatches, type Rule } from "../rules.ts";
 import { isEnvFile } from "../secretfiles.ts";
@@ -191,7 +192,9 @@ export type Recheck =
   | { how: "line"; file: string; hash: string }
   | { how: "import"; file: string; by: string }
   | { how: "table"; table: string; open: "anyone" | "signedIn" }
-  | { how: "files"; files: string[] };
+  | { how: "files"; files: string[] }
+  // M117: a money finding (runner/src/money/review.ts): the same rule again over its file and the files it needs.
+  | { how: "money"; kind: MoneyKind; file: string; anchor: string; context: string[] };
 /** What a recheck looks at: the text of the files it needs at the newer version (a file missing there is gone), the files
  *  that differ from the version before the reviewed change, and every migration at the newer version. */
 export type RecheckState = { text: Record<string, string>; changedSinceBefore: ReadonlySet<string>; migrations: Record<string, string> };
@@ -209,12 +212,13 @@ export function recheckHolds(t: Recheck, s: RecheckState): boolean {
     }
     case "table": { const a = analyzeMigrations(s.migrations); return t.open === "signedIn" ? a.signedInOpen.includes(t.table) : a.withoutRls.includes(t.table) || a.openPolicies.includes(t.table); }
     case "files": return t.files.some((f) => s.changedSinceBefore.has(f));
+    case "money": return moneyHolds(t, s.text);
   }
 }
 
 /** The files a set of rechecks needs the text of. */
 export function recheckFiles(ts: Recheck[]): string[] {
   const out = new Set<string>();
-  for (const t of ts) { if (t.how === "line") out.add(t.file); if (t.how === "import") { out.add(t.file); out.add(t.by); } }
+  for (const t of ts) { if (t.how === "line") out.add(t.file); if (t.how === "import") { out.add(t.file); out.add(t.by); } if (t.how === "money") { out.add(t.file); for (const c of t.context) out.add(c); } }
   return [...out];
 }

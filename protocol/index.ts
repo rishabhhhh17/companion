@@ -1,6 +1,8 @@
 // Companion protocol, version 1. One JSON object per line.
 // Commands go app -> runner. Events go runner -> app. Lines with an unknown
 // version, an unknown type, or missing fields are refused, never guessed.
+import { moneyReportOk, type MoneyPart } from "./money.ts";
+export * from "./money.ts";
 
 export const PROTOCOL_VERSION = 1 as const;
 
@@ -326,7 +328,10 @@ export type ReviewTouch = (typeof REVIEW_TOUCHES)[number];
 // checks pass, the checks did not run or failed).
 // M79 (T18): package_critical and package_high, a package the change added or moved to a new version has a known serious
 // problem on OSV.dev (runner/src/review/osv.ts): critical is Fix this first, high is worth a look.
-export const REVIEW_REASONS = ["weakened_check", "claimed_passed", "secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern", "open_table", "signed_in_open", "key_in_page", "house_rule", "house_rule_ask", "chosen_stop", "open_private_page", "package_critical", "package_high"] as const;
+// M117 (runner/src/money/review.ts): paid_route_open (the change added a route that calls a paid AI or sends email or SMS,
+// with no limit), form_open (a public form or sign in route with no bot check and no limit) and tracker_no_consent (a
+// tracker with no cookie consent). All three are worth a look at most, never Fix this first.
+export const REVIEW_REASONS = ["weakened_check", "claimed_passed", "secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern", "open_table", "signed_in_open", "key_in_page", "house_rule", "house_rule_ask", "chosen_stop", "open_private_page", "package_critical", "package_high", "paid_route_open", "form_open", "tracker_no_consent"] as const;
 export type ReviewReasonKind = (typeof REVIEW_REASONS)[number];
 /** M74: the review mode in force for a project: its own choice (review.modeHere), or with Same as everywhere (or nothing
  *  valid) the app's review.mode. The engine, the shell (main.rs review_watched) and the pages all decide by this rule. */
@@ -349,6 +354,10 @@ export const REVIEW_SILENCE_LINES: Partial<Record<ReviewReasonKind, string>> = {
   files_removed: "In reviews of this project, do not flag removed files.",
   too_many: "In reviews of this project, do not flag large batches of changes.",
   model_concern: "In reviews of this project, do not flag concerns from the written summary.",
+  // M117
+  paid_route_open: "In reviews of this project, do not flag routes with no rate limit.",
+  form_open: "In reviews of this project, do not flag forms with no bot check.",
+  tracker_no_consent: "In reviews of this project, do not flag trackers with no consent.",
 };
 /** The kinds a project's memory lines silence (the lines of REVIEW_SILENCE_LINES, any capital letters, nothing else). */
 export function reviewSilenced(lines: readonly string[]): Set<ReviewReasonKind> {
@@ -531,7 +540,9 @@ export type DriveStep = Envelope & { type: "drive.step"; agent: string; index: n
 export type DriveDone = Envelope & { type: "drive.done"; agent: string; status: string; completed: number; total: number; usdEstimate: number };
 /** ping (must fix 12): the id of the runner.ping it answers, so the Stop key's check waits for the answer to its own ping. */
 export type RunnerPong = Envelope & { type: "runner.pong"; ping?: string };
-export type ShipGates = Envelope & { type: "ship.gates"; project: string; canShip: boolean; gates: { id: string; label: string; status: "passed" | "blocked" | "could_not_check" | "not_applicable"; detail: string; findings?: string[]; overridable?: boolean; places?: { table: string; file: string; line: number; lineText: string }[] }[]; blockedBy: string[]; needsYou: string[]; confirmed: string[]; allowedCount: number };
+export type ShipGates = Envelope & { type: "ship.gates"; project: string; canShip: boolean; gates: { id: string; label: string; status: "passed" | "blocked" | "could_not_check" | "not_applicable"; detail: string; findings?: string[]; overridable?: boolean; places?: { table: string; file: string; line: number; lineText: string }[] }[]; blockedBy: string[]; needsYou: string[]; confirmed: string[]; allowedCount: number;
+  /** M117: money and fines (protocol/money.ts). Never a gate; absent from an older engine. */
+  money?: MoneyPart };
 // file: where the notes were filed in the project; none off the record, where nothing is kept.
 export type ResearchDone = Envelope & { type: "research.done"; agent: string; title: string; answer: string; notes: { text: string; source: string }[]; file?: string };
 export type RescueReport = Envelope & { type: "rescue.report"; agent: string; summary: string; works: string[]; broken: string; steps: { id: number; title: string }[]; evidence: { label: string; status: string; detail: string }[]; estimateUsd: number };
@@ -1355,7 +1366,7 @@ const EVENTS: Record<string, Check[]> = {
   "memory.restored": [str("project"), num("added"), num("skipped"), num("forgotten"), num("refused"), opt("problem", str("problem"))],
   // M79: the weekly summary.
   "week.summary": [str("project"), weekOk],
-  "ship.gates": [str("project"), bool("canShip"), list("gates"), list("blockedBy"), list("needsYou"), list("confirmed"), num("allowedCount")],
+  "ship.gates": [str("project"), bool("canShip"), list("gates"), list("blockedBy"), list("needsYou"), list("confirmed"), num("allowedCount"), opt("money", (m) => (moneyReportOk(m.money) ? null : '"money" must be the money and fines part: ids, files, lines, methods and paths only'))],
   "research.done": [str("agent"), str("title"), str("answer"), list("notes"), opt("file", str("file"))],
   "rescue.report": [str("agent"), str("summary"), list("works"), str("broken"), list("steps"), list("evidence"), num("estimateUsd")],
   "drive.paused": [str("agent"), oneOf("reason", ["files_changed", "editor", "terminal", "you"])],

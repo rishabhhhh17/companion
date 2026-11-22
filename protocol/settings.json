@@ -178,6 +178,7 @@
     { "key": "review.weakenedChecks", "section": "watch", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "review.jobs", "section": "watch", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "packages.check", "section": "watch", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+    { "key": "money.checks", "section": "watch", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "notch.peek", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true },
     { "key": "notch.peekSide", "section": "home", "kind": "choice", "default": "left", "options": ["left", "right"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true },
     { "key": "notch.peekHideAfter", "section": "home", "kind": "choice", "default": "2", "options": ["1", "2", "5", "10"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },

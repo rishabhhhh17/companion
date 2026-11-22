@@ -18,6 +18,8 @@ import { reviewDismiss, reviewFix, reviewNow } from "./commands.ts";
 import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, shipSignInStop, shipWhyLive, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, restoreMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac , newFolderTask} from "./commands.ts";
 // M58 area A: the fixed ladder, Last working and save marks, the sign in turn.
 import { markSave } from "./commands.ts";
+import { addMemory } from "./commands.ts";
+import { MoneyFinesPart } from "./moneyFines.tsx";
 import { backPlanStep, fixLadder, optionWords, stuckRung, tryCounter } from "./fixLadder.ts";
 import { lastWorkingTime, signInTurn, undoLimitsLine } from "./savePoints.ts";
 import { SaveMarksActions, SaveMarksLine } from "./savePointsRow.tsx";
@@ -261,7 +263,8 @@ function OpenButton({ url, onNote }: { url: string; onNote: (note: string) => vo
 // first). The Mac side writes it (copy_text, the same clipboard as Copy link); the page's own clipboard is the fallback.
 // The page makes the Mac side's own check first (copyable), so the fallback only ever takes text the Mac side would have
 // taken, never what it refused. Says so when it could not copy, so a failure is never silent.
-function CopyButton({ text, label }: { text: string; label: string }) {
+// M117: name, when several copy buttons share one label (each Money and fines row), says which one it is to VoiceOver.
+function CopyButton({ text, label, name }: { text: string; label: string; name?: string }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   if (!text) return null;
   const copy = () => {
@@ -272,7 +275,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   };
   // The button keeps its name, so VoiceOver hears Copied or the failure on a polite line that is there before either.
   return <>
-    <button className="btn" type="button" aria-label={label} onClick={copy}>{state === "copied" ? S.copied : label}</button>
+    <button className="btn" type="button" aria-label={name ?? label} onClick={copy}>{state === "copied" ? S.copied : label}</button>
     <span className={state === "failed" ? "line" : "sr"} role="status">{state === "copied" ? S.copied : state === "failed" ? S.copyFailed : ""}</span>
   </>;
 }
@@ -3585,7 +3588,12 @@ export function Card() {
         <ShipGatesPanel ship={m.ship as { gates: Gate[]; canShip: boolean }} words={shipWords(m)} online={putOnlineShown(m.ship as { gates: Gate[]; canShip: boolean }, m.practice?.project === project)} practice={m.practice?.project === project}
           onPutOnline={shipOnline} onFix={gateFix} onCheck={() => shipIt()} onConfirm={(id) => shipIt({ confirm: [id] })} onClose={() => dispatch({ type: "ui.shipClosed" })}
           share={project ? <ShareReport id="ship-share" input={{ project, proof: m.task?.proof ?? null, review: m.review ?? null, ship: m.ship }} /> : null}
-          whyLive={m.whyLive ? null : whyLiveButton("gates")} />
+          whyLive={m.whyLive ? null : whyLiveButton("gates")}
+          money={m.ship.money && project ? (
+            <MoneyFinesPart money={m.ship.money} copy={(text, label, name) => <CopyButton text={text} label={label} name={name} />}
+              onTold={(_kind, _file, line) => { void sendQuiet(addMemory(project, "project", line, S.money.toldSource)).catch(explainRefusal); }}
+              onCheckAgain={() => void send(checkShip(project))} />
+          ) : null} />
       )}
       {whyLiveHere("gates")}
       {whyLiveOrphan && m.whyLive && (

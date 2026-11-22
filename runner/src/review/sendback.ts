@@ -16,6 +16,10 @@ export type ReviewWords = { rating: Rating; reasons: Reason[]; touches: Touch[];
 /** M77: the fixed closing line when a key could be pushed (the engine's own words, outside the quote). */
 const REMOVE_KEY_FIRST = "Remove the key from the code before any commit or push, and tell the person to rotate it (make a new one and stop the old one), since it may already have been seen. A key that is pushed is public.";
 
+/** M117: the fixed closing line when a reason is about money or fines (the engine's own words, outside the quote). */
+export const NO_SIGN_UPS = "If a fix needs a new service or account (for example Upstash for a limit), tell me first and wait. Do not sign up for anything.";
+const MONEY_REASONS: ReadonlySet<string> = new Set(["paid_route_open", "form_open", "tracker_no_consent"]);
+const moneyLine = (r: ReviewWords) => (r.reasons.some((x) => MONEY_REASONS.has(x.kind)) ? NO_SIGN_UPS : "");
 const RATING_WORDS: Record<Rating, string> = { safe: "safe", worth_a_look: "worth a look", stop: "stop, something needs fixing first" };
 const KIND_WORDS: Record<FileChange["kind"], string> = { added: "added", modified: "changed", deleted: "removed" };
 const MAX_FILES = 20;
@@ -90,6 +94,7 @@ export function sendBackText(r: ReviewWords): string {
       ? "Fix only these problems and keep the rest of the change as it is. Do not write keys or passwords into the code; read them from a settings file such as .env. When you are done, run the project's build and tests and show that they pass."
       : "If this is what was meant, nothing needs to change. Run the project's build and tests and show that they pass.",
     r.pushRisk ? REMOVE_KEY_FIRST : "",
+    moneyLine(r),
   ], [3, 1, 0, 2]);
 }
 
@@ -110,5 +115,6 @@ export function fixPrompt(r: ReviewWords): string {
   ], [
     "Keep the person's other changes as they are. Never write a key or password into the code: read it from a settings file such as .env, and do not open or change that file. Prove the fix with the project's own build and tests.",
     r.pushRisk ? REMOVE_KEY_FIRST : "",
+    moneyLine(r),
   ], [3, 1, 0, 2]);
 }

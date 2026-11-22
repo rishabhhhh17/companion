@@ -154,6 +154,7 @@ describe("the shipped list of settings", () => {
       "memory.triedAndFailed": true,
       // M79 (T18): known serious problems in new packages looked up on OSV.dev, names and versions only (on).
       "packages.check": true,
+      "money.checks": true,   // M117
       // M82: Have my AI do it writes a clear prompt first (on; it is shown and can be changed before anything is sent), and
       // Now offers Connect your AI tools while none is connected (on; it only opens the screen).
       "handoff.improve": true, "aiTools.nowRow": true,

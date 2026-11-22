@@ -2,11 +2,15 @@
 // A gate that could not run is never a pass. A blocked gate can only be fixed, never confirmed away.
 import { fingerprint, scanProject, type Finding } from "./scan.ts";
 import { rlsGate, type GateResult } from "./rls.ts";
+import { moneyFailed, moneyOfProject } from "../money/check.ts";
+import { moneyReportOk, type MoneyPart, type MoneyReport } from "../../../protocol/index.ts";
 
 export type { GateResult } from "./rls.ts";
 export type ProofRecord = { verdict: string; unchangedSince: boolean };
 export type GateEntry = GateResult & { fingerprints?: string[] };
-export type GateReport = { gates: GateEntry[]; canShip: boolean; blockedBy: string[]; needsYou: string[]; confirmed: string[]; allowedCount: number };
+export type GateReport = { gates: GateEntry[]; canShip: boolean; blockedBy: string[]; needsYou: string[]; confirmed: string[]; allowedCount: number;
+  /** M117: money and fines. Not a gate: canShip, blockedBy and needsYou never depend on it. */
+  money?: MoneyPart };
 
 const CHECKED = { id: "checked", label: "The work was checked" };
 
@@ -45,6 +49,8 @@ function secretsGate(project: string, allow: Set<string> | undefined, scan: type
 export async function runGates(o: {
   project: string; proof?: ProofRecord; confirmed?: string[]; allowSecrets?: Set<string>;
   rlsQuery?: () => Promise<{ table: string; rls: boolean | null }[]>; overrideScan?: typeof scanProject;
+  /** M117: the money and fines part. false: turned off in Settings (money.checks). Absent: not asked for. */
+  money?: false | { told?: readonly string[]; check?: (project: string, told: readonly string[]) => MoneyReport };
 }): Promise<GateReport> {
   const gates: GateEntry[] = [proofGate(o.proof)];
   let allowedCount = 0;
@@ -58,8 +64,17 @@ export async function runGates(o: {
   for (const g of gates) {
     if (g.status === "could_not_check" && g.overridable && o.confirmed?.includes(g.id)) { g.status = "passed"; g.detail = `${g.detail} You confirmed this yourself.`; confirmed.push(g.id); }
   }
+  // M117: after the gates and apart from them, so nothing here can hold back Put it online. A failure is the whole part as
+  // could not check, never an empty part.
+  let money: MoneyPart | undefined;
+  if (o.money === false) money = { off: true };
+  else if (o.money) {
+    try { money = (o.money.check ?? ((p, t) => moneyOfProject(p, { told: t })))(o.project, o.money.told ?? []); } catch { money = moneyFailed(); }
+    // A part of the wrong shape would make the page refuse the whole ship.gates event: it is could not check instead.
+    if (!moneyReportOk(money)) money = moneyFailed();
+  }
   return {
-    gates, confirmed, allowedCount,
+    gates, confirmed, allowedCount, ...(money ? { money } : {}),
     canShip: gates.every((g) => g.status === "passed" || g.status === "not_applicable"),
     blockedBy: gates.filter((g) => g.status === "blocked").map((g) => g.id),
     needsYou: gates.filter((g) => g.status === "could_not_check").map((g) => g.id),

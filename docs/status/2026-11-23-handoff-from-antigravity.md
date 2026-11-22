@@ -69,9 +69,10 @@ From the founder's Instagram Reel (for both non-engineers and engineers):
 
 ## Untouched / Still Pending From Before This Session
 
-- **Parked app branches waiting to merge into `m48/launch`:**
-  - `m117/cost-guard` (M117 money and fines check)
-  - `m48/hunt-fix` (14 bug hunt fixes)
+- **Parked app branches merged in this session:**
+  - `m48/hunt-fix` (14 bug hunt fixes) — **merged cleanly** into `m48/launch`
+  - `m117/cost-guard` (M117 money and fines check) — **merged cleanly** into `m48/launch` (resolved 9 additive conflicts; fixed one machine-word lint hit in `app/src/strings.ts`: `hooks.server.ts` -> `your SvelteKit server file`; verified across runner, app, DOM, Vite build, and 1,437 Rust tests)
+- **Still parked (not merged yet):**
   - `m116/accounts` (accounts and payments + account deletion fix)
 - **Website (`site3/final` -> `site-preview`):** Untouched in this session per founder's request ("Don't worry about the website right now"). Staged `site3/upload/` (fun front page, restored Trust pins, privacy/terms) is still waiting on the founder's "go", followed by Round 5 across all other pages.
 - **Founder-only items:** Apple Developer account / signing, Anthropic written agreement, and running the real Mac session (`M109`).

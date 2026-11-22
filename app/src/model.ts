@@ -25,6 +25,7 @@ import { signInReduce, signInStopped } from "./shipFinish.ts";
 import { whyLiveReduce, type WhyLive } from "./whyLive.ts";
 import { runwayFrom, savedFrom, type Runway } from "./runway.ts";
 import type { SavedJobView } from "../../protocol/index.ts";
+import { moneyReportOk, type MoneyPart } from "../../protocol/index.ts";
 import { DONE_SIGNAL_TOOLS, LOGIN_OUTCOMES, type DoneSignalTool, type LoginOutcome } from "../../protocol/index.ts";
 import { feedFrom, type FeedSession } from "./notchFeed.ts";
 import { ASKS_KEPT, toolAskFrom, type ToolAsk } from "./notchAsk.ts";
@@ -105,7 +106,8 @@ export type PromptHelp = {
 /** Is this engine event for the Prompt help request on the card now? */
 const phOwn = (m: Model, req: unknown): boolean => !!m.ph?.req && req === m.ph.req;
 export type ShipGate = { id: string; label: string; status: "passed" | "blocked" | "could_not_check" | "not_applicable"; detail: string; findings?: string[]; overridable?: boolean };
-export type ShipReport = { gates: ShipGate[]; canShip: boolean; blockedBy: string[]; needsYou: string[]; confirmed: string[] };
+/** M117: money is the money and fines part (protocol/money.ts), absent from an older engine. Never a gate. */
+export type ShipReport = { gates: ShipGate[]; canShip: boolean; blockedBy: string[]; needsYou: string[]; confirmed: string[]; money?: MoneyPart };
 export type MemoryLine = { id: string; text: string; source: string; date: string };
 /** M78: start is the start block Claude Code is handed (memoryStart.ts), absent from an older engine. */
 export type MemoryState = { paused: boolean; projectLines: MemoryLine[]; profileLines: MemoryLine[]; problems: string[]; start?: StartState | null };
@@ -1198,7 +1200,7 @@ function reduceRest(m: Model, e: Ev): Model {
       return e.stage === "dismissed" ? { ...m, ph: null } : { ...m, ph: { stage: e.stage, app: e.app ?? m.ph?.app, message: e.message, diff: [], ...(typeof e.req === "string" && e.req ? { req: e.req } : {}) } };
     case "assist.prompt.delta": return m.ph && phOwn(m, e.req) ? { ...m, ph: { ...m.ph, stage: m.ph.stage === "ready" ? "ready" : "thinking", streaming: (m.ph.streaming ?? "") + String(e.text ?? "") } } : m;
     case "assist.prompt.done": return phOwn(m, e.req) ? { ...m, ph: { stage: "ready", app: m.ph?.app, text: e.text, diff: e.diff ?? [], question: e.question, options: e.options, handback: e.handback, req: m.ph?.req } } : m;
-    case "ship.gates": m = practiceGates(m, e); return { ...m, ship: { gates: e.gates ?? [], canShip: !!e.canShip, blockedBy: e.blockedBy ?? [], needsYou: e.needsYou ?? [], confirmed: e.confirmed ?? [] } };
+    case "ship.gates": m = practiceGates(m, e); return { ...m, ship: { gates: e.gates ?? [], canShip: !!e.canShip, blockedBy: e.blockedBy ?? [], needsYou: e.needsYou ?? [], confirmed: e.confirmed ?? [], ...(e.money && moneyReportOk(e.money) ? { money: e.money as MoneyPart } : {}) } };
     case "ship.status": if (e.needs === "browser") m = { ...m, browser: { ...m.browser, needed: true } };
       return { ...m, shipFlow: { stage: String(e.stage), detail: String(e.detail ?? ""), previewUrl: e.previewUrl, productionUrl: e.productionUrl, canGoLive: e.canGoLive === true } };
     // The it's live card belongs to the live site on screen; after a close or a roll back it is not shown.

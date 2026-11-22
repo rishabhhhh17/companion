@@ -134,6 +134,8 @@ export type ProofContext = { project: string; identity?: string; store: Pick<Che
 export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 
 export type RunnerOptions = {
+  /** M117: the project's "I set this up outside the code" lines the person pressed for (money/told.ts). */
+  moneyTold?: (project: string) => readonly string[];
   shadowRoot: string;
   engine: Engine;
   /** Must fix 16: a quick look that Claude is in reach before each round with Claude Code (reach.ts claudeReachable). Only
@@ -2070,7 +2072,10 @@ export class AgentRunner {
       } catch { /* the proof gate will say it was not checked */ } finally { this.sessions.delete(sk); }
     }
     const proof: ProofRecord | undefined = rec ? { verdict: rec.verdict, unchangedSince: !(await changed()) } : undefined;
-    const report = await runGates({ project, proof, confirmed: confirm });
+    // M117: money and fines, by rules on this Mac; never a gate. money.checks off sends the part as off.
+    let told: readonly string[] = [];
+    try { told = this.o.moneyTold?.(project) ?? []; } catch { told = []; }
+    const report = await runGates({ project, proof, confirmed: confirm, money: this.setting("money.checks") === false ? false : { told } });
     return { report, snapshot: now.id, proof: rec?.verdict ?? "skipped" };
   }
 
