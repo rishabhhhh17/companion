@@ -83,25 +83,22 @@ From the founder's Instagram Reel (for both non-engineers and engineers):
 
 The founder ran `getsquibby.com` through Coframe (`coframe.com`). Scores: **Overall 68/100** (Conversion 66, Accessibility 96, Search & AI search 82, **Agent usability 42**, Growth stack 0, Speed 96).
 
-### High-priority website fixes for Round 5 (do all of these; 100% aligned with Squibby's rules)
-1. **Fix Agent Usability (42 -> 95+) & Technical SEO (82 -> 95+):**
-   - Allow verified AI assistants (`ChatGPT-User`, `Claude-User`, `Perplexity-User`) through Cloudflare bot protection instead of serving a bot check.
-   - Publish `/llms.txt` (clean markdown summary of Squibby, features, pricing, proof, and links) and add `<link rel="alternate" type="text/markdown" href="/llms.txt">` to every page `<head>`.
-   - Add `<link rel="canonical" href="https://getsquibby.com/...">` on every page.
-   - Change `og:image` from relative `assets/og-card.png` to absolute `https://getsquibby.com/assets/og-card.png`.
-   - Add `Organization` and `SoftwareApplication` JSON-LD structured data naming Squibby, `https://getsquibby.com`, `hello@getsquibby.com`, and `/founder`.
-   - Link every homepage proof stat (e.g. 87%) directly to `/proof` so answer engines see a sourced citation, and ensure clear About/Founder and Contact links are present.
-   - Fix the **3 axe-core WCAG 2.2 AA violations** ("Elements must have their visible text as part of their accessible name").
-   - Improve **mobile LCP (currently 2.6 s)**: ensure the hero headline paints immediately without waiting on the intro animation or blocking fonts.
-2. **High-impact Conversion upgrades (66 -> 85+):**
-   - **Sharper hero audience + cost framing:** Keep `"your ai says done. squibby checks."` and pair it immediately with a specific subhead naming Mac builders using Claude Code, Cursor, Codex, and Lovable and the cost it prevents (broken builds, leaked keys, silent regressions before you ship).
-   - **Specific primary CTA copy:** Test `"join the free Mac beta"` / `"join free early access"` instead of vague `"get early access"` (still never say "download now").
-   - **Outlined ghost button with arrow for secondary CTA:** Restyle `"see what it does"` into an outlined button with a right arrow beside the primary CTA (Coframe saw +36.2% CTR; DiffCue does this well).
-   - **Surface Free (\$0) / Pro (\$15) early:** Show a calm one-line price/access cue right near the hero/CTA instead of burying `$0` and `$15` deep in the page.
-   - **Add Coframe's two prototype blocks right below the hero (before the long explainer):**
-     - **Comparison table (`believing done, or checking it.`):** `your ai alone` vs `with squibby` across Build & tests, Plain explanation, One-tap undo (never touches git), Setup, and 17 tools.
-     - **Interactive `"your ai said done. pick what it did."` demo:** 3 clickable practice-project cards (`wrote a payment file`, `fixed a settings file`, `built an admin page`) that animate Squibby's 3-step check and show the real verdict + why right above the fold.
-   - **Tighten the long middle explainer** into a crisp benefit strip so the sign-up path isn't buried, and add a **mobile sticky bottom CTA bar**.
+### High-priority website fixes applied & QA'd in `site3/final` + `site3/upload/` (23 Nov 2026 — NOT deployed live yet; design language untouched)
+1. **Technical SEO & AI-Agent usability (all 14 pages via `tools/apply-chrome.mjs` & `tools/pack.mjs`):**
+   - Set `"site": "https://getsquibby.com"` in `tools/chrome/meta.json` (plus added `privacy` and `terms` rows) -> added `<link rel="canonical">`, `<meta property="og:url">`, and absolute `og:image` (`https://getsquibby.com/assets/og-card.png`) to every HTML page.
+   - Created `site3/final/llms.txt` (packed into `site3/upload/`) and added `<link rel="alternate" type="text/markdown" href="https://getsquibby.com/llms.txt">` on every page.
+   - Upgraded `index.html` JSON-LD to `@graph` (`Organization` + `SoftwareApplication` with `url`, `email`, `founder`, Free/Pro offers).
+   - Updated `tools/chrome/footer.html` with `privacy.html`, `terms.html`, and `mailto:hello@getsquibby.com`.
+   - Fixed the 3 axe-core `label-content-name-mismatch` elements (`stopkey` in `end.html`, `.bar__clock` in `header.html`, `.demo-notch` in `index.html`).
+   - **Founder Cloudflare toggle still needed:** allow verified AI assistants (`ChatGPT-User`, `Claude-User`, `Perplexity-User`) through Cloudflare Bot Fight Mode in the Cloudflare dashboard.
+2. **Conversion upgrades on `index.html` (strictly using existing `tokens.css` & design language across all 6 looks):**
+   - Updated hero primary CTA to `"join the free mac beta"`, added right-arrow SVG to `"see what it does"`, surfaced `"free to start, pro $15 a month."` right in `.hero__fine`.
+   - Added `#try-check` right below the hero (`assets/home.css` + `assets/home.js`):
+     - Interactive 3-card claim picker (`"your ai said done. pick what it did."`: payment file, settings file, admin page -> live 3-step receipt + plain verdict + why).
+     - Side-by-side comparison table (`"believing done, or checking it."`: `your ai alone` vs `with squibby`).
+   - Added frosted mobile sticky bottom CTA bar (`.mob-cta`, `< 48rem`).
+   - Verified with `bun tools/final-qa.mjs index`: **0 console/CSP errors, 0 overflow, 0 broken links, all 6 looks + reduced motion green**.
+   - **Not deployed yet:** `site3/upload/` is packed (20 entries including `llms.txt`); sync into `site-preview/public`, run `version-assets.py`, and deploy via `wrangler.live.jsonc` when the founder gives the go.
 3. **Coframe suggestions to REJECT (would break Squibby's honesty rules):**
    - **Never add fake testimonials, user counts, ratings, or customer logos.** Keep the honest small print on the 87% practice-project stat and link it to `/proof`.
 
