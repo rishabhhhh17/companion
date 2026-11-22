@@ -76,3 +76,53 @@ From the founder's Instagram Reel (for both non-engineers and engineers):
   - `m116/accounts` (accounts and payments + account deletion fix)
 - **Website (`site3/final` -> `site-preview`):** Untouched in this session per founder's request ("Don't worry about the website right now"). Staged `site3/upload/` (fun front page, restored Trust pins, privacy/terms) is still waiting on the founder's "go", followed by Round 5 across all other pages.
 - **Founder-only items:** Apple Developer account / signing, Anthropic written agreement, and running the real Mac session (`M109`).
+
+---
+
+## Coframe Website Audit (`getsquibby.com` — Score 68/100) & Action Plan
+
+The founder ran `getsquibby.com` through Coframe (`coframe.com`). Scores: **Overall 68/100** (Conversion 66, Accessibility 96, Search & AI search 82, **Agent usability 42**, Growth stack 0, Speed 96).
+
+### High-priority website fixes for Round 5 (do all of these; 100% aligned with Squibby's rules)
+1. **Fix Agent Usability (42 -> 95+) & Technical SEO (82 -> 95+):**
+   - Allow verified AI assistants (`ChatGPT-User`, `Claude-User`, `Perplexity-User`) through Cloudflare bot protection instead of serving a bot check.
+   - Publish `/llms.txt` (clean markdown summary of Squibby, features, pricing, proof, and links) and add `<link rel="alternate" type="text/markdown" href="/llms.txt">` to every page `<head>`.
+   - Add `<link rel="canonical" href="https://getsquibby.com/...">` on every page.
+   - Change `og:image` from relative `assets/og-card.png` to absolute `https://getsquibby.com/assets/og-card.png`.
+   - Add `Organization` and `SoftwareApplication` JSON-LD structured data naming Squibby, `https://getsquibby.com`, `hello@getsquibby.com`, and `/founder`.
+   - Link every homepage proof stat (e.g. 87%) directly to `/proof` so answer engines see a sourced citation, and ensure clear About/Founder and Contact links are present.
+   - Fix the **3 axe-core WCAG 2.2 AA violations** ("Elements must have their visible text as part of their accessible name").
+   - Improve **mobile LCP (currently 2.6 s)**: ensure the hero headline paints immediately without waiting on the intro animation or blocking fonts.
+2. **High-impact Conversion upgrades (66 -> 85+):**
+   - **Sharper hero audience + cost framing:** Keep `"your ai says done. squibby checks."` and pair it immediately with a specific subhead naming Mac builders using Claude Code, Cursor, Codex, and Lovable and the cost it prevents (broken builds, leaked keys, silent regressions before you ship).
+   - **Specific primary CTA copy:** Test `"join the free Mac beta"` / `"join free early access"` instead of vague `"get early access"` (still never say "download now").
+   - **Outlined ghost button with arrow for secondary CTA:** Restyle `"see what it does"` into an outlined button with a right arrow beside the primary CTA (Coframe saw +36.2% CTR; DiffCue does this well).
+   - **Surface Free (\$0) / Pro (\$15) early:** Show a calm one-line price/access cue right near the hero/CTA instead of burying `$0` and `$15` deep in the page.
+   - **Add Coframe's two prototype blocks right below the hero (before the long explainer):**
+     - **Comparison table (`believing done, or checking it.`):** `your ai alone` vs `with squibby` across Build & tests, Plain explanation, One-tap undo (never touches git), Setup, and 17 tools.
+     - **Interactive `"your ai said done. pick what it did."` demo:** 3 clickable practice-project cards (`wrote a payment file`, `fixed a settings file`, `built an admin page`) that animate Squibby's 3-step check and show the real verdict + why right above the fold.
+   - **Tighten the long middle explainer** into a crisp benefit strip so the sign-up path isn't buried, and add a **mobile sticky bottom CTA bar**.
+3. **Coframe suggestions to REJECT (would break Squibby's honesty rules):**
+   - **Never add fake testimonials, user counts, ratings, or customer logos.** Keep the honest small print on the 87% practice-project stat and link it to `/proof`.
+
+---
+
+## Competitive Strategy: Beating Greptile, DiffCue, and Diffity (for both non-engineers & engineers)
+
+Research snapshot (23 Nov 2026) from `greptile.com`, `diffcue.com`, and `diffity.com`:
+
+### 1. Greptile (`greptile.com` — \$30/dev/mo Pro, Starter free 50 reviews)
+- **What makes them strong:** Full repository **codebase graph** + cross-file ripple-effect analysis, cross-repo context (`greptile.json`), **TREX** (sandboxed E2E browser validation with video recordings attached to PRs), and **team memory** that learns from thumbs up/down on review comments.
+- **Where Squibby already wins:** Greptile only runs *after* pushing a PR on GitHub/GitLab and costs \$30/dev/mo. Squibby runs **locally in the Mac notch before you commit**, works across **17 AI tools**, gives **one-tap shadow-git Undo**, catches **money & fines risks (M117)**, and is **\$0 Free / \$15 Pro** (half the price).
+- **What to build next to beat them outright:**
+  1. **Upgrade M118 (`blastradius.ts`) into a persistent local symbol/dependency graph** that traces multi-hop callers and linked repos (`SharedBoard` repos) in milliseconds locally.
+  2. **Upgrade Squibby's Playwright proof to record a short 5–10 s video clip** of the real browser check (local TREX equivalent, zero cloud sandbox needed).
+  3. **Thumbs up / down learning on review findings** that writes directly into Squibby's editable Memory to suppress noisy rules automatically.
+
+### 2. DiffCue (`diffcue.com` — \$4.99 native Mac app, BYO key) & Diffity (`diffity.com` — free open-source Mac/Linux Tauri app)
+- **What makes them strong:** Both own the exact **"code review for vibe-coded changes before you commit"** niche. DiffCue shines at **hunk-by-hunk plain explanations + per-hunk chat**; Diffity shines at **inline line comments that loop straight back into Claude Code / Codex** to patch automatically.
+- **Where Squibby already wins:** Neither runs a **real browser check**, neither has **one-tap shadow-git Undo**, neither has **Money & Fines checks (M117)** or **saved-login/live-key guard hooks**, and neither lives in the **notch** watching 17 tools with live approval cards.
+- **What to borrow so engineers pick Squibby over both:**
+  1. **Hunk-by-hunk "Why did it change this?" drill-down** inside the review card (DiffCue's killer UX).
+  2. **Inline finding comment -> send straight into Claude Code / Codex** (extends M107 `Put it in` with Diffity's tightest loop).
+
