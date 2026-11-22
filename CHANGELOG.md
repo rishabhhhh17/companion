@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Getting ready to prove every AI tool on a real Mac: 21 Nov 2026
+
+- **A guided check for each of the seven tools.** Claude Code, Codex, Cursor, the VS Code agent, Gemini CLI, Windsurf and Antigravity each get a short session on a real Mac, one step at a time, in a throwaway practice folder. It checks the done signal, the safety copy before a risky command, the ask before a live key, and the ask (or note) before reading saved logins.
+- **Nothing is claimed yet.** No tool has been run through it. Squibby will only name a tool once its session passed, with the date and the tool's version written down.
+- **It cannot round up.** Where the check can see the result for itself, a pass it does not see is refused.
+
 ## Your notes reach Codex, Gemini CLI and Antigravity too: 21 Nov 2026
 
 - **House rules at the start, in more tools.** Squibby could already hand Claude Code your project's notes as each session starts: house rules, decisions with their reason, and fixes that did not work, up to 30 lines. Now Codex, Gemini CLI and Antigravity can get the same notes. Codex also gets them again after it sums up a long conversation to make room. Each tool is still being checked on a real Mac, so this does not yet promise that a tool keeps to them.

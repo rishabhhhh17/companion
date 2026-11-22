@@ -4,6 +4,62 @@ The one place for the checks that only a real Mac, real AI tools and the founder
 
 How each step is recorded: the tool and its version, the date, PASS or FAIL, and what was seen. Results go in `docs/status/` as a dated RESULTS file, and the matching milestone doc and section 20 item are updated (AGENTS.md rule 18).
 
+## M109 plan: prove the safety net in all seven tools on a real Mac
+
+**Founder's yes:** 15 Nov 2026, "Yes, build it all", for the whole M97 to M109 plan as written (`beat-1115/plan.md`, section M109).
+
+**Why.** Squibby names seven tools (Claude Code, Codex, Cursor, the VS Code agent, Gemini CLI, Windsurf, Antigravity) and has proven none of them on a real Mac. The done and guard hooks were tested only with fixtures. This lead is Squibby's whole story, so it must be real (rule 18).
+
+**What the person gets.** Every tool Squibby names has been seen working, and only those are claimed.
+
+**What is built now (no founder needed).**
+1. One guided session per tool, one step per message: one thing to do in the tool, at most one line to paste, what you should see, and one yes or no question. The person guiding runs the check after each answer and records it, so the founder never edits a file.
+2. A practice folder per tool made with Squibby's own code (`DoneSignals`), with the done and guard lines exactly as Squibby writes them, and a stand in guard that runs Squibby's real `HookGuard` with a real shadow store in a throwaway data folder outside the practice folder (as the app's own data folder is).
+3. A result recorder: each answer is kept with the date, the tool's version and what was seen (notes pass through the key redaction), and a RESULTS file in `docs/status/` is written from it, with one machine readable line so a summary of all seven can be made from the files alone.
+4. The RESULTS template, made by the same code, so it can never drift from the steps.
+5. A summary that lists, per tool, proven, failed or not run, and names only the proven tools as ones that may be claimed.
+
+**What waits for the founder.** The sessions themselves, on his own account in each tool. No tool is claimed as proven by this milestone. The Claude Code session follows the CLAUDE.md test rules: the SDK's bundled binary, explicit `--setting-sources` and `--strict-mcp-config`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` and `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, never `bypassPermissions`, and `CLAUDE_CONFIG_DIR` left unset for his real login.
+
+**Not included** (from the plan): changing `review.mode` from "ask" (the founder's product call), and an in app "proven with" list (it would go stale with every tool update). Changing the app's words for a tool that fails waits for the results: the fallback is that the review starts once the folder is quiet.
+
+**Rules it must hold.** The CLAUDE.md test rules and rule 18. Never read credential files: the login step reads a practice `.env` the script wrote, holding no real key. No model is called by any script, nothing is sent anywhere, git is never run in a project (the shadow store is its own folder), and every folder is a throwaway one.
+
+### Built (21 Nov 2026)
+
+- `runner/src/realmac.ts`: the seven tools, each tool's steps (`stepsFor`), the recorder (`record`, `nextStep`), the verdict, the check (`gather`, `judge`), the practice guard (`practiceGuard`), the RESULTS file (`resultsMarkdown`, `parseResult`), the summary and the template.
+- `runner/scripts/m109-session.ts` and `scripts/m109-session.sh`: setup, watch, next, check, record, results, summary, template.
+- `docs/milestones/M109-results-template.md`: the RESULTS template, made by `template()`; a test keeps them the same.
+- Tests: `runner/test/m109-real-mac.test.ts` (43 tests). The real done and guard commands Squibby writes are run with `sh` against the practice guard for all seven tools, each fed its own documented hook input (Claude Code and Codex `Bash`, Claude Code `Read`, Cursor `beforeShellExecution`, the VS Code agent `run_in_terminal` and `read_file`, Gemini CLI `run_shell_command` and `read_file`, Windsurf `exec`, Antigravity `run_command` and `view_file`), with the saved logins input taken from the step's own words, and the test checks each input gets past the tool's own matcher. Each gives a PASS from the check for watch, done, guard, live, logins and, for Codex, Gemini CLI and Windsurf, blocked.
+- Review fixes (22 Nov 2026): the saved logins steps ask Cursor, Windsurf and Codex to "Run this command exactly: cat .env", because their guards see only the shell (Cursor's `beforeReadFile` is not used, Windsurf's matcher is `exec`, Codex's is `Bash`); the others keep "Show me what is in .env", which their read tool matchers see. The login words allow for the full path the tool may show. Claude Code has two more core steps after it opens: `/mcp` lists no servers and `/hooks` lists only Squibby's done and guard lines (the CLAUDE.md test rule; `--setting-sources` alone does not stop claude.ai connectors). A RESULTS file whose written verdict does not match its own steps is not believed by the summary. Every row of the events log goes through the same redaction. The script's temporary folders carry no product name (rule 21).
+- Skills used (ECC): `ecc-tdd-workflow` (each fix began as a failing test: the seven tool loop failed for Codex, Cursor and Windsurf on the step's own words, the tampered RESULTS file was believed, the Claude Code steps lacked `/mcp` and `/hooks`, the summary and script names failed; the log redaction test passed before the fix too, as upstream already redacts, and now guards against upstream changes) and `ecc-verification-loop` (type check, the whole runner suite, a diff review and a key grep before reporting). `break-ui` does not apply: M109 adds no screens.
+- The recorder never rounds up: for a step the check can see (watch, done, guard, live, logins, blocked), a PASS the check does not agree with is refused, and the check's words are kept beside the founder's.
+
+### How to run one tool's session (the person guiding does this; the founder only acts in the tool)
+
+1. `sh scripts/m109-session.sh <claude|codex|cursor|copilot|gemini|windsurf|antigravity>` makes a practice folder (`hello.txt`, a `build` folder, a `.env` holding only `PRACTICE_ONLY=not-a-real-key`) with the tool's done and guard lines, and a data folder outside it. It prints step 1.
+2. Send the founder one step per message: what to do, the one line to paste if there is one, what he should see, and the question. `sh scripts/m109-session.sh next <data>` prints it.
+3. After his answer, run `sh scripts/m109-session.sh check <data>`, then `record <data> <step> pass|fail|skip <what he saw>`. A PASS the check does not agree with is refused.
+4. At the end, `results <data>` writes `docs/status/<date>-m109-<tool>.md`, and `summary` lists all seven with the ones that may be claimed. Update the matching milestone doc and section 20 item 60 (rule 18), then delete both folders.
+
+The steps, per tool: version; start the practice guard (`watch`); open the folder in the tool; the done signal (change `world` to `there`); the safety copy (`rm -rf build`); a live key (`STRIPE_SECRET_KEY=practice-only true`, a command that does nothing); saved logins (show `.env`). Where the tool can ask (Claude Code, Cursor, the VS Code agent, Antigravity) the last two expect the tool to ask first with Squibby's reason; where it cannot (Codex, Gemini CLI, Windsurf) they expect it to run as documented, and two more steps start the practice guard with Block and expect the `.env` read to be stopped. Where the tool's guard sees only its shell (Cursor, Windsurf, Codex) the saved logins steps ask it to run `cat .env`; the others are asked to show what is in `.env`. Claude Code also has `/mcp` (no servers listed) and `/hooks` (only Squibby's two lines) right after it opens. Extras that run in their own sections below: M108 start (Codex, Gemini CLI, Antigravity) and M107 Put it in (Cursor, the VS Code agent, Windsurf, Antigravity). Claude Code runs as the SDK's bundled binary with `--setting-sources project,local --strict-mcp-config`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` and `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, on the founder's own login.
+
+### [verify] (section 20 item 60)
+
+1. Each of the seven sessions, on the founder's own account: the done marker, the saved copy with the command still running, the live key ask or run as documented, the saved logins ask, note or block. Record the tool and its version.
+2. That the bundled Claude Code takes `--setting-sources project,local` and `--strict-mcp-config` interactively and still reads the practice folder's `.claude/settings.local.json`.
+3. That Codex in its default sandbox may write to the data folder outside the practice folder (the app's own data folder is outside every project too). If not, note it: it is the same question for the real app.
+4. Claim only the tools whose RESULTS say Proven. For one that fails, the words say plainly that the review starts once the folder is quiet.
+
+### Compared with the best
+
+How the others prove that the tools they name work:
+- **CodeRabbit** lists Claude Code, Codex, Cursor, Gemini CLI, Copilot, Antigravity and "35+ agents" for its agent review, and says itself that a finding that disappears "isn't confirmed as fixed" (docs.coderabbit.ai, seen 15 Nov 2026). It shows no per tool proof.
+- **Coucou** (MIT) installs its hooks user wide in every tool it finds, in one step. Our notes on it (orchestrators.md, the M112 notes) found no record of which tool was checked on which version; unconfirmed.
+- **HeyClicky** watches no tool's changes at all: no review, proof or undo (heyclicky.com, seen 15 Nov 2026).
+
+Where we match: one step per tool to start (the script makes the folder and writes the lines, as Coucou's one step install does). Where we are better: every tool named is backed by a dated RESULTS file with its version and what was seen, the check refuses a PASS it cannot see, and the summary claims only proven tools. Nobody else publishes that. The gap: a session takes the founder about ten minutes per tool (eight to ten steps), where the others claim support with no session at all. That is the price of a true claim and stays. Closed in this milestone: the check runs itself after each answer, so the founder never reads a log or types a result. Left for later: the M115 tools (Copilot CLI, OpenCode, Amp, Cline, Kiro, and the watch tools Zed, JetBrains and Xcode) are not in this check or its summary; they have their own real Mac steps in the M115 section below, and the summary says so. Also left for later: a re-run when a tool updates (the RESULTS file names the version, so a newer version is plainly not yet proven), and an in app "proven with" list, which the plan dropped.
+
 ## M108: house rules at session start in Codex, Gemini CLI and Antigravity
 
 Script: `scripts/m108-check-start.sh <codex|gemini|antigravity>` makes a new practice folder with a `hello.txt` and that tool's start line, and a separate throwaway data folder outside it that holds the one decided note with a practice word (PLUM-7) and the start file, all with Squibby's own code. The word is in no file of the practice folder (the script removes the note file it made there once the start file is written, and checks with `grep -r PLUM-7` before you start the tool), so a tool that searches the folder cannot find it. `scripts/m108-check-start.sh show <folder> <data folder>` prints exactly what the hook hands the tool. Record the tool and its version, PASS or FAIL.
