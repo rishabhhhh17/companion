@@ -74,7 +74,7 @@ From the founder's Instagram Reel (for both non-engineers and engineers):
   - `m117/cost-guard` (M117 money and fines check) — **merged cleanly** into `m48/launch` (resolved 9 additive conflicts; fixed one machine-word lint hit in `app/src/strings.ts`: `hooks.server.ts` -> `your SvelteKit server file`; verified across runner, app, DOM, Vite build, and 1,437 Rust tests)
 - **Still parked (not merged yet):**
   - `m116/accounts` (accounts and payments + account deletion fix)
-- **Website (`getsquibby.com`):** **DEPLOYED LIVE** on Cloudflare (Version ID `445a0253-6e16-4845-ac81-34b2edee481d`). Full source (`final/` + `waitlist/`) backed up out of `/tmp` into `/Users/rishabhkapadia17/Developer/companion-wt/site-preview/source/`.
+- **Website (`getsquibby.com`):** **DEPLOYED LIVE** on Cloudflare (Version ID `6932f899-6ea4-4801-91ea-f39459ac18d9`). Full source (`final/` + `waitlist/`) backed up out of `/tmp` into `/Users/rishabhkapadia17/Developer/companion-wt/site-preview/source/`.
 - **Founder-only items:** Apple Developer account / signing, Anthropic written agreement, and running the real Mac session (`M109`).
 
 ---
@@ -91,13 +91,13 @@ The founder ran `getsquibby.com` through Coframe (`coframe.com`). Scores: **Over
    - Updated `tools/chrome/footer.html` with `privacy.html`, `terms.html`, and `mailto:hello@getsquibby.com`.
    - Fixed the 3 axe-core `label-content-name-mismatch` elements (`stopkey` in `end.html`, `.bar__clock` in `header.html`, `.demo-notch` in `index.html`).
    - **Cloudflare AI crawlers verified:** Founder confirmed `ChatGPT-User`, `Claude-User`, and `Perplexity-User` are allowed on `getsquibby.com`.
-2. **Conversion & visual upgrades (`index.html`, `pricing.html`, `assets/home.css`, `assets/home.js`):**
-   - Updated hero primary CTA to `"join the free mac beta"`, added right-arrow SVG to `"see what it does"`, surfaced `"free to start, pro $15 a month."` right in `.hero__fine`.
-   - Built `#try-check` right below the hero in Squibby's own frosted-glass double-bezel visual system (concentric radius, soft hairline capsule divider, 3 product stages with Squibby's 7-ray gradients, 40px+ interactive claim picker pills for payment file / settings file / admin page, and the `"believing done, or checking it."` comparison table).
-   - Added frosted mobile sticky bottom CTA bar (`.mob-cta`, `< 48rem`).
+2. **Conversion & visual upgrades (`index.html`, `learn.html`, `pricing.html`, `assets/home.css`, `assets/home.js`, `assets/learn.css`, `assets/learn.js`):**
+   - Updated hero primary CTA to `"sign up for more news and updates"` (founder preference: no `"free"` on CTA), added right-arrow SVG to `"see how it works"`, surfaced `"free to start, pro $15 a month."` in `.hero__fine`, and balanced the Hero with 4 draggable corner artifacts (`claude code`, `my-app.com/login` + floating `caught 1.2s` pill, `PROOF RECEIPT 047`, `LEARN NOTE 012`).
+   - Built `#try-check` right below the hero on Squibby's warm paper canvas: 3 Greptile-inspired illustrated boxes (`blast radius`, `real browser proof`, `explains why & remembers`), the interactive 3-claim Mac inspection screen (live diff + mini browser + Squibby receipt + `"what you learn"` + working `"put these files back"` button), and the `"believing done, or checking it."` comparison table.
+   - Removed `#check` (`"now watch it check this page"`) per founder request, and added the interactive `"Code -> Plain English"` Spot-the-Bug Workshop (`#spot-lab`) on `learn.html`.
+   - Added frosted mobile sticky bottom CTA bar (`.mob-cta`, `< 48rem`, button `"sign up for updates"`).
    - Fixed `pricing.html` stale `"one key, up to 3 macs"` lines (`LEGAL-OPEN.md` #44 resolved -> `"one account, sign in with google"` matching `terms.html`).
-   - Verified with `bun tools/final-qa.mjs index pricing how features proof`: **0 console/CSP errors, 0 overflow, 0 broken links, all 6 looks + reduced motion green**.
-   - **Backed up & deployed live:** Source synced to `/Users/rishabhkapadia17/Developer/companion-wt/site-preview/source/` (`final/` + `waitlist/`); `site-preview/public/` versioned (14 pages) and deployed live via `wrangler.live.jsonc` (Version ID `445a0253-6e16-4845-ac81-34b2edee481d`).
+   - **Backed up & deployed live:** Source synced to `/Users/rishabhkapadia17/Developer/companion-wt/site-preview/source/` (`final/` + `waitlist/`); `site-preview/public/` versioned (14 pages) and deployed live via `wrangler.live.jsonc` (Version ID `6932f899-6ea4-4801-91ea-f39459ac18d9`).
    - **Waitlist KV:** `WAITLIST` (`d9f2564e9e08457390a70880337342fd`) checked live — 1 test signup (`rishabhkapadia2007@gmail.com`). Export commands documented for the founder.
 3. **Coframe suggestions to REJECT (would break Squibby's honesty rules):**
    - **Never add fake testimonials, user counts, ratings, or customer logos.** Keep the honest small print on the 87% practice-project stat and link it to `/proof`.
