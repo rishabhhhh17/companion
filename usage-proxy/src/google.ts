@@ -22,7 +22,8 @@ const DEFAULT_JWKS_MAX_AGE_SEC = 3600;
 /** An unknown key id makes us fetch the key set again (Google may have just rotated), but at most this often. */
 const MIN_REFETCH_SEC = 60;
 
-export type GoogleIdentity = { ownerId: string; sub: string; email: string; name?: string; picture?: string };
+/** `nonce`: the ID token's nonce claim, as Google copied it from the sign in request (M116). The sign in route checks it. */
+export type GoogleIdentity = { ownerId: string; sub: string; email: string; name?: string; picture?: string; nonce?: string };
 export type GoogleCheck = { ok: true; identity: GoogleIdentity } | { ok: false; reason: GoogleRefusal };
 export type GoogleRefusal =
   | "malformed" | "bad_alg" | "unknown_kid" | "bad_signature" | "bad_issuer" | "bad_audience" | "expired" | "issued_in_future"
@@ -31,6 +32,9 @@ export type GoogleRefusal =
 export type GoogleVerifierDeps = {
   /** Our OAuth client id (the setting GOOGLE_CLIENT_ID). Empty means every token is refused. */
   clientId: string;
+  /** M116 step 6: where Google's key set is fetched from. Only a local run sets it (the Worker's GOOGLE_KEYS_URL, this machine
+   *  only); otherwise it is Google's own address. */
+  jwksUrl?: string;
   fetch?: typeof fetch;
   now?: () => number;
 };
@@ -60,13 +64,15 @@ const str = (v: unknown, max = 512): string | undefined => (typeof v === "string
 
 /** A function that checks one Google ID token. It keeps Google's key set between calls. */
 export function createGoogleVerifier(d: GoogleVerifierDeps): (idToken: unknown) => Promise<GoogleCheck> {
-  const doFetch = d.fetch ?? fetch, now = d.now ?? Date.now;
+  const doFetch = d.fetch ?? fetch, now = d.now ?? Date.now, keysUrl = d.jwksUrl ?? GOOGLE_JWKS_URL;
   let keys = new Map<string, CryptoKey>(), fetchedAt = -Infinity, expiresAt = -Infinity;
 
   async function loadKeys(): Promise<boolean> {
     try {
-      const res = await doFetch(GOOGLE_JWKS_URL, { redirect: "error" });
-      if (!res.ok) return false;
+      // "manual", never "error": Cloudflare's runtime refuses "error" (found under real workerd in M116 step 6). A redirect is
+      // then a 3xx answer, which is not ok, so it is never followed and the keys count as unavailable.
+      const res = await doFetch(keysUrl, { redirect: "manual" });
+      if (!res.ok) { await res.body?.cancel().catch(() => {}); return false; }
       const body = await res.json() as { keys?: unknown };
       if (!Array.isArray(body?.keys)) return false;
       const next = new Map<string, CryptoKey>();
@@ -122,7 +128,7 @@ export function createGoogleVerifier(d: GoogleVerifierDeps): (idToken: unknown) 
     const sub = str(claims.sub, 255), email = str(claims.email, 320);
     if (!sub) return no("no_subject");
     if (!email) return no("email_not_verified");
-    const name = str(claims.name), picture = str(claims.picture, 2048);
-    return { ok: true, identity: { ownerId: `google:${sub}`, sub, email, ...(name ? { name } : {}), ...(picture ? { picture } : {}) } };
+    const name = str(claims.name), picture = str(claims.picture, 2048), nonce = str(claims.nonce, 256);
+    return { ok: true, identity: { ownerId: `google:${sub}`, sub, email, ...(name ? { name } : {}), ...(picture ? { picture } : {}), ...(nonce ? { nonce } : {}) } };
   };
 }

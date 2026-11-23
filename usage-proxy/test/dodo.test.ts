@@ -4,6 +4,7 @@ import {
   DODO_SUBSCRIPTION_EVENTS, DODO_TIMESTAMP_TOLERANCE_SEC, MemoryDodoLedger, MemoryLinkBook, constantTimeEqual, createDodoWebhook, decideDodoEvent,
   entitledPlan, parseDodoProducts, signDodoForTest, verifyDodoWebhook, type DodoEntitlement, type SafeDodoEvent,
 } from "../src/dodo.ts";
+import { OWNER_SECRET, withOwnerSig } from "./owner-sig-fixture.ts";
 
 // Dodo's secret looks like "whsec_" + base64 (Standard Webhooks). These are made up for the tests.
 const b64 = (s: string) => btoa(s);
@@ -135,7 +136,7 @@ describe("the product table is configuration", () => {
 
 describe("what each Dodo subscription event means for a plan", () => {
   const links = () => new MemoryLinkBook();
-  const decide = (e: unknown, books = links()) => decideDodoEvent(e, PRODUCTS, books);
+  const decide = async (e: unknown, books = links()) => decideDodoEvent(await withOwnerSig(e), PRODUCTS, books, "test", OWNER_SECRET);
   const free: DodoEntitlement = { userId: "u9", plan: "free", status: "active" };
   const pro: DodoEntitlement = { userId: "u9", plan: "pro", status: "active" };
 
@@ -152,26 +153,33 @@ describe("what each Dodo subscription event means for a plan", () => {
     }
     expect(await decide(event("subscription.plan_changed", "active", { product_id: "pdt_pro_yearly" }))).toMatchObject({ kind: "set", entitlement: { plan: "pro" } });
     // M97: a product the operator still maps to the old Max plan grants nothing
-    expect(await decideDodoEvent(event("subscription.active", "active", { product_id: "pdt_max" }), { ...PRODUCTS, pdt_max: "max" }, links())).toMatchObject({ kind: "unknown_product" });
+    expect(await decideDodoEvent(await withOwnerSig(event("subscription.active", "active", { product_id: "pdt_max" })), { ...PRODUCTS, pdt_max: "max" }, links(), "test", OWNER_SECRET)).toMatchObject({ kind: "unknown_product" });
   });
   test("an event that says active without a status, or with a status we do not know, grants nothing", async () => {
     expect((await decide(event("subscription.active", undefined)).then((d) => d.kind))).toBe("ignore");
     expect((await decide(event("subscription.active", "weird")).then((d) => d.kind))).toBe("ignore");
     expect((await decide(event("subscription.active", "pending")).then((d) => d.kind))).toBe("ignore");
   });
+  // M116: on_hold and paused are Free with status on_hold (the app says "payment failed, fix it in billing"). M116 step 5
+  // review: failed (Dodo could not create the subscription; nothing follows it) is plain Free, as ended: it can never charge.
+  const onHold: DodoEntitlement = { userId: "u9", plan: "free", status: "on_hold" };
   test("on_hold, paused, failed, expired and cancelled drop to the free plan at once", async () => {
-    for (const [type, status] of [["on_hold", "on_hold"], ["paused", "paused"], ["failed", "failed"], ["expired", "expired"], ["cancelled", "cancelled"]]) {
+    for (const [type, status] of [["on_hold", "on_hold"], ["paused", "paused"]]) {
+      expect(await decide(event(`subscription.${type}`, status))).toMatchObject({ kind: "set", entitlement: onHold });
+    }
+    for (const [type, status] of [["failed", "failed"], ["expired", "expired"], ["cancelled", "cancelled"]]) {
       expect(await decide(event(`subscription.${type}`, status))).toMatchObject({ kind: "set", entitlement: free });
     }
   });
   test("an updated event whose status is a bad state drops to free, even if the type is only 'updated'", async () => {
-    for (const status of ["on_hold", "paused", "cancelled", "failed", "expired"]) expect(await decide(event("subscription.updated", status))).toMatchObject({ kind: "set", entitlement: free });
+    for (const status of ["on_hold", "paused"]) expect(await decide(event("subscription.updated", status))).toMatchObject({ kind: "set", entitlement: onHold });
+    for (const status of ["failed", "cancelled", "expired"]) expect(await decide(event("subscription.updated", status))).toMatchObject({ kind: "set", entitlement: free });
   });
   test("failed never grants even if it carries an active looking status", async () => {
     expect(await decide(event("subscription.failed", "active"))).toMatchObject({ kind: "set", entitlement: free });
   });
-  test("a cancel that is only scheduled (still active) keeps the plan until the cancelled event", async () => {
-    expect(await decide(event("subscription.updated", "active", { cancel_at_next_billing_date: true }))).toMatchObject({ kind: "set", entitlement: pro });
+  test("a cancel that is only scheduled (still active) keeps the plan, as cancelling until the next billing date (M116)", async () => {
+    expect(await decide(event("subscription.updated", "active", { cancel_at_next_billing_date: true }))).toMatchObject({ kind: "set", entitlement: { ...pro, status: "cancelling", until: (NOW + 86400 * 30) * 1000 } });
   });
   test("past_due keeps the plan only until past_due_ends_at, and nothing without it", async () => {
     const until = NOW + 3 * 86400;
@@ -211,9 +219,9 @@ describe("what each Dodo subscription event means for a plan", () => {
     expect((d as any).entitlement).toEqual(free);
   });
   test("a product mapped to a plan name that is not in the plan table is never granted", async () => {
-    const d = await decideDodoEvent(event("subscription.active", "active"), { pdt_pro: "enterprise" }, links());
+    const d = await decideDodoEvent(await withOwnerSig(event("subscription.active", "active")), { pdt_pro: "enterprise" }, links(), "test", OWNER_SECRET);
     expect(d.kind).toBe("unknown_product");
-    const proto = await decideDodoEvent(event("subscription.active", "active", { product_id: "toString" }), {}, links());
+    const proto = await decideDodoEvent(await withOwnerSig(event("subscription.active", "active", { product_id: "toString" })), {}, links(), "test", OWNER_SECRET);
     expect(proto.kind).toBe("unknown_product");
   });
   test("the person comes from the checkout metadata, then from a link learned from a payment", async () => {
@@ -245,9 +253,9 @@ describe("the webhook handler", () => {
   });
   afterEach(() => { Object.assign(console, { log: real.log, warn: real.warn, error: real.error, info: real.info, debug: real.debug }); globalThis.fetch = real.fetch; });
   const hook = (over: Partial<Parameters<typeof createDodoWebhook>[0]> = {}) =>
-    createDodoWebhook({ secret: () => SECRET, products: () => PRODUCTS, ledger, links, apply: async (e) => { applied.push(e); }, now: () => now * 1000, log: (e) => logs.push(e), ...over });
+    createDodoWebhook({ secret: () => SECRET, products: () => PRODUCTS, ledger, links, ownerSecret: () => OWNER_SECRET, apply: async (e) => { applied.push(e); }, now: () => now * 1000, log: (e) => logs.push(e), ...over });
   const send = async (h: ReturnType<typeof hook>, ev: unknown, id = "msg_1", over: { body?: string; headers?: Record<string, string>; method?: string; secret?: string; t?: number } = {}) => {
-    const body = over.body ?? JSON.stringify(ev);
+    const body = over.body ?? JSON.stringify(await withOwnerSig(ev));
     const headers = over.headers ?? (await headersFor(id, body, over.secret ?? SECRET, over.t ?? NOW));
     return h(new Request("https://squibby.test/webhooks/dodo", { method: over.method ?? "POST", headers, body: over.method === "GET" ? undefined : body }));
   };

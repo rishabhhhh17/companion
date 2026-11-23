@@ -1,5 +1,7 @@
 # T17. Pro unlocks with a Dodo license key, checked on the Mac
 
+> **Replaced by T31** (19 Nov 2026). The founder rejected license keys: Pro and the report now live on the Squibby account, set by Dodo's webhooks, and the trial is dropped. See `T31-pro-lives-on-the-squibby-account.md` and `docs/milestones/M116-accounts.md`. The text below is kept as history; nobody builds from it again.
+
 - **Status:** Accepted, 31 Oct 2026. The founder left the open calls of the overhaul and payments specs to the build ("U tell me", 30 Oct, F28) and asked for Dodo to be integrated. Not yet proven against Dodo's test mode.
 - **Date:** 2026-10-31
 - **Source:** `docs/design/2026-10-31-dodo-payments-spec.md`, `docs/design/2026-10-31-uiux-overhaul-spec.md`

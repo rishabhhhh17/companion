@@ -1,10 +1,11 @@
 // M99: the Cloudflare Worker entry, run with Bun on a fake of the Durable Object API and a stand in model on 127.0.0.1.
 // No network beyond this machine, no real key, nothing deployed.
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import worker, { handle, switchOn, DEV_TOKEN_PATH, REQUIRED_SECRETS, OPERATOR_PATH, STATUS_PATH, type Env } from "../src/worker.ts";
+import worker, { handle, switchOn, ALL_SECRETS, OPERATOR_PATH, STATUS_PATH, type Env } from "../src/worker.ts";
 import { DurableStore, OWNER, PAYMENTS } from "../src/store-do.ts";
 import { issueToken } from "../src/accounts.ts";
 import { signDodoForTest } from "../src/dodo.ts";
+import { withOwnerSig } from "./owner-sig-fixture.ts";
 import { hashToken } from "../src/tokens.ts";
 import { deriveUserId } from "../src/userid.ts";
 import { FakeNamespace } from "./fake-do.ts";
@@ -115,11 +116,12 @@ describe("a metered request, end to end", () => {
     const w = world();
     const token = await signedIn(w);
     const r = await w.ask(token, { stream: true });
-    expect(w.waits.length).toBe(1);
+    // Two: the forward itself (audit run 2, finding 7) and the stream's booking, which ends after the answer is sent.
+    expect(w.waits.length).toBe(2);
     expect(await r.text()).toContain(REPLY);
     await Promise.all(w.waits);
     expect((await w.store.spent("google:42", NOW)).day).toBeGreaterThan(0);
-    expect(w.fake.storageFor(OWNER("google:42")).data.get("running")).toEqual([]);
+    expect((w.fake.storageFor(OWNER("google:42")).data.get("live") as { running: unknown[] }).running).toEqual([]);   // M116: slot and hold live in one key
   });
   test("logs and the objects hold no prompt, reply, token, key or secret", async () => {
     const w = world();
@@ -144,7 +146,7 @@ describe("payments", () => {
     data: { payload_type: "Subscription", subscription_id: "sub_1", product_id: plan, status, customer: { customer_id: "cus_1" }, metadata: { companion_user_id: "google:42" } },
   });
   const deliver = async (w: ReturnType<typeof world>, ev: unknown, id: string) => {
-    const body = JSON.stringify(ev);
+    const body = JSON.stringify(await withOwnerSig(ev, SECRET));
     return w.send("/webhooks/dodo", { method: "POST", headers: await signDodoForTest(id, body, DODO, Math.floor(NOW / 1000)), body });
   };
   test("no provider set: the webhook is not served, and nothing about payments is kept", async () => {
@@ -222,25 +224,21 @@ describe("the operator's route", () => {
   });
 });
 
-describe("the test token for a local run", () => {
-  const at = (w: ReturnType<typeof world>, host: string) => handle(new Request(`http://${host}${DEV_TOKEN_PATH}`, { method: "POST" }), w.env, { waitUntil: () => {} }, () => NOW);
-  test("off unless DEV_TOKENS is on: the request goes to the proxy like any other, and no owner is made", async () => {
-    const w = world();
-    expect((await at(w, "127.0.0.1:8787")).status).toBe(401);
-    expect(await w.store.listOwnerIds()).toEqual([]);
-  });
-  test("on, but on a real address, or with a real upstream: still not served", async () => {
-    expect((await at(world({ DEV_TOKENS: "on" }), "usage.example.com")).status).toBe(401);
-    expect((await at(world({ DEV_TOKENS: "on", UPSTREAM_BASE: "https://api.anthropic.com" }), "127.0.0.1:8787")).status).toBe(401);
-    expect((await at(world({ DEV_TOKENS: "on", UPSTREAM_BASE: undefined }), "localhost:8787")).status).toBe(401);
-  });
-  test("on this machine, with a stand in upstream: a token that makes one metered request", async () => {
-    const w = world({ DEV_TOKENS: "on" });
-    const r = await at(w, "127.0.0.1:8787");
-    expect(r.status).toBe(200);
-    const { token } = await r.json() as { token: string };
-    expect((await w.ask(token)).status).toBe(200);
-    expect((await w.store.spent("dev:stand-in", NOW)).day).toBeGreaterThan(0);
+describe("M116 step 6: the retired test token route for a local run", () => {
+  // POST /v1/dev/token used to mint a token for a made up owner when DEV_TOKENS was on. A local run now signs in through the
+  // stand in Google, so the route is gone: even on this machine, with DEV_TOKENS on and a stand in upstream, it is just a
+  // request with no token, and no owner is made.
+  const at = (w: ReturnType<typeof world>, host: string) => handle(new Request(`http://${host}/v1/dev/token`, { method: "POST" }), w.env, { waitUntil: () => {} }, () => NOW);
+  test("never served, whatever the settings say", async () => {
+    for (const extra of [{}, { DEV_TOKENS: "on" }, { DEV_TOKENS: "on", UPSTREAM_BASE: "http://127.0.0.1:8788" }]) {
+      const w = world(extra as unknown as Partial<Env>);   // DEV_TOKENS is no longer an Env field
+      for (const host of ["127.0.0.1:8787", "localhost:8787", "usage.example.com"]) {
+        const r = await at(w, host);
+        expect(r.status).toBe(401);
+        expect(await r.text()).not.toMatch(/cmp_/);
+      }
+      expect(await w.store.listOwnerIds()).toEqual([]);
+    }
   });
 });
 
@@ -286,9 +284,9 @@ describe("M99 review: a payment event out of date across two server instances", 
         return res;
       } };
     } };
-    const env = (STORE: Env["STORE"]): Env => ({ STORE, PAYMENT_PROVIDER: "dodo", DODO_WEBHOOK_SECRET: DODO, DODO_PRODUCTS: '{"pdt_pro":"pro"}' });
+    const env = (STORE: Env["STORE"]): Env => ({ STORE, PAYMENT_PROVIDER: "dodo", DODO_WEBHOOK_SECRET: DODO, DODO_PRODUCTS: '{"pdt_pro":"pro"}', METADATA_USER_ID_SECRET: SECRET });
     const deliver = async (e: Env, ev: unknown, id: string) => {
-      const body = JSON.stringify(ev);
+      const body = JSON.stringify(await withOwnerSig(ev, SECRET));
       return handle(new Request("https://usage.example/webhooks/dodo", { method: "POST", headers: await signDodoForTest(id, body, DODO, Math.floor(NOW / 1000)), body }), e, { waitUntil: () => {} }, () => NOW);
     };
     const store = new DurableStore(fake, () => NOW);
@@ -307,5 +305,5 @@ describe("M99 review: a payment event out of date across two server instances", 
 });
 
 test("the secrets a real deploy needs are the ones the Worker reads", () => {
-  expect([...REQUIRED_SECRETS].sort()).toEqual(["ANTHROPIC_API_KEY", "DODO_PRODUCTS", "DODO_WEBHOOK_SECRET", "GOOGLE_CLIENT_ID", "METADATA_USER_ID_SECRET", "OPERATOR_KEY"]);
+  expect([...ALL_SECRETS].sort()).toEqual(["ANTHROPIC_API_KEY", "DODO_PAYMENTS_API_KEY", "DODO_PRODUCTS", "DODO_WEBHOOK_SECRET", "DODO_WEBHOOK_SECRET_LIVE", "GOOGLE_CLIENT_ID", "METADATA_USER_ID_SECRET", "OPERATOR_KEY"]);
 });

@@ -4,22 +4,35 @@
 #
 # No account id is written here: wrangler reads it from your own login (wrangler login) or CLOUDFLARE_ACCOUNT_ID.
 #
-# Secrets. Never written in this file, in the repo or in a log. Set each one with `wrangler secret put <NAME>`:
-#   ANTHROPIC_API_KEY         Squibby's own Anthropic key. Without it nothing is forwarded.
-#   METADATA_USER_ID_SECRET   at least 32 characters; the key for the opaque metadata.user_id. Back it up apart from the server:
-#                             changing it changes every id. Without it nothing is forwarded.
-#   OPERATOR_KEY              at least 32 characters; the operator's key for POST /v1/operator (suspend and restore one person).
+# Secrets. Never written in this file, in the repo or in a log. Set each one with `wrangler secret put <NAME>`.
+# Always needed to deploy (M116): METADATA_USER_ID_SECRET, OPERATOR_KEY, GOOGLE_CLIENT_ID. The others only when their switch is on.
+#   METADATA_USER_ID_SECRET   at least 32 characters; the key for the opaque metadata.user_id, and (under its own label) for the
+#                             sign in nonce. Back it up apart from the server: changing it changes every id. Without it nothing
+#                             is forwarded and nobody can sign in.
+#   OPERATOR_KEY              at least 32 characters; the operator's key for POST /v1/operator (suspend and restore one person,
+#                             M116: the `usage` view and the update feed's `release` commands). Save the same value in your own
+#                             Keychain (item squibby-operator, account operator-key) for scripts/usage-report.ts.
 #   GOOGLE_CLIENT_ID          Sign in with Google's client id (not secret, but kept with the others).
-#   DODO_WEBHOOK_SECRET       Dodo's webhook signing secret (starts with whsec_).
-#   DODO_PRODUCTS             the product table, as JSON (see dodo-products.example.json).
-#   PROXY_ON                  the switch. Not needed to deploy: without it, or with anything but "on", nothing is forwarded.
-#                             Turn on: `wrangler secret put PROXY_ON` and type on. Turn off: `wrangler secret delete PROXY_ON`.
+#   ANTHROPIC_API_KEY         Squibby's own Anthropic key. Without it nothing is forwarded. Needed to deploy only once PROXY_ON is set.
+#   DODO_PAYMENTS_API_KEY     Dodo's API key (dodo_test_ first), for checkouts and the billing portal. Needed once payments are on.
+#   DODO_WEBHOOK_SECRET       test mode's webhook signing secret (starts with whsec_). Needed once payments are on, in test mode.
+#                             An event it verifies is always kept as test mode, so a test card never counts once Dodo is live.
+#   DODO_WEBHOOK_SECRET_LIVE  live mode's webhook signing secret. Only an event it verifies is kept as live mode. Put it BEFORE
+#                             deploying the live address: `bun run deploy -- --live-payments` refuses without it. Then delete the
+#                             test mode webhook in Dodo and `wrangler secret delete DODO_WEBHOOK_SECRET`.
+#   DODO_PRODUCTS             the product table, as JSON (see dodo-products.example.json): each Dodo product id with its item
+#                             (pro_monthly, pro_yearly, report). Needed once payments are on. Product ids never go in code.
+#   PROXY_ON                  the switch for model requests. Not needed to deploy: without it, or with anything but "on", nothing
+#                             is forwarded (sign in, /v1/me and sign out still work). Turn on: `wrangler secret put PROXY_ON` and
+#                             type on. Turn off: `wrangler secret delete PROXY_ON`. Delete it, never set it to off: the deploy
+#                             check reads only the name, so a PROXY_ON set to off still asks for ANTHROPIC_API_KEY.
+#   PAYMENTS_ON               the payments switch, off the same way. Set, it makes the deploy need the three Dodo secrets above.
 #   LOOP_ON                   the fixing loop's own switch (M100). Off the same way: the loop's tools are refused for every
 #                             sign in token until the go live checklist turns it on.
 # Not used: STRIPE_WEBHOOK_SECRET. Stripe's webhook is not built on this server; Dodo Payments is the provider.
 
 name = "squibby-usage"
-main = "src/worker.ts"
+main = "src/entry.ts"
 compatibility_date = "2026-10-15"
 # Only the routes below, once they are real. No workers.dev address, so nothing answers before the domain is set.
 workers_dev = false
@@ -33,6 +46,12 @@ preview_urls = false
 [vars]
 # none (the default) serves no payment webhook at all. Change to "dodo" when Dodo's account and products are ready.
 PAYMENT_PROVIDER = "none"
+# M116: Dodo's address. Test mode until live payments start; then https://live.dodopayments.com, with a dodo_live_ key and
+# `bun run deploy -- --live-payments`. The server makes no checkout while the address and the key's mode disagree.
+DODO_API_BASE = "https://test.dodopayments.com"
+# M116: the public repo that holds the app's update bundles (owner/name). Until it is set, `release set` refuses and every
+# update check answers "no update". Uncomment and fill in once the founder has made the repo.
+# RELEASES_REPO = "owner/squibby-releases"
 
 # One object per owner (and a few small shared ones), each doing its read, check and write as one step (src/store-do.ts).
 [[durable_objects.bindings]]
@@ -45,3 +64,9 @@ new_sqlite_classes = ["StoreObject"]
 
 [observability]
 enabled = true
+
+# M116: Cloudflare's own per request logs are off. They keep each request's address, and the /paid return address carries the
+# buyer's email in its query (Dodo adds it). Only the Worker's own short log lines stay: a kind, an owner id, a plan, a count.
+# https://developers.cloudflare.com/workers/observability/logs/workers-logs/
+[observability.logs]
+invocation_logs = false

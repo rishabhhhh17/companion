@@ -30,5 +30,9 @@
 ## Pointer, 15 Nov 2026 (M97)
 - Yearly set by F31, 13 Nov 2026: $144. The prices live only in `app/src/prices.json`.
 
+## Pointer, 19 Nov 2026 (M116, T31)
+- The 14 day trial is dropped (founder, 19 Nov 2026). Free plan, then pay. No trial is built anywhere, on the Mac or on the server.
+- Pro comes from the Squibby account, not from a key. The person makes an account with Google, pays on Dodo's page in the browser, and Dodo's webhook turns Pro on for that account. No license key, no code (T31, replacing T17).
+
 ## Revisit only if
 The founder changes the price, or Anthropic's terms change what Squibby may pay for.

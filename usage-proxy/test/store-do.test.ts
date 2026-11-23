@@ -48,12 +48,12 @@ for (const kind of TEST_STORES) describe(`the store's promises: ${kind.name}`, (
     const s = kind.make(), t = await newToken();
     await s.addUser(t.hash, { id: "o1", plan: "free", status: "active" });
     expect(await s.setOwnerPlan!("o1", { plan: "pro", status: "active" }, 2000)).toBe(true);
-    expect(await s.userByTokenHash(t.hash)).toEqual({ id: "o1", plan: "pro", status: "active" });
+    expect(await s.userByTokenHash(t.hash)).toEqual({ id: "o1", plan: "pro", status: "active", planMode: "test" });
     expect(await s.setOwnerPlan!("o1", { plan: "free", status: "active" }, 1000)).toBe(false);   // older than the one applied
     expect((await s.userByTokenHash(t.hash))?.plan).toBe("pro");
     expect(await s.planOfOwner!("o1")).toBe("pro");
     await s.setOwnerPlan!("o1", { plan: "pro", status: "past_due", until: NOW + 5000 }, 3000);
-    expect(await s.userByTokenHash(t.hash)).toEqual({ id: "o1", plan: "pro", status: "past_due", planUntil: NOW + 5000 });
+    expect(await s.userByTokenHash(t.hash)).toEqual({ id: "o1", plan: "pro", status: "past_due", planUntil: NOW + 5000, planMode: "test" });
   });
   test("a payment cannot lift a suspension, and a revoked token stays revoked", async () => {
     const s = kind.make(), t = await newToken();
@@ -125,7 +125,9 @@ describe("one step at a time, even across server instances", () => {
     const booked = w.stores[1].records.reduce((n, r) => n + r.usd, 0);
     expect((await w.stores[1].spent("u1", NOW)).day).toBeCloseTo(PLANS.pro.dailyUsd - worst * 0.5 + booked, 8);   // no hold left behind
   });
-  test("a slot or a hold left by an instance that stopped mid request frees itself after the lease", async () => {
+  // Audit run 2, finding 6 (lease re-attack): the slot frees itself after the lease, the hold does not. It counts as spent
+  // from then on (for that day and month), since the request may have run to its end and been billed.
+  test("a slot left by an instance that stopped mid request frees itself after the lease; its hold counts as spent", async () => {
     let t = NOW;
     const s = new FakeDurableStore(new FakeNamespace(), () => t);
     for (let i = 0; i < 4; i++) expect(await s.begin("u1", 4)).toBe(true);
@@ -135,7 +137,7 @@ describe("one step at a time, even across server instances", () => {
     expect(await s.begin("u1", 4)).toBe(false);
     t = NOW + LEASE_MS + 1;
     expect(await s.begin("u1", 4)).toBe(true);
-    expect((await s.spent("u1", t)).day).toBe(0);
+    expect((await s.spent("u1", t)).day).toBe(PLANS.pro.dailyUsd);
   });
   test("M99 review: a slot whose lease ran out, let go late, does not take a running request's slot", async () => {
     let t = NOW;
@@ -165,6 +167,7 @@ describe("what the objects keep", () => {
     await s.record({ userId: "u1", model: "m", usd: 0.01, at: NOW, complete: true, text: PROMPT, usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0, note: REPLY } } as never);
     expect(JSON.stringify(s.dump())).not.toMatch(new RegExp(`${PROMPT}|${REPLY}`));
   });
+  // M116 step 3: the day and month totals live in the newest record now, so they go with the records.
   test("M99 review: old request records and old day and month totals are dropped, as the README says", async () => {
     const s = new FakeDurableStore(), day = 24 * 3600 * 1000;
     const rec = (at: number) => s.record({ userId: "u1", model: "m", usd: 0.01, at, complete: true, usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 } });
@@ -172,11 +175,9 @@ describe("what the objects keep", () => {
     await rec(old); await rec(recent); await rec(NOW - day); await rec(NOW);
     expect(s.records.map((r) => r.at)).toEqual([recent, NOW - day, NOW]);
     const keys = [...s.fake.storageFor(OWNER("u1")).data.keys()];
-    const days = keys.filter((k) => k.startsWith("spent:d:")), months = keys.filter((k) => k.startsWith("spent:m:"));
-    expect(days.every((k) => k.startsWith(`spent:d:${monthKey(NOW)}`))).toBe(true);
-    expect(days.length).toBeGreaterThan(0);
-    expect(months).not.toContain(`spent:m:${monthKey(old)}`);
-    expect(months).toContain(`spent:m:${monthKey(NOW)}`);
+    expect(keys.filter((k) => k.startsWith("spent:"))).toEqual([]);   // no totals of their own to keep or drop
+    expect(keys.filter((k) => k.startsWith("rec:")).length).toBe(3);
+    expect(JSON.stringify(s.fake.storageFor(OWNER("u1")).data.get(keys.filter((k) => k.startsWith("rec:")).sort().at(-1)!))).toContain(`"month":"${monthKey(NOW)}"`);
     expect(await s.spent("u1", NOW)).toEqual({ day: 0.01, month: monthKey(NOW - day) === monthKey(NOW) ? 0.02 : 0.01 });
     const readme = readFileSync(join(import.meta.dir, "..", "README.md"), "utf8");
     expect(readme).toContain(`${RECORD_KEEP_MS / day} days`);
