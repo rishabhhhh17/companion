@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import { reviewModeOf } from "../../protocol/index.ts";
 import type { Model } from "./model.ts";
-import { CHAT_ROWS, feedBlocks, feedPress, pressLine } from "./notchFeed.ts";
+import { CHAT_ROWS, attentionBlock, attentionHeadline, attentionPress, attentionPressLine, attentionSessions, attentionTop, feedBlocks, feedPress, pressLine } from "./notchFeed.ts";
 import { useSetting } from "./settingsStore.ts";
 import { S } from "./strings.ts";
 import { jumpTo } from "./commands.ts";
@@ -51,7 +51,12 @@ export function NotchFeed({ m, project, where, tabIndex = 0, onOpen }: Props) {
   useEffect(() => { if (!said) return; const t = setTimeout(() => setSaid(null), SAID_MS); return () => clearTimeout(t); }, [said]);
   const jumped = useJumpSaid(m);
   const blocks = on ? feedBlocks(m.feed, where === "chat" ? CHAT_ROWS : undefined) : [];
-  if (!blocks.length) return null;
+  const sessions = attentionSessions(m);
+  const attention = on ? attentionBlock(sessions) : null;
+  const top = attention?.top ?? null;
+  const headline = attention?.headline ?? attentionHeadline(sessions);
+  const showAttention = attention !== null;
+  if (!blocks.length && !showAttention) return null;
   const press = (key: string) => {
     const s = m.feed?.find((x) => x.key === key);
     const line = s ? pressLine(feedPress(s, project, m.review, reviewsOn), s.tool ? S.doneSignal.tool[s.tool] : "") : null;
@@ -60,6 +65,23 @@ export function NotchFeed({ m, project, where, tabIndex = 0, onOpen }: Props) {
   };
   return (
     <div className="lf" data-where={where} role="group" aria-label={S.m113.label}>
+      {/* M121: what needs the person, said in the engine's own words and counted, and the work it is about (the top
+          session's own words); the top session gets the attention ring. */}
+      {attention && top && (
+        <section className="lf-block" data-attention={top.state} aria-label={attention.headline}>
+          <div className="lf-head"><span className="lf-who" aria-hidden="true">{attention.headline}</span></div>
+          {attention.what && <p className="lf-said" role="status">{attention.what}</p>}
+          {/* M121 slice 2: press on the attention block opens Home (main.rs island_go), as its words say; never another app. */}
+          <button type="button" className="lf-go" tabIndex={tabIndex}
+            aria-label={S.m121.openAttention}
+            onClick={() => {
+              if (attentionPress(sessions)) { setSaid(null); void invoke("island_go").catch(() => {}); }
+            }}
+          >
+            {S.m121.openAttention}
+          </button>
+        </section>
+      )}
       {blocks.map((b) => {
         // M115: Go to the app this session runs in, while it works, once the engine has seen where; for a tool that is an app
         // of its own, at once (goTo.ts goToFor). M105: a finished block too, since the tool waits there for the next words.

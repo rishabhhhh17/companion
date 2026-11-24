@@ -2,24 +2,35 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
-## Whole-codebase blast-radius check, cross-repo board, and multi-agent attention: 23 Nov 2026
+## The notch says your own words, and names the work it is about: 24 Nov 2026
 
-- **Whole-codebase blast-radius check (M118).** When an AI tool changes an exported function's required arguments or removes an export, Squibby scans the rest of the project locally in milliseconds and flags every caller in other files that would break, in plain words, before you commit or open a pull request.
-- **Cross-repo shared context board (M119).** A local-first task and decision board kept in Squibby's own data folder (never touching your git) so parallel AI agents across `web`, `api`, `ios`, and `infra` repos can share active work and decisions at session start without configuring Linear or MCP.
-- **Multi-agent attention ring model (M119).** Tracks active agent sessions across repos and tools, highlights which ones need approval or are blocked, and ranks them by urgency for the notch.
+- **The words in the notch can be yours.** The greeting, the quiet line under the row and the words on the button when nothing is waiting come from the choices you make in Settings. The usual words stay as they were, so nothing changes until you pick your own. Your words never cover what is happening: Stop, Answer, Review and the other moments keep their own words, and the moment's own line always shows over your quiet line.
+- **The notch now says what the thing that needs you is.** When something waits for you, the notch's line says how many need you and, under it, the work itself. Its Open in Home button opens Home.
+- **The Settings line for the money and fines check is shorter.** The same plain words, just fewer of them.
+
+## The pieces for pull request review, not yet in use: 24 Nov 2026
+
+- **Severity maps to urgency, built and tested, not yet used.** A pull request finding can be turned into one attention item (a blocker means decide now, a high means blocked, a medium or lower means flagged). Nothing calls it yet, so no pull request finding reaches the notch today.
+- **M120 plan.** Automated pull request review entry on GitHub, with prioritization and cross tool integration to follow in the same milestone.
+
+## Other files a change may break, a shared board, and multi-agent attention: 23 Nov 2026
+
+- **Other files a change may break (M118).** When an AI tool removes a function or makes it need more inputs, the review looks for other files that import it from that file and still use it the old way, and names them in plain words. It reads names, not types, so it can be wrong: it is only ever Worth a look, never a stop. It reads each file once, stops after a few seconds or a few thousand files on a big project, stops at once when you press Stop, and leaves out callers that are only tests. Settings, More, Look for other files a change may break turns it off.
+- **Shared board (M119), built and not yet used.** A local task and decision board kept in Squibby's own data folder (never touching your git). Nothing writes to it yet, and it is kept out of the notes your AI tools get at the start of a session until its lines can be seen and forgotten in What I remember. When it is used, a project only ever gets its own lines.
+- **Multi-agent attention (M119).** Ranks what needs you by urgency for the notch: an approval, a stuck loop or a task that asked.
 
 ## Feels like a daily app: 23 Nov 2026
 
-- **Speed budgets measured on this Mac.** A new check (`scripts/m110-speed.sh`) measures launch to notch ready, hover to small notch, click to open, ask box key to typing, tool done signal to notch lighting, and idle processor and memory. Removed a 30 ms wait before focusing the ask box so keyboard opens are ready to type in 13 ms.
+- **Speed budgets, scripted.** A new check (`scripts/m110-speed.sh`) times the built pages in a headless browser on this Mac, not the app itself: page load to notch drawn, hover to small notch, open to Home painted, keyboard open to ask box focused, a done marker to the engine's done callback, and the measuring script's own idle processor and memory. On 24 Nov 2026 it gave 91 ms, 0 ms, 32 ms, 29 ms, 13 ms, 1.1 % and 114 MB, all inside their budgets. The real app on a real Mac has not been timed yet. The wait before focusing the ask box went from 30 ms to 16 ms (one frame); it was not removed.
 - **The notch remembers where you were.** Reopening Home brings back the place you left open (Now, Learn, History or Memory), while keyboard shortcuts still jump straight to Now ready to type.
-- **A short plain recap once a day.** On your first open of a new day, Squibby asks Where was I once and shows a card only when something actually happened. No streaks, no mood check ins.
+- **A once a day recap, not yet wired in.** The rule for asking Where was I once on the first open of a new day is built and tested, but Home still uses the usual rule (the gap you set in Where was I). No streaks, no mood check ins.
 - **Keyboard reach inside Home.** Command K (or `/` outside a text field) focuses the ask box, Command period stops running work, and Command Z outside a text field opens the Undo confirmation when Undo is ready.
 - **Polish pass.** Fixed the Learn page alignment for "Not this one" and "What you have learned", and stopped scrolled cards on Now from bleeding through the sticky ask box in Glass mode.
 
 ## Getting ready to prove every AI tool on a real Mac: 21 Nov 2026
 
 - **A guided check for each of the seven tools.** Claude Code, Codex, Cursor, the VS Code agent, Gemini CLI, Windsurf and Antigravity each get a short session on a real Mac, one step at a time, in a throwaway practice folder. It checks the done signal, the safety copy before a risky command, the ask before a live key, and the ask (or note) before reading saved logins.
-- **Nothing is claimed yet.** No tool has been run through it. Squibby will only name a tool once its session passed, with the date and the tool's version written down.
+- **Nothing is claimed yet.** No tool has been run on a real Mac by a person yet, whatever the milestone's title says. Squibby will only name a tool once its session passed, with the date and the tool's version written down.
 - **It cannot round up.** Where the check can see the result for itself, a pass it does not see is refused.
 
 ## Your notes reach Codex, Gemini CLI and Antigravity too: 21 Nov 2026

@@ -155,6 +155,7 @@ describe("the shipped list of settings", () => {
       // M79 (T18): known serious problems in new packages looked up on OSV.dev, names and versions only (on).
       "packages.check": true,
       "money.checks": true,   // M117
+      "review.blastRadius": true,   // M118: other files that may call a changed function the old way (worth a look only)
       // M82: Have my AI do it writes a clear prompt first (on; it is shown and can be changed before anything is sent), and
       // Now offers Connect your AI tools while none is connected (on; it only opens the screen).
       "handoff.improve": true, "aiTools.nowRow": true,
@@ -184,6 +185,10 @@ describe("the shipped list of settings", () => {
       "notch.askWait": "60",
       // M115: Go to also picks the exact Terminal or iTerm tab (on; the Mac asks about Automation on the first press).
       "notch.jumpTab": true,
+      // M121: the notched words the person can choose for the one-row face, the hint and the pill; empty means the usual words.
+      "notch.greet": "",
+      "notch.hint": "",
+      "notch.pill": "",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -253,6 +258,7 @@ describe("the shipped list of settings", () => {
   });
   test("M77: the weakened check rule, the waiting mark's timeout and the week's count", () => {
     expect(defOf("review.weakenedChecks")).toMatchObject({ section: "watch", kind: "switch", default: true, scope: "app", applies: ["runner"] });
+    expect(defOf("review.blastRadius")).toMatchObject({ section: "watch", kind: "switch", default: true, scope: "app", applies: ["runner"] });
     // M106: Review Claude's background jobs, on, read by the engine at each change.
     expect(defOf("review.jobs")).toMatchObject({ section: "watch", kind: "switch", default: true, scope: "app", applies: ["runner"], store: "settings", live: true });
     expect(defOf("notch.waitingMinutes")).toMatchObject({ section: "home", kind: "choice", default: "15", options: ["5", "15", "60"], scope: "app", applies: ["runner"] });

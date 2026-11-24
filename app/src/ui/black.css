@@ -186,7 +186,7 @@
    and Not this one sits on its own line flush with the row's text inset. */
 .home .learn > .page-caption { margin: 0 var(--space-4) var(--space-3); }
 .home .tutor-not-this { display: block; margin-top: var(--space-1); }
-.home .tutor-not-this .btn { min-height: auto; padding-inline: 0; }
+.home .tutor-not-this .btn { padding-inline: 0; }
 .home .mem-erase-row { margin: 0; }
 .home .mem-erase.btn { color: var(--bad); }
 .home .mem-editing { gap: var(--space-2); padding: var(--space-2) var(--space-4); }

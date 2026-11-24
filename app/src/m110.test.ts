@@ -56,17 +56,19 @@ describe("M110 keyboard reach inside Home", () => {
 });
 
 describe("M110 first minute and Learn polish", () => {
-  test("first-minute path stays within 2 counted screens and 3 clicks, with zero launch permissions", () => {
+  // The 24 Nov review: only what is read from the first run itself (onboarding.ts COUNTED); the click counts and the
+  // permissions were constants, so they are no longer claimed here.
+  test("first-minute path stays within 2 counted screens, read from the first run's own list", () => {
     const c = firstMinuteChecks();
     expect(c.countedScreens).toBeLessThanOrEqual(2);
-    expect(c.clicksToPractice).toBe(1);
-    expect(c.clicksToFirstCheck).toBeLessThanOrEqual(3);
-    expect(c.permissionsAskedInFirstRun).toBe(0);
+    expect(Object.keys(c)).toEqual(["countedScreens"]);
   });
   test("Learn page styles align Not this one and What you have learned footnote", () => {
     const css = ALL_CSS();
     expect(css).toContain(".tutor-not-this");
     expect(css).toContain(".home .learn > .page-caption");
+    // The 24 Nov review: Not this one keeps the button's own minimum target size.
+    expect(css).not.toMatch(/\.tutor-not-this \.btn \{[^}]*min-height:\s*(auto|0)/);
   });
   test("card.tsx focuses the ask box without a 30ms dead timeout", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");

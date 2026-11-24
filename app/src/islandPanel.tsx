@@ -61,7 +61,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   // Open Home (Stop still shows while a job works).
   const showButtons = useSetting("panel.showButtons") !== false;
   // M93 (the founder: "Hey Rishabh"): the first word of the typed name, or Hey there. Never the Mac account's name (F28).
-  const greet = hoverGreeting(useSetting("you.name"));
+  const greet = hoverGreeting(useSetting("you.name"), (useSetting("notch.greet") as string) || undefined);
   const groups = useGroups();
   const compact = useSetting("panel.size") === "compact";
   const jobs = showWork || brief ? islandJobs(m) : [];
@@ -113,8 +113,9 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   const head = hoverHeadline(m, greet, hline, now);
   // The key as its caps ("⌃⌥⌘F"), short enough for one quiet line.
   const stuckKey = keycaps(keysNow().using.problem).join("");
-  const hint = hoverHint(head, hline?.words ?? null, stuckKey ? `${S.look.barKey.before} ${stuckKey} ${S.look.barKey.after}` : "");
-  const action = hoverAction(m, now, { layout: layout === "job" ? "job" : "quick", on: groups.on, buttons: showButtons });
+  const hint = hoverHint(head, hline?.words ?? null, stuckKey ? `${S.look.barKey.before} ${stuckKey} ${S.look.barKey.after}` : "", (useSetting("notch.hint") as string) || undefined);
+  const notchPill = useSetting("notch.pill") as string;
+  const action = hoverAction(m, now, { layout: layout === "job" ? "job" : "quick", on: groups.on, buttons: showButtons }, notchPill ? { label: notchPill } : undefined);
   const stopSay = `${S.stop}. ${keyHint("stop", S.look.stopKeys)}`;
   const questions = jobs.filter((j) => j.approval);
   // M114: a press on a tool ask's card, only once it is armed (as Allow and Don't allow below).
@@ -160,7 +161,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
     )
     : null;
   // M96: the pill's words and its dot (notchMinimal.ts hoverPill).
-  const pill = hoverPill(action, m);
+  const pill = hoverPill(action, m, notchPill || undefined);
   // M96: the face or the hello opens the small chat out of the notch (the shell opens Home as before with island.smallChat
   // off). QA1: that click is the person choosing Squibby, so the shell gives the chat the keys as it opens
   // (island.rs click_takes_keys); pointing alone never does (rule 9).

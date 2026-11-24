@@ -331,7 +331,9 @@ export type ReviewTouch = (typeof REVIEW_TOUCHES)[number];
 // M117 (runner/src/money/review.ts): paid_route_open (the change added a route that calls a paid AI or sends email or SMS,
 // with no limit), form_open (a public form or sign in route with no bot check and no limit) and tracker_no_consent (a
 // tracker with no cookie consent). All three are worth a look at most, never Fix this first.
-export const REVIEW_REASONS = ["weakened_check", "claimed_passed", "secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern", "open_table", "signed_in_open", "key_in_page", "house_rule", "house_rule_ask", "chosen_stop", "open_private_page", "package_critical", "package_high", "paid_route_open", "form_open", "tracker_no_consent"] as const;
+// M118 (runner/src/blastradius.ts): callers_may_break, another file imports a function the change removed or now calls it
+// with too few arguments. Read by names, not types, so worth a look at most, never Fix this first (review.blastRadius).
+export const REVIEW_REASONS = ["weakened_check", "claimed_passed", "secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern", "open_table", "signed_in_open", "key_in_page", "house_rule", "house_rule_ask", "chosen_stop", "open_private_page", "package_critical", "package_high", "paid_route_open", "form_open", "tracker_no_consent", "callers_may_break"] as const;
 export type ReviewReasonKind = (typeof REVIEW_REASONS)[number];
 /** M74: the review mode in force for a project: its own choice (review.modeHere), or with Same as everywhere (or nothing
  *  valid) the app's review.mode. The engine, the shell (main.rs review_watched) and the pages all decide by this rule. */
@@ -358,6 +360,8 @@ export const REVIEW_SILENCE_LINES: Partial<Record<ReviewReasonKind, string>> = {
   paid_route_open: "In reviews of this project, do not flag routes with no rate limit.",
   form_open: "In reviews of this project, do not flag forms with no bot check.",
   tracker_no_consent: "In reviews of this project, do not flag trackers with no consent.",
+  // M118
+  callers_may_break: "In reviews of this project, do not flag other files that may call a changed function the old way.",
 };
 /** The kinds a project's memory lines silence (the lines of REVIEW_SILENCE_LINES, any capital letters, nothing else). */
 export function reviewSilenced(lines: readonly string[]): Set<ReviewReasonKind> {

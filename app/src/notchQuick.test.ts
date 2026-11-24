@@ -176,7 +176,7 @@ describe("the layout and its fixed heights (M70: no jumps)", () => {
     // The founder: a small greeting first ("hey Rishabh"), from the typed name only, over the fact.
     const panel = read("./islandPanel.tsx");
     // M93 (changed on purpose): the first word of the typed name (notchMinimal.ts hoverGreeting), never the Mac's (F28).
-    expect(panel).toContain('const greet = hoverGreeting(useSetting("you.name"));');
+    expect(panel).toContain('const greet = hoverGreeting(useSetting("you.name"), (useSetting("notch.greet") as string) || undefined);');
     // Changed on purpose (feel round 2): the news in place of the greeting when there is some.
     expect(panel).toContain('<span className="nb-greet" title={head.words} data-news={head.news ? "" : undefined}>{head.words}</span>');
     // M70 step 4: the panel's one column never grows past it, or a long fact pushed Open out of the panel.

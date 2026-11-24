@@ -3032,7 +3032,7 @@ export function Card() {
       <div className="inner" ref={inner}>
       {/* M96: the small chat out of the notch, only while Home is the small chat; everything else in Home stays laid out but
           hidden until it opens out (black.css), so nothing in it is lost. */}
-      {chat && <NotchChat m={m} project={project} greet={hoverGreeting(setting("you.name"))} now={clock} hint={askHint ?? micSaid} boxRef={chatBoxRef} working={working || !!m.sending} sendOff={m.connected === "none" ? S.sendFixOff : null}
+      {chat && <NotchChat m={m} project={project} greet={hoverGreeting(setting("you.name"), (setting("notch.greet") as string) || undefined)} now={clock} hint={askHint ?? micSaid} boxRef={chatBoxRef} working={working || !!m.sending} sendOff={m.connected === "none" ? S.sendFixOff : null}
         pending={chatSent} state={project ? { words: statusWords({ kind: status.kind, ago: status.ago, working: stopCan(m) }), dot: statusDot(status.kind) } : null}
         talk={{ on: groups.on("talk") && !!keys.using.talk, title: talkKeysLine(keys), label: keys.using.talk ? S.m96.chat.micKeys(chordLabel(keys.using.talk)) : S.m96.chat.mic }}
         stop={stopCan(m) ? { label: `${S.m96.chat.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`, title: keyHint("stop", S.look.stopKeys, keys) } : null} onStop={() => void stopNow()}

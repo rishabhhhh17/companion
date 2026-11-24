@@ -9,10 +9,9 @@
 // Claude Code and Codex read AGENTS.md themselves, so the lines of Squibby's shared block there are not said twice; Gemini CLI
 // and Antigravity may not read AGENTS.md (Gemini CLI reads GEMINI.md unless told otherwise), so they are handed those too.
 import { lstatSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { writeAtomic } from "../atomic.ts";
 import { START_TOOLS, startFileName, type DoneSignals, type DoneTool } from "../donesignal.ts";
-import { formatBoardForStart, SharedBoard } from "../sharedboard.ts";
 import { MemoryStore } from "./store.ts";
 import { NotesIndex } from "./notesindex.ts";
 import { pickNotes, sharedLinesOf, startBlock, type Picked, type StartBlock } from "./startblock.ts";
@@ -82,14 +81,14 @@ export class SessionStartNotes {
         // Codex only (no Claude Code here): the lines of AGENTS.md's shared block are left out, as Codex reads AGENTS.md.
         return tool === "codex" && !on.includes("claude") ? startBlock(picked, { shared: sharedForCodex(project) }) : claude;
       };
-      const boardText = formatBoardForStart(new SharedBoard(this.o.data).snapshot(), basename(project));
-      const withBoard = (t: string) => (!boardText ? t : t ? `${t}\n\n${boardText}` : boardText);
+      // M119's shared board (sharedboard.ts) is kept out of the start block: nothing writes to it yet, and its lines would not
+      // show in What I remember with their source or be forgettable there (rule 15).
       const blocks = on.map((tool) => ({ tool, b: blockOf(tool) }));
-      const forms: StartForm[] = blocks.map(({ tool, b }) => ({ tool, text: withBoard(b.text) }));
+      const forms: StartForm[] = blocks.map(({ tool, b }) => ({ tool, text: b.text }));
       // The rows: every line that at least one tool set up is handed, in the notes' own order.
       const handed = new Set(blocks.flatMap(({ b }) => b.lines));
       const lines = hook ? picked.filter((p) => handed.has(p)) : claude.lines;
-      const view: StartView = { hook, text: withBoard(claude.text), lines, forms };
+      const view: StartView = { hook, text: claude.text, lines, forms };
       if (token && hook) {
         mkdirSync(this.o.signals.startFolder, { recursive: true, mode: 0o700 });
         for (const f of FORMS) {

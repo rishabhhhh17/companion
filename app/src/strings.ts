@@ -601,6 +601,8 @@ export const S = {
     // M78
     "memory.triedAndFailed": "A fix that ended without proof leaves one line saying what was tried and what still failed.",
     "review.weakenedChecks": "A test skipped, a check told to pass anyway or a lint rule turned off is the first thing a review says.",
+    // M118
+    "review.blastRadius": "Other files that may still call a changed function the old way, by names on this Mac. Worth a look, never a stop.",
     // M106
     "review.jobs": "Changes in Claude's background jobs are reviewed too, each job on its own.",
     // M79
@@ -608,6 +610,10 @@ export const S = {
     // M117
     "money.checks": "Routes that cost money with no limit, open forms, trackers with no consent and the privacy basics, by rules on this Mac.",
     "notch.waitingMinutes": "How long the notch says Claude is waiting for you when nothing else happens.",
+    // M121 slice 3: the notch's words come from the person's choices, not one fixed phrase.
+    "notch.greet": "The words the notch says when it has nothing to tell you.",
+    "notch.hint": "The quiet line under the notch's row when the moment has nothing of its own to say.",
+    "notch.pill": "The words on the notch's button when nothing is waiting.",
     "history.thisWeek": "History and Now show what was caught in the last seven days, only when there is something.",
     "check.privatePages": "After the page check, private looking pages are opened once without a sign in.",
     "live.stripeMode": "Why is live broken? reads your Stripe webhooks in live mode, or in test mode.",
@@ -2007,6 +2013,7 @@ export const S = {
       key_in_page: "the check for keys sent to the page", house_rule: "your house rule", house_rule_ask: "your house rule", chosen_stop: "your setting",
       open_private_page: "the run check", package_critical: "the check for known package problems", package_high: "the check for known package problems",
       paid_route_open: "the check for routes with no limit", form_open: "the check for forms with no bot check", tracker_no_consent: "the check for trackers with no consent",
+      callers_may_break: "the check for other files that use a changed function",
     } as Record<string, string>,
     rule: (name: string, at?: string) => (at ? `${name} found it at ${at}.` : `${name} found it.`),
     // M102 review: a model's worry is a guess, so it never says sure. Only where it is, what code checked, and to try it.
@@ -2035,6 +2042,7 @@ export const S = {
       key_in_page: "keys in the page", house_rule: "house rules", house_rule_ask: "house rules to ask about", chosen_stop: "your chosen stops",
       open_private_page: "pages open without a sign in", package_critical: "critical package problems", package_high: "serious package problems",
       paid_route_open: "routes with no limit", form_open: "forms with no bot check", tracker_no_consent: "trackers with no consent",
+      callers_may_break: "other files a change may break",
     } as Record<string, string>,
     byKind: (what: string, list: string) => `${what}, by kind of warning: ${list}`,
     fixIt: "Fix it", looksFine: "Looks fine",
@@ -2076,6 +2084,8 @@ export const S = {
       paid_route_open: "Add a limit on how often each person can call it, for example 20 times a minute.",
       form_open: "Add a bot check people barely notice, such as Cloudflare Turnstile, and a limit on its route.",
       tracker_no_consent: "Load the tracker only after people say yes to cookies, with a small consent banner.",
+      // M118
+      callers_may_break: "Open the file named here and update the call, or put the function back the way it was.",
     } as Record<string, string>,
     // Left out for a Must fix that is never fine on purpose (a key in the code, open data, failing checks).
     fineFor: {
@@ -2097,6 +2107,8 @@ export const S = {
       paid_route_open: `If you set a limit in your host's dashboard, such as Vercel Firewall or Cloudflare. ${PRODUCT} cannot see dashboards.`,
       form_open: "If the form is only for people already signed in, or your host checks for bots before it.",
       tracker_no_consent: "If your consent banner is set up inside Google Tag Manager, or no one in a place that needs consent uses your app.",
+      // M118
+      callers_may_break: "If that file is updated in the same change, or it uses another function with the same name.",
     } as Record<string, string>,
   },
   // M75: the cost pause card. No amounts anywhere (F29, M69).
@@ -2738,6 +2750,10 @@ export const S = {
     "island.hello": { label: "Say hello in the notch", help: "Off unless you turn it on. On, a short hello shows when you start the app, wake your Mac or come back after more than an hour. The notch widens for about 3 seconds with one line, such as Hey Sam, and one fact if there is one. Only on a Mac with a notch, at most once an hour, and never with a sound. Never while a call app such as Zoom is in front. It checks only which app is in front, so turn on Hide from screen sharing to keep it out of a share.", also: ["hello", "greeting", "hi", "notch", "welcome", "wake", "start", "name"] },
     "you.name": { label: "Your name", help: "When you point at the notch it greets you with the first word, such as Hey Sam. The hello in the notch uses it too. Only what you type here is used, and it stays on this Mac. Empty, it says Hey there.", also: ["your name", "name", "call me", "hello", "greeting", "profile", "me", "you"], placeholder: "Your name" },
     "you.buildsWith": { label: "The AI you build with", help: "Your answer to the first run's question. It only picks which tip you see first. It is kept on this Mac and never sent anywhere. Not set forgets it.", also: ["lovable", "bolt", "replit", "cursor", "claude code", "ai tool", "builder", "tip", "first run"], options: { unset: "Not set", lovable: "Lovable", bolt: "Bolt", replit: "Replit", cursor: "Cursor", claudeCode: "Claude Code", other: "Something else" } },
+    // M121 slice 3: the notch's words come from the person's choices, not one fixed phrase.
+    "notch.greet": { label: "The greeting in the notch", help: "The words the notch says when it has nothing to tell you. By default it says Hey and the first word of your name. Set your own, such as Hey Sam, and the row says that instead. Empty, it says Hey and your first name.", also: ["greet", "greeting", "hello", "hey", "notch", "words"] },
+    "notch.hint": { label: "The hint under the row", help: "The one quiet line under the notch's row, when there is something to say. By default the moment has one, such as how many changes are waiting. Set your own and the notch says it when the moment has no line of its own, in place of the key for being stuck. The moment's own line always comes first. Empty, it keeps the usual.", also: ["hint", "line", "quiet", "words", "notch"] },
+    "notch.pill": { label: "The action's words in the pill", help: "The one glowing button in the notch, and the words it says, such as Check my project. By default it offers the one action that fits the moment, and says how many changes are waiting to review. Set your own and the pill says it when nothing is waiting and it offers Check my project. Stop, Answer, Review and every other moment keep their own words. Empty, it keeps the default.", also: ["pill", "button", "action", "words", "notch"] },
     // M114: approve and answer from the notch.
     "notch.askWait": { label: "Give me this long to answer in the notch", help: `When Claude Code or Codex asks for permission, the notch shows Allow and Don't allow. Claude Code's questions show with their choices. Press nothing for this long and the tool asks in its own window, as it always does. Answer in the tool works at any time. Each tool needs its notch answers row on (Fixing, Start reviews sooner).`, also: ["approve", "allow", "deny", "permission", "question", "answer", "notch", "wait", "timeout", "Claude Code", "Codex"], options: { "30": "30 seconds", "60": "1 minute", "120": "2 minutes" } },
     // M115: Go to the session that needs you.
@@ -2893,7 +2909,8 @@ export const S = {
     "review.jobs": { label: "Review Claude's background jobs", help: `Claude Code can run jobs in the background, each in its own folder inside this project. ${PRODUCT} reviews each job's changes on its own card. It runs the checks in that job's folder when you ask, and says when two jobs changed the same file. Nothing is merged, and your project's history is not touched. Off: those folders are left alone.`, also: ["background", "job", "jobs", "worktree", "worktrees", "agent view", "parallel", "Claude Code", "merge", "branch"] },
     "review.weakenedChecks": { label: "Flag tests or checks a change weakens", help: `A skipped test, a run narrowed to one test, or checks removed from a test. A lower coverage threshold, a step told to pass anyway, or a lint rule turned off. The review says it first, as Fix this first, with the file and line. Plain rules on this Mac, no model.`, also: ["test", "skip", "it.skip", "only", "coverage", "lint", "eslint", "ci", "weakened", "quiet", "pass anyway", "ts-ignore"] },
     // M117: money and fines, by rules on this Mac.
-    "money.checks": { label: "Check for money and fines", help: `The go live check and the review of every change look for routes that call a paid AI or send email with no limit on how often they can be called, public forms and sign in with no bot check, trackers with no cookie consent, and a missing privacy page or way to delete an account. Rules on this Mac read your code; no model is used and nothing is sent. ${PRODUCT} cannot see your dashboards, so a limit or budget set there is not seen. These are only ever Worth a look, never a stop.`, also: ["money", "fines", "rate limit", "limit", "bots", "captcha", "turnstile", "budget", "spending", "privacy", "cookies", "consent", "gdpr", "delete account", "abuse"] },
+    "review.blastRadius": { label: "Look for other files a change may break", help: `A change may remove a function or make it need more inputs. The review then looks for other files that import it and still use it the old way. It reads names, not types, so it can be wrong: it is only ever Worth a look, never a stop. Plain rules on this Mac, no model, and it stops after a few seconds on a big project.`, also: ["blast radius", "callers", "break", "import", "function", "arguments", "removed", "export", "other files"] },
+    "money.checks": { label: "Check for money and fines", help: `The go live check and change review look for paid AI calls with no limit, open forms, trackers without consent and missing privacy pages. Rules on this Mac read your code; no model is used and nothing is sent. ${PRODUCT} cannot see your dashboards, so a limit or budget set there is not seen. These are only ever Worth a look, never a stop.`, also: ["money", "fines", "rate limit", "limit", "bots", "captcha", "turnstile", "budget", "spending", "privacy", "cookies", "consent", "gdpr", "delete account", "abuse"] },
     // M79 (T18): the package check on OSV.dev.
     "packages.check": { label: "Check new packages for known problems", help: `When a change adds a package or a new version, the review sends only its name and version to OSV.dev. OSV.dev is a free public list of known problems, run by Google. Never your code and never your files. A known serious problem is a Must fix or a Should fix. Answers are kept on this Mac for a day. If OSV.dev does not answer, the review says the packages were not checked. Off, nothing is looked up.`, also: ["packages", "dependencies", "npm", "pip", "cargo", "go", "vulnerability", "security", "osv", "cve", "lock file", "package.json", "requirements.txt"] },
     "notch.waitingMinutes": { label: "Clear \"Claude is waiting for you\" after", help: `Needs the waiting signal (Fixing, Start reviews sooner). When Claude Code asks for a permission or waits for input, the notch's mark goes amber and says Claude is waiting for you. It clears when Claude Code moves on, or after this long.`, also: ["notch", "waiting", "permission", "claude code", "amber", "needs you", "clear", "timeout"], options: { "5": "After 5 minutes", "15": "After 15 minutes", "60": "After 1 hour" } },
@@ -3669,6 +3686,8 @@ export const S = {
       paid_route_open: ["Anyone can call a paid service through this without a limit.", "A bot can call it thousands of times an hour, and every call is billed to you."],
       form_open: ["A public form or sign in has no bot check.", "Bots fill open forms with fake accounts and spam, and guess passwords."],
       tracker_no_consent: ["A tracker loads with no cookie consent.", `In many places, trackers that set cookies need a yes first. ${NOT_LEGAL}`],
+      // M118: worth a look at most, never a stop.
+      callers_may_break: ["Another file may still use a changed function the old way.", "That part of your app may stop working until the call is updated."],
     } as Record<string, readonly [string, string]>,
     pointing: `${PRODUCT} is pointing here`,
     lineNo: (n: number) => `line ${n}`,
@@ -4754,6 +4773,17 @@ export const S = {
     answerInSay: (tool: string, app: string) => `Answer in ${tool} instead. The notch lets go and ${app} comes to the front, where ${tool} asks you itself.`,
     jumpUnknown: (tool: string) => `${PRODUCT} has not seen where ${tool} runs yet. It knows once ${tool} runs a command or asks you something.`,
     jumpFailed: (tool: string) => `The Mac did not bring ${tool}'s window to the front. Open it from the Dock instead.`,
+  },
+  // M121: the notch overhaul (notchFeed.ts, notchFeed.tsx). The attention block names the work and the press goes to Home.
+  m121: {
+    openAttention: "Open in Home",
+  },
+  // M119: the notch's attention line, over the engine's counts (runner/src/attention.ts gives counts only, no words).
+  m119: {
+    headline: (attention: number, working: number): string =>
+      attention > 0 ? (attention === 1 ? "1 agent needs you" : `${attention} agents need you`)
+        : working > 0 ? (working === 1 ? "1 agent working" : `${working} agents working`)
+          : "All agents quiet",
   },
   // M114: approve and answer from the notch (notchAsk.ts). A card for the person's own AI tool's ask: what it wants, Allow
   // and Don't allow (and Always allow, with its rule shown first), or its question's choices; Answer in the tool always works.

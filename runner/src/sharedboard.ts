@@ -90,16 +90,19 @@ export class SharedBoard {
   }
 }
 
-/** Renders a compact cross-repo context block (at most 20 lines) for any AI tool's session start. */
+/** Renders a compact context block (at most 20 lines) of the current repo's own tasks and decisions. One repo's lines never
+ *  go into another project's block. Built, not yet used: the session start leaves it out (memory/sessionstart.ts). */
 export function formatBoardForStart(board: BoardState, currentRepo: string): string {
-  const active = board.tasks.filter((t) => t.status !== "done");
-  if (!active.length && !board.decisions.length) return "";
-  const lines: string[] = [`Shared work across repos (current: ${clean(currentRepo, 40)}):`];
+  const repo = clean(currentRepo, 40);
+  const active = board.tasks.filter((t) => t.status !== "done" && t.repo === repo);
+  const decisions = board.decisions.filter((d) => d.repo === repo);
+  if (!active.length && !decisions.length) return "";
+  const lines: string[] = [`Shared work for ${repo}:`];
   for (const t of active) {
     if (lines.length >= MAX_START_LINES) break;
     lines.push(`- [${t.status}] ${t.repo}: ${t.title} (${t.owner})`);
   }
-  for (const d of board.decisions) {
+  for (const d of decisions) {
     if (lines.length >= MAX_START_LINES) break;
     lines.push(`- Decision (${d.repo}): ${d.text}`);
   }

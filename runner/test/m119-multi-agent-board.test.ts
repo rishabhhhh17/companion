@@ -24,9 +24,13 @@ describe("M119 cross-repo shared context board", () => {
       expect(reloaded.decisions.length).toBe(1);
       expect(reloaded.decisions[0].text).not.toContain("sk_live_1234567890abcdefghij");
 
+      // The 24 Nov review: one repo's tasks and decisions never go into another project's block.
       const block = formatBoardForStart(reloaded, "web");
-      expect(block).toContain("api: Add user.plan to applyDiscount");
+      expect(block).not.toContain("api: Add user.plan to applyDiscount");
+      expect(block).not.toContain("Stripe key");
       expect(block).toContain("web: Update checkout call");
+      expect(formatBoardForStart(reloaded, "api")).toContain("api: Add user.plan to applyDiscount");
+      expect(formatBoardForStart(reloaded, "other")).toBe("");
       expect(block.split("\n").length).toBeLessThanOrEqual(20);
       expect(block).not.toContain("—");
     } finally {
@@ -48,21 +52,23 @@ describe("M119 cross-repo shared context board", () => {
     }
   });
 
-  test("SessionStartNotes.refresh appends shared cross-repo board when non-empty and stays quiet when empty", () => {
+  // The 24 Nov review: nothing writes to the board yet, and its lines would not be visible or forgettable in What I
+  // remember (rule 15), so the session start block never includes it, even when the board has this repo's own tasks.
+  test("SessionStartNotes.refresh never adds the shared board (kept off until its lines can be seen and forgotten)", () => {
     const dir = mkdtempSync(join(tmpdir(), "m119-start-"));
     const data = join(dir, "data");
     const proj = join(dir, "web");
     try {
       const signals = new DoneSignals(data);
       const start = new SessionStartNotes({ data, signals, memoryDir: join(dir, "mem") });
-      const emptyView = start.refresh(proj);
-      expect(emptyView.text).not.toContain("Shared work across repos");
-
       const board = new SharedBoard(data);
       board.upsertTask({ id: "T1", repo: "api", title: "Ship billing v2", status: "in_progress", owner: "claude" });
-      const filledView = start.refresh(proj);
-      expect(filledView.text).toContain("Shared work across repos (current: web):");
-      expect(filledView.text).toContain("api: Ship billing v2");
+      board.upsertTask({ id: "T2", repo: "web", title: "Fix the web header", status: "open", owner: "claude" });
+      const view = start.refresh(proj);
+      expect(view.text).not.toContain("Shared work across repos");
+      expect(view.text).not.toContain("Ship billing v2");
+      expect(view.text).not.toContain("Fix the web header");
+      expect(view.forms.map((f) => f.text).join("\n")).not.toContain("Ship billing v2");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -94,14 +100,15 @@ describe("M119 multi-agent attention ring", () => {
     const summary = attentionSummary(sessions);
     expect(summary.attentionCount).toBe(3);
     expect(summary.top?.id).toBe("approve");
-    expect(summary.headline).toContain("3");
-    expect(summary.headline).not.toContain("—");
+    // The 24 Nov review: the engine gives counts only; the words are the app's (app/src/strings.ts S.m119.headline).
+    expect("headline" in summary).toBe(false);
   });
 
   test("handles empty or all-quiet sessions cleanly", () => {
     const summary = attentionSummary([s("a", "working", 10), s("b", "idle", 5)]);
     expect(summary.attentionCount).toBe(0);
     expect(summary.top).toBeNull();
-    expect(summary.headline).toBe("1 agent working");
+    expect(summary.workingCount).toBe(1);
+    expect("headline" in summary).toBe(false);
   });
 });

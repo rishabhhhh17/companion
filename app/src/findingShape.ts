@@ -20,6 +20,8 @@ export const FINDING_LEVEL: Record<ReviewReasonKind, Level> = {
   package_critical: "must", package_high: "should",
   // M117: money and fines are worth a look at most, never a stop (runner/src/money/review.ts).
   paid_route_open: "look", form_open: "look", tracker_no_consent: "look",
+  // M118: read by names, not types, so worth a look at most (runner/src/blastradius.ts).
+  callers_may_break: "look",
 };
 const RANK: Record<Level, number> = { must: 0, should: 1, look: 2 };
 // review.ts keyWarned is a type guard; as a plain yes or no it does not narrow the card away after it.

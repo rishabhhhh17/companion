@@ -13,18 +13,20 @@
      - Ask box key to typing (`opened` with `keyboard: true` to ask box focused and taking a keystroke): under 100 ms.
      - Tool saying done to notch lighting (real done marker touched via `DoneSignals` to done event): under 500 ms.
      - Idle runner processor and memory with nothing happening: under 5% of one core and under 180 MB RSS.
-   - Fix the slowest: remove the unconditional 30 ms `setTimeout` before focusing the ask box when Home opens from the keyboard (`app/src/card.tsx`), focusing immediately on the current frame.
+   - Fix the slowest: the 30 ms `setTimeout` before focusing the ask box when Home opens from the keyboard (`app/src/card.tsx`) became 16 ms (one frame). It was shortened, not removed.
+   - What these numbers are (corrected 24 Nov 2026): scripted measurements of the built pages (`app/dist`) in a headless browser on this Mac with a stand in for the shell, the engine's `DoneSignals` on its own, and the idle processor and memory of the measuring Bun script itself. They are not the app on a real Mac. The run of 24 Nov 2026 printed: launch to notch ready 91 ms, hover to small notch 0 ms, click to open 32 ms, ask key to typing 29 ms, done marker to callback 13 ms, idle processor 1.1 %, idle memory 114 MB. All 7 within budget.
 
 2. **The first minute.**
    - Under 60 seconds from first open to the first useful moment:
      - Practice path: 1 click from Welcome ("Try a practice project") straight to the first practice check.
      - Real project path: 2 counted screens (Welcome, Pick a project) and 3 clicks to the first check.
+     - Only the counted screens are checked in code (`dailyFeel.ts` `firstMinuteChecks`, read from `onboarding.ts` `COUNTED`). The click counts and the permissions were constants there and are no longer claimed (24 Nov 2026 review).
    - Permissions stay asked only at first use (rule 8).
    - Open when you log in (`app.openAtLogin`) remains opt in (M74: a lasting change to the Mac happens only when the person turns the switch on in Settings, General).
 
 3. **Daily habits** (`app/src/dailyFeel.ts`, `app/src/homeKeys.ts`, `app/src/card.tsx`).
    - **The notch remembers where you were:** keep the last open main place (`now`, `did`, `learn`, `memory`; never `settings`) in local storage so reopening restores where you left off. Opening from a keyboard shortcut still lands on Now ready to type.
-   - **First time each day recap:** on the first open of a new local calendar day (unless `where.after` is `off`), ask for Where was I once for that day. Show a card only when something actually happened (`recapWorthACard`). No streaks, no mood check ins (rule 16).
+   - **First time each day recap (built and tested, not wired in yet: `card.tsx` still uses `memorySettings.ts` `recapDue`):** on the first open of a new local calendar day (unless `where.after` is `off`), ask for Where was I once for that day. Show a card only when something actually happened (`recapWorthACard`). No streaks, no mood check ins (rule 16).
    - **Keyboard reach for every main action inside Home** (read only from Home's own key events, never global shortcuts, rule 9):
      - Existing: `Cmd+1` to `Cmd+4` (places), `Up` / `Down` (list rows), `Cmd+,` (Settings), `Esc` (step back or close).
      - Added: `Cmd+K` (and `/` outside a field) focuses the ask box; `Cmd+.` stops running work; `Cmd+Z` outside a field opens the Undo confirmation when Undo is available (never undoes without a tap, rule 13).

@@ -22,14 +22,14 @@
 
 ### 1. M110: Feels like a daily app (`docs/milestones/M110-daily-feel.md`, commit `9ee5e421`)
 - **Speed budgets (`runner/src/speed.ts`, `runner/test/m110-speed.test.ts`, `runner/scripts/m110-speed.ts`, `scripts/m110-speed.sh`):**
-  - Measures all 7 real metrics on this Mac with headless Chromium on `app/dist`, real `DoneSignals`, and idle process sampling (zero model calls, zero cost):
-    - Launch to notch ready: **90 ms** (budget <= 500 ms)
-    - Hover to small notch shown: **16 ms** (budget <= 100 ms)
-    - Click to notch opened: **19 ms** (budget <= 200 ms)
-    - Ask box key to typing: **24 ms** (budget <= 100 ms)
-    - Tool saying done to notch lighting: **2 ms** (budget <= 500 ms)
-    - Idle CPU: **0.3 %** (budget <= 5 %)
-    - Idle RSS memory: **76 MB** (budget <= 180 MB)
+  - Scripted measurements of the built pages (`app/dist`) in headless Chromium on this Mac, the engine's `DoneSignals` on its own, and the measuring Bun script's own idle processor and memory; not the app on a real Mac (zero model calls, zero cost). Corrected 24 Nov 2026 to the script's printed output that day:
+    - Launch to notch ready: **91 ms** (budget <= 500 ms)
+    - Hover to small notch shown: **0 ms** (budget <= 100 ms)
+    - Click to notch opened: **32 ms** (budget <= 200 ms)
+    - Ask box key to typing: **29 ms** (budget <= 100 ms)
+    - Tool saying done to notch lighting: **13 ms** (budget <= 500 ms)
+    - Idle CPU: **1.1 %** (budget <= 5 %)
+    - Idle RSS memory: **114 MB** (budget <= 180 MB)
   - **Real speed fix:** Changed `setTimeout(() => box.current?.focus(), 30)` to `16` ms (one frame) in `app/src/card.tsx` (and `0` ms for the two non-stage focus paths).
   - **Intentional test expectation update:** Updated one hardcoded string check in `app/src/m96Notch.test.ts` (line 166) from `30` to `16` with an explicit `// Changed on purpose (M110, 23 Nov 2026)` comment.
 - **Daily habits (`app/src/dailyFeel.ts`, `app/src/home.ts`, `app/src/homeKeys.ts`, `app/src/card.tsx`, `app/src/m110.test.ts`):**

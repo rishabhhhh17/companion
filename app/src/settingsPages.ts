@@ -58,7 +58,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       // What pointing at the notch opens (2 Nov 2026): Home, the usual, or the status line; beside how long it waits.
       // M90 (F32): the notch at rest, beside it: the character peeking out, its side and how long it stays out. In More
       // options because General's main level already holds its ten (the spec, 3.4).
-      { id: "more.general.notch", items: ["island.pointOpens", "notch.peek", "notch.peekSide", "notch.peekHideAfter", "island.smallChat", "you.name", "island.showWork", "island.wings", "island.showStep", "island.hello", "island.openDelay", "island.closeDelay", "island.followDelay", "island.haptics", "panel.showWork", "panel.size", "notch.waitingMinutes", "notch.liveFeed", "notch.askWait", "notch.jumpTab"] },
+      { id: "more.general.notch", items: ["island.pointOpens", "notch.peek", "notch.peekSide", "notch.peekHideAfter", "island.smallChat", "you.name", "island.showWork", "island.wings", "island.showStep", "island.hello", "island.openDelay", "island.closeDelay", "island.followDelay", "island.haptics", "panel.showWork", "panel.size", "notch.waitingMinutes", "notch.liveFeed", "notch.askWait", "notch.jumpTab", "notch.greet", "notch.hint", "notch.pill"] },
       // M74: quiet hours for the notch's review dot and lines (Home still shows everything).
       { id: "more.general.quiet", items: ["quiet.on", "quiet.from", "quiet.to"] },
       { id: "more.general.home", items: ["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", "history.thisWeek", f("usedOften")] },
@@ -97,7 +97,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "fixing.undo", items: ["undo.protectMyEdits"] },
     ],
     more: [
-      { id: "more.fixing.review", items: ["review.quietSeconds", "review.autoQuietSeconds", "review.ignore", "review.stopKinds", "review.whenNothing", "review.maxFiles", "review.keepDays", "review.weakenedChecks", "review.jobs", "packages.check", "money.checks"] },
+      { id: "more.fixing.review", items: ["review.quietSeconds", "review.autoQuietSeconds", "review.ignore", "review.stopKinds", "review.whenNothing", "review.maxFiles", "review.keepDays", "review.weakenedChecks", "review.blastRadius", "review.jobs", "packages.check", "money.checks"] },
       // M86: Watch what changed, the drawn replay of each review.
       { id: "more.fixing.replay", items: ["replay.show", "replay.speed", "replay.reduceMotion", "replay.model"] },
       { id: "more.fixing.run", items: ["work.maxTurns", "work.askOnAnyFailure", "work.tryAgain", "work.stopOnQuestion", "work.webSearch", "drive.maxSteps", "make.folder", "approval.waitMinutes", "approval.offerAlways", "safety.askBeforeLive", "pointat.editor", "explain.after", "ask.choices", "handoff.improve", "aiTools.nowRow", "paste.showWhere", "review.putIn", "tour.offer", "report.codeLines"] },

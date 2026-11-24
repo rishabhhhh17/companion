@@ -1159,12 +1159,15 @@ export class ReviewService {
       const house = houseRuleReasons(loadRules(b.project).rules, b.files);
       // M77: a check the change weakened comes first of all (review.weakenedChecks, on as usual).
       const weakened = this.deps.setting("review.weakenedChecks") === false ? [] : weakenedChecks(deltas, after);
-      // M118: whole-codebase blast-radius check for breaking export arity changes or removed exports.
-      const blast = blastRadiusReasons(
+      // M118: other files that import a function this change removed or now call it with too few arguments. Worth a look
+      // at most (callers_may_break), on as usual (review.blastRadius); it yields, has a cap and ends at Stop.
+      const blast = this.deps.setting("review.blastRadius") === false ? [] : await blastRadiusReasons(
         dir,
         readable.filter((f) => f.kind === "modified" && before[f.file] !== undefined && after[f.file] !== undefined)
           .map((f) => ({ file: f.file, before: before[f.file], after: after[f.file] })),
+        { signal: abort.signal },
       );
+      if (abort.signal.aborted) throw new Error("stopped");
       // M79 (T18): known serious problems in the packages this change added (only names and versions leave the Mac).
       const pk = await this.packagesOf(b, store, abort.signal);
       // M117: what the change added that costs money or risks a fine (worth a look at most), by the go live check's rules.

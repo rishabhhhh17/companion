@@ -72,7 +72,7 @@ describe("the greeting: hey and the first name, or hey there", () => {
     const src = read("./notchMinimal.ts");
     for (const no of ["invoke(", "fetch(", "NSFullUserName", "whoami", "id -F", "send_command"]) expect(src).not.toContain(no);
     const panel = read("./islandPanel.tsx");
-    expect(panel).toContain('const greet = hoverGreeting(useSetting("you.name"));');
+    expect(panel).toContain('const greet = hoverGreeting(useSetting("you.name"), (useSetting("notch.greet") as string) || undefined);');
   });
 });
 

@@ -35,7 +35,8 @@ export function dayStamp(now: number): string {
   return `${y}-${m}-${dd}`;
 }
 
-/** Whether the first-time-today plain recap should be asked for when Home opens.
+/** Whether the first-time-today plain recap should be asked for when Home opens. Not wired in yet: card.tsx still uses
+ *  memorySettings.ts recapDue (the where.after gap). 
  *  Fires at most once per local calendar day when the previous visit was on an earlier day,
  *  and never when where.after is "off" or on the very first visit. */
 export function dailyRecapDue(lastVisit: number, lastRecapDay: string, now: number, choice: unknown): boolean {
@@ -53,17 +54,8 @@ export function markDailyRecapDay(now: number, io: StoreIO = browserStore): void
   io.set(DAILY_RECAP_KEY, dayStamp(now));
 }
 
-/** First-minute journey invariants (under 60 s from first open to first useful moment, rule 8). */
-export function firstMinuteChecks(): {
-  countedScreens: number;
-  clicksToPractice: number;
-  clicksToFirstCheck: number;
-  permissionsAskedInFirstRun: number;
-} {
-  return {
-    countedScreens: COUNTED.length,
-    clicksToPractice: 1,
-    clicksToFirstCheck: 3,
-    permissionsAskedInFirstRun: 0,
-  };
+/** First-minute journey invariant read from the first run itself: how many counted screens it has (onboarding.ts
+ *  COUNTED). Click counts and permissions are not measured here, so they are not claimed. */
+export function firstMinuteChecks(): { countedScreens: number } {
+  return { countedScreens: COUNTED.length };
 }

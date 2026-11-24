@@ -33,8 +33,14 @@ import { finishedNow, waitingTool } from "./toolFinished.ts";
 // The first word of the name and its cut live in notchHello.ts, so the hello and this greeting say the same name (the M93
 // review: the hello said the whole typed name).
 export { firstName, NAME_SHOWN_MAX };
-/** M96: "hey rishabh", or "hey there" when no name was typed: lowercase, as the approved mock says it. */
-export const hoverGreeting = (typed: unknown): string => { const n = firstName(typed); return n ? S.m96.hey(n.toLocaleLowerCase()) : S.m96.heyThere; };
+/** M96: "hey rishabh", or "hey there" when no name was typed: lowercase, as the approved mock says it. M121 slice 3: a
+ *  person's chosen greeting (the notch's words) replaces it; the default keeps the typed name's hello. */
+export const hoverGreeting = (typed: unknown, greet?: string): string => {
+  const g = (greet ?? "").trim().toLowerCase();
+  if (g) return g;
+  const n = firstName(typed);
+  return n ? S.m96.hey(n.toLocaleLowerCase()) : S.m96.heyThere;
+};
 
 /** Feel round 2 (19 Nov 2026): the row led with "hey there" even when there was news, so a finished review peeked as a
  *  greeting and the person had to open Home to learn what happened. With news (the one short line, or a review's own
@@ -142,7 +148,10 @@ const make = (id: HoverActionId): HoverAction => ({ id, label: S.m96.act[id], lo
  *  or changed since; M96: Undo last change while the last fix can be undone; else Check my project (M93 said Ask when all was fine: M96 asks in the small chat, opened from the
  *  greeting, so the pill always offers a check when nothing waits). An action whose tool is turned off, or with the panel's
  *  buttons off, is Open Home instead. */
-export function hoverAction(m: Model, now: number, o: ActionInput): HoverAction {
+export function hoverAction(m: Model, now: number, o: ActionInput, act?: { label?: string }): HoverAction {
+  // M121 (the 24 Nov review): the person's own pill words (notch.pill) relabel only the idle Check my project. Stop,
+  // Answer, See why, Review and every other moment keep their own words, so a custom label never hides what is happening.
+  const pick = (a: HoverAction): HoverAction => (a.id === "check" && act?.label?.trim() ? { ...a, label: act.label.trim() } : a);
   if (o.layout === "job") return make("stop");
   if (!m.runnerUp) return make("seeWhy");
   if (m.connected === "none") return make("home");
@@ -161,7 +170,8 @@ export function hoverAction(m: Model, now: number, o: ActionInput): HoverAction 
   const tool = ACT[id].tool;
   if (tool !== null && !on(tool)) return make("home");
   // M105: the pill says the result ("See 2 problems", "See what changed"), with a dot when something was found.
-  return id === "finished" && fin ? { ...make(id), label: fin.pill, ...(fin.problems ? { dot: true } : {}) } : make(id);
+  const a = id === "finished" && fin ? { ...make(id), label: fin.pill, ...(fin.problems ? { dot: true } : {}) } : make(id);
+  return pick(a);
 }
 // ---------- M96: the pill's words ----------
 
@@ -170,9 +180,11 @@ const WAITS: ReadonlySet<HoverActionId> = new Set<HoverActionId>(["review", "ans
 export type HoverPill = { words: string; dot: boolean };
 /** The words on the one glowing pill: the action's own, except Review changes, which says how many ("2 changes to review"),
  *  and a small dot when something waits for the person. */
-export function hoverPill(a: HoverAction, m: Model): HoverPill {
+export function hoverPill(a: HoverAction, m: Model, pill?: string): HoverPill {
   const n = reviewWaits(m);
-  const words = a.id === "review" && n > 0 ? S.m96.changes(n) : a.label;
+  // M121: the person's pill words only on the idle check (as hoverAction), never over a moment's own words.
+  const p = a.id === "check" ? (pill ?? "").trim() : "";
+  const words = p ? p : (a.id === "review" && n > 0 ? S.m96.changes(n) : a.label);
   return { words, dot: WAITS.has(a.id) || a.dot === true };
 }
 
@@ -185,7 +197,9 @@ export const HOVER_H = 96;
 /** Feel round 3 (the founder's HeyClicky reference, 18 Nov 2026): the hover panel's quiet second line, under its headline:
  *  the moment's own line when the headline is not already it, else the key for being stuck ("Press ⌃⌥⌘F when stuck"),
  *  else nothing. */
-export function hoverHint(head: { words: string; news: boolean }, line: string | null, keyLine: string): string {
+export function hoverHint(head: { words: string; news: boolean }, line: string | null, keyLine: string, hint?: string): string {
+  // M121 (the 24 Nov review): the person's own hint (notch.hint) takes the place of the key line only, never the moment's.
   if (line && line !== head.words) return line;
-  return keyLine;
+  const h = (hint ?? "").trim();
+  return h || keyLine;
 }

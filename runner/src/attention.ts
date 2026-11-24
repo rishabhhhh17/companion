@@ -34,23 +34,56 @@ export function rankSessions(sessions: readonly AgentSession[]): RankedSession[]
     .sort((a, b) => (a.priority !== b.priority ? a.priority - b.priority : b.updatedAt - a.updatedAt));
 }
 
+/** Counts only: the words the notch says are the app's (app/src/strings.ts S.m119.headline), never the engine's. */
 export type AttentionSummary = {
   attentionCount: number;
   workingCount: number;
   top: RankedSession | null;
-  headline: string;
 };
 
-/** Summarizes multi-agent state into a plain one-line headline for the notch. */
+/** Summarizes multi-agent state: how many sessions need the person, how many are working, and the top one. */
 export function attentionSummary(sessions: readonly AgentSession[]): AttentionSummary {
   const ranked = rankSessions(sessions);
   const attention = ranked.filter((s) => s.ring);
   const workingCount = ranked.filter((s) => s.state === "working").length;
-  const top = attention[0] ?? null;
-  const headline = attention.length > 0
-    ? `${attention.length} agent${attention.length === 1 ? "" : "s"} need${attention.length === 1 ? "s" : ""} you`
-    : workingCount > 0
-      ? `${workingCount} agent${workingCount === 1 ? "" : "s"} working`
-      : "All agents quiet";
-  return { attentionCount: attention.length, workingCount, top, headline };
+  return { attentionCount: attention.length, workingCount, top: attention[0] ?? null };
+}
+
+// M120 (docs/milestones/M120-auto-pr-review.md): automated PR review entry and prioritization.
+// A pull request finding becomes an attention session, and severity maps onto the urgency ladder.
+
+export type ReviewSeverity = "blocker" | "high" | "medium" | "low" | "nit";
+
+export type PrFinding = {
+  id: string;
+  repo: string;
+  pr: number;
+  severity: ReviewSeverity;
+  title: string;
+  summary: string;
+};
+
+const SEVERITY_STATE: Readonly<Record<ReviewSeverity, SessionState>> = {
+  blocker: "needs_approval",
+  high: "blocked",
+  medium: "finished_with_issues",
+  low: "finished_with_issues",
+  nit: "finished_with_issues",
+};
+
+/** Maps a pull request review severity onto the attention urgency ladder. */
+export function severityToState(sev: ReviewSeverity): SessionState {
+  return SEVERITY_STATE[sev];
+}
+
+/** Turns a PR review finding into an attention session the notch can rank. */
+export function prFindingToSession(f: PrFinding, now: number = Date.now()): AgentSession {
+  return {
+    id: `pr:${f.repo}#${f.pr}`,
+    tool: "github",
+    repo: f.repo,
+    state: severityToState(f.severity),
+    summary: `${f.pr}: ${f.title}`,
+    updatedAt: now,
+  };
 }

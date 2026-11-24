@@ -110,7 +110,7 @@ describe("finding 6 re-attack: only content the body carries goes through", () =
     const r = checkRequest("POST", "/v1/messages", raw);
     expect(r.ok && r.inputTokens).toBeGreaterThanOrEqual(data.length / 3);
   });
-  test("request fields that change the price (inference_geo) or that Companion never sends are refused", () => {
+  test("request fields that change the price (inference_geo) or that Squibby never sends are refused", () => {
     const base = { model: "claude-opus-5-5", max_tokens: 1, messages: [{ role: "user", content: "hi" }] };
     for (const extra of [{ inference_geo: "us" }, { context_management: { edits: [] } }, { some_new_field: 1 }])
       expect(refused(JSON.stringify({ ...base, ...extra }))).toBe(true);

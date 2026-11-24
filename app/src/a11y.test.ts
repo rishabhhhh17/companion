@@ -672,7 +672,7 @@ describe("Home from the keyboard alone (part 2)", () => {
   });
   test("Copy keeps its name and says Copied, or why it could not, on a polite line that is there first", () => {
     const btn = card.slice(card.indexOf("function CopyButton("), card.indexOf("function ResearchNote("));
-    expect(btn).toContain("aria-label={label}");
+    expect(btn).toContain("aria-label={name ?? label}");
     expect(btn).toContain('<span className={state === "failed" ? "line" : "sr"} role="status">{state === "copied" ? S.copied : state === "failed" ? S.copyFailed : ""}</span>');
     expect(btn).not.toMatch(/state === "failed" && </);
   });

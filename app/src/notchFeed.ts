@@ -3,6 +3,8 @@
 // taken away) or a command it ran. Here they become blocks that fit the notch's room: a head (the tool and the project, and
 // Working or Finished), then the newest rows. Pure; notchFeed.tsx draws it under the hover row and in the small chat.
 import { parseEvent, PROTOCOL_VERSION, type FeedSession } from "../../protocol/index.ts";
+import { attentionSummary, type AgentSession, type RankedSession } from "../../runner/src/attention.ts";
+import type { Model } from "./model.ts";
 import { S } from "./strings.ts";
 
 export type { FeedSession };
@@ -97,3 +99,52 @@ export function pressLine(go: FeedPress, tool: string): string | null {
 }
 /** The project's name as the feed says it (the last part of its folder). */
 export const feedProjectName = (project: string): string => nameOf(project);
+
+// M119 (docs/milestones/M119-multi-agent-board.md): the notch's attention line, from the engine's own attention summary
+// (runner/src/attention.ts) over the agent's sessions: how many need the person, how many are working, or all quiet. The
+// notch says this line and rings the top session; a press on the work goes to Home (main.rs island_go, home.ts feed).
+export function attentionHeadline(sessions: readonly AgentSession[]): string {
+  const s = attentionSummary(sessions);
+  return S.m119.headline(s.attentionCount, s.workingCount);
+}
+/** M119: the top session that needs the person, for the notch's attention ring and the one press on its line; null when all
+ *  agents are quiet. */
+export function attentionTop(sessions: readonly AgentSession[]): RankedSession | null {
+  return attentionSummary(sessions).top;
+}
+// M119: the sessions the notch's attention is about, from the model's own waiting states: an approval the person's AI tool
+// waits on, a loop the agent is stuck in, or a task whose last step asked the person. One session per thing waiting on them.
+export function attentionSessions(m: Model): AgentSession[] {
+  const out: AgentSession[] = [];
+  const push = (s: AgentSession): void => { const i = out.findIndex((x) => x.id === s.id); if (i >= 0) out[i] = s; else out.push(s); };
+  const now = Date.now();
+  const repo = (r?: string | null): string => r ?? m.folder ?? "";
+  for (const a of m.approvals) push({ id: a.id, tool: a.agent, repo: repo(null), state: "needs_approval", summary: a.title, updatedAt: Date.parse(a.expiresAt) || now });
+  if (m.stuck) push({ id: `stuck:${m.stuck.index}`, tool: m.stuck.agent ?? m.task?.agent ?? "claude", repo: repo(m.task?.project), state: "blocked", summary: m.stuck.title, updatedAt: now });
+  if (m.task) for (const l of m.task.lines) if (l.outcome === "needs_approval" || l.outcome === "blocked") push({ id: `task:${m.task.agent}:${l.id}`, tool: m.task.agent, repo: repo(m.task.project), state: l.outcome, summary: l.words, updatedAt: now });
+  return out;
+}
+
+// M121 (docs/milestones/M121-notch-overhaul.md): the notch's attention block, as the person reads it: the headline and the
+// work it is about (the top session's own words), so the block is useful without opening Home. Null when all agents are quiet.
+export type NotchAttention = { headline: string; top: RankedSession | null; what: string };
+export function attentionBlock(sessions: readonly AgentSession[]): NotchAttention | null {
+  const s = attentionSummary(sessions);
+  if (!s.top) return null;
+  return { headline: S.m119.headline(s.attentionCount, s.workingCount), top: s.top, what: s.top.summary };
+}
+
+/** M121 slice 2: where a press on the attention block goes. Opens Home for the top session's project. */
+export type AttentionPress = { project: string; action: "home" } | null;
+export function attentionPress(sessions: readonly AgentSession[]): AttentionPress {
+  const s = attentionSummary(sessions);
+  if (!s.top) return null;
+  return { project: s.top.repo, action: "home" };
+}
+
+/** M121 slice 2: the short line the notch says under the attention block on press. Null because it opens Home. */
+export function attentionPressLine(sessions: readonly AgentSession[]): string | null {
+  const s = attentionSummary(sessions);
+  if (!s.top) return null;
+  return null; // goes to Home, no line in the notch
+}

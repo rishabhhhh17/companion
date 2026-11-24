@@ -19,7 +19,7 @@ How each step is recorded: the tool and its version, the date, PASS or FAIL, and
 4. The RESULTS template, made by the same code, so it can never drift from the steps.
 5. A summary that lists, per tool, proven, failed or not run, and names only the proven tools as ones that may be claimed.
 
-**What waits for the founder.** The sessions themselves, on his own account in each tool. No tool is claimed as proven by this milestone. The Claude Code session follows the CLAUDE.md test rules: the SDK's bundled binary, explicit `--setting-sources` and `--strict-mcp-config`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` and `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, never `bypassPermissions`, and `CLAUDE_CONFIG_DIR` left unset for his real login.
+**What waits for the founder.** The sessions themselves, on his own account in each tool. No tool is claimed as proven by this milestone. As of 24 Nov 2026 no tool has been run on a real Mac by a person yet; the commit titled "Prove the safety net in all seven tools on a real Mac" built the guide and the checks only. The Claude Code session follows the CLAUDE.md test rules: the SDK's bundled binary, explicit `--setting-sources` and `--strict-mcp-config`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` and `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, never `bypassPermissions`, and `CLAUDE_CONFIG_DIR` left unset for his real login.
 
 **Not included** (from the plan): changing `review.mode` from "ask" (the founder's product call), and an in app "proven with" list (it would go stale with every tool update). Changing the app's words for a tool that fails waits for the results: the fallback is that the review starts once the folder is quiet.
 
