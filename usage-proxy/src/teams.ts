@@ -50,9 +50,11 @@ export const TEAM_OPS: Record<string, Op> = {
     if (!m) return null;
     const seq = ((await s.get<number>("seq")) ?? 0) + 1;
     await s.put({ seq, [RKEY(seq)]: { ...a.receipt, seq, by: m.name, at: a.now } satisfies KeptReceipt });
+    // Keep the newest MAX_RECEIPTS: delete only the ones numbered at or below seq - MAX_RECEIPTS.
     if (seq > MAX_RECEIPTS) {
-      const old = await s.list<KeptReceipt>({ prefix: "r:", limit: Math.min(128, seq - MAX_RECEIPTS) });
-      if (old.size) await s.delete([...old.keys()]);
+      const cut = RKEY(seq - MAX_RECEIPTS);
+      const old = [...(await s.list<KeptReceipt>({ prefix: "r:", limit: 128 })).keys()].filter((k) => k <= cut);
+      if (old.length) await s.delete(old);
     }
     return seq;
   },

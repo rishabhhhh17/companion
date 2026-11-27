@@ -37,6 +37,10 @@ describe("commands", () => {
     const src = readFileSync(new URL("./teamPanel.tsx", import.meta.url), "utf8");
     expect(src).not.toMatch(/useEffect\([^)]*send\(/s);
     expect(src).toContain("onChange={(on) => go(teamShare(on))}");
+    // ui/parts.tsx Button is type="button": every press needs its own onClick (review, 28 Nov).
+    expect(src).toContain("onClick={() => go(teamMake(f.name, f.me))}");
+    expect(src).toContain("onClick={() => go(teamJoin(f.invite, f.me))}");
+    expect(src).toContain("onClick={addRule}");
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
     expect(card).toContain("<TeamPart send={send} />");
   });

@@ -75,6 +75,14 @@ describe("teams", () => {
   });
 });
 
+test("the board keeps exactly the newest 500 receipts", async () => {
+  const t = await team();
+  for (let i = 0; i < 520; i++) await t.call("POST", `/v1/teams/${t.id}/receipts`, T("jon"), { receipt: RECEIPT });
+  const keys = [...t.ns.objects.get(`team:${t.id}`)!.storage.data.keys()].filter((k) => k.startsWith("r:"));
+  expect(keys.length).toBe(500);
+  expect((await t.call("GET", `/v1/teams/${t.id}/receipts`, T("ana"))).j.receipts[0].seq).toBe(520);
+}, 120_000);
+
 describe("what a shared receipt may hold", () => {
   test("a plain receipt passes", () => { expect(cleanReceipt(RECEIPT)).toEqual(RECEIPT as never); });
   test("keys, folders of a Mac, odd verdicts, too much: refused", () => {

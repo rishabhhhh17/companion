@@ -34,6 +34,8 @@ export function TeamPart({ send }: { send: (cmd: unknown) => unknown }) {
   const team = page?.team ?? null, admin = team?.role === "admin";
   const said = lastWords(page?.last);
   const rules = draft ?? team?.rules ?? [];
+  // The app's Button is type="button" (ui/parts.tsx), so each press needs its own onClick; the forms keep Enter working.
+  const addRule = () => { if (f.kind === "ask_install" || f.pattern.trim()) { setDraft([...rules, { kind: f.kind, pattern: f.kind === "ask_install" ? "packages" : f.pattern.trim() }]); setF({ ...f, pattern: "" }); } };
   return (
     <div className="hist-week-part team-part" role="group" aria-label={t.rowTitle}>
       <ListGroup label={t.rowTitle}>
@@ -49,13 +51,13 @@ export function TeamPart({ send }: { send: (cmd: unknown) => unknown }) {
               <p className="ui-lead-title" role="heading" aria-level={3}>{t.makeTitle}</p>
               <label>{t.teamName}<input type="text" value={f.name} maxLength={60} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
               <label>{t.yourName}<input type="text" value={f.me} maxLength={40} onChange={(e) => setF({ ...f, me: e.target.value })} /></label>
-              <Button size="sm" kind="primary" disabled={busy || !f.name.trim() || !f.me.trim()}>{t.make}</Button>
+              <Button size="sm" kind="primary" disabled={busy || !f.name.trim() || !f.me.trim()} onClick={() => go(teamMake(f.name, f.me))}>{t.make}</Button>
             </form>
             <form className="team-form" onSubmit={(e) => { e.preventDefault(); if (f.invite.trim() && f.me.trim()) go(teamJoin(f.invite, f.me)); }}>
               <p className="ui-lead-title" role="heading" aria-level={3}>{t.joinTitle}</p>
               <label>{t.invite}<input type="text" value={f.invite} maxLength={120} spellCheck={false} onChange={(e) => setF({ ...f, invite: e.target.value })} /></label>
               <label>{t.yourName}<input type="text" value={f.me} maxLength={40} onChange={(e) => setF({ ...f, me: e.target.value })} /></label>
-              <Button size="sm" disabled={busy || !f.invite.trim() || !f.me.trim()}>{t.join}</Button>
+              <Button size="sm" disabled={busy || !f.invite.trim() || !f.me.trim()} onClick={() => go(teamJoin(f.invite, f.me))}>{t.join}</Button>
             </form>
           </>)}
           {team && (<>
@@ -85,10 +87,10 @@ export function TeamPart({ send }: { send: (cmd: unknown) => unknown }) {
               <ul className="team-rules">{rules.map((r, i) => <li key={i}><span>{ruleLine(r)}</span>{admin && <Button size="sm" onClick={() => setDraft(rules.filter((_, j) => j !== i))}>{t.removeRule}</Button>}</li>)}</ul>
             )}
             {admin && (
-              <form className="team-form" onSubmit={(e) => { e.preventDefault(); if (f.kind === "ask_install" || f.pattern.trim()) { setDraft([...rules, { kind: f.kind, pattern: f.kind === "ask_install" ? "packages" : f.pattern.trim() }]); setF({ ...f, pattern: "" }); } }}>
+              <form className="team-form" onSubmit={(e) => { e.preventDefault(); addRule(); }}>
                 <Menu label={t.ruleKind} size="md" value={f.kind as (typeof KINDS)[number]} options={KINDS.map((k) => ({ id: k, label: t.ruleKinds[k] }))} onChange={(k) => setF({ ...f, kind: k })} />
                 {f.kind !== "ask_install" && <label>{t.rulePattern}<input type="text" value={f.pattern} maxLength={200} onChange={(e) => setF({ ...f, pattern: e.target.value })} /></label>}
-                <Button size="sm">{t.addRule}</Button>
+                <Button size="sm" onClick={addRule}>{t.addRule}</Button>
                 {draft && <Button size="sm" kind="primary" disabled={busy} onClick={() => go(teamRules(draft))}>{t.saveRules}</Button>}
               </form>
             )}
