@@ -22,6 +22,7 @@ import { Dot, KeyLabel, Menu } from "./ui/parts.tsx";
 import { Icon } from "./icons.tsx";
 import "./style.css";
 import "./ui/glass.css";
+import "./ui/squibby.css";
 
 type Do = TrayAction | "settings" | "stop" | "quit" | "now" | "review";
 const press = (action: Do) => { void invoke("tray_do", { action }).catch(() => {}); };

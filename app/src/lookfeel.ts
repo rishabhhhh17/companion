@@ -65,15 +65,18 @@ export function characterOf(character: unknown, style?: unknown): CharacterLook 
 }
 /** The faceless characters (the Visor and the glass orb): the ring says the state, never the friendly one's moves. */
 export const faceless = (look: CharacterLook): boolean => look !== "friendly";
-/** GLASS (19 Nov 2026): the material (look.material). Anything but a stored "classic" (Before) is Glass, the usual. */
-export const MATERIALS = ["glass", "classic"] as const;
+/** GLASS (19 Nov 2026), M125 (28 Nov 2026): the material (look.material). squibby (the usual) is the website's look on the
+ *  glass structure; glass and classic (Before) stay exactly as they were. */
+export const MATERIALS = ["squibby", "glass", "classic"] as const;
 export type Material = (typeof MATERIALS)[number];
-export const materialOf = (v: unknown): Material => (v === "classic" ? "classic" : "glass");
+export const materialOf = (v: unknown): Material => (v === "classic" ? "classic" : v === "glass" ? "glass" : "squibby");
+/** The structure under a material: squibby is built on the glass one (the tabs, the black strip). */
+export const structureOf = (m: Material): "glass" | "classic" => (m === "classic" ? "classic" : "glass");
 /** Every look attribute for the saved values: the fixed look, the colour and the character. Retired keys are ignored. */
 export function lookAttrs(values: Partial<Record<string, unknown>>): Record<string, string> {
   // GLASS (19 Nov 2026): the material, Glass (the usual) or Before; every glass rule in ui/glass.css hangs off data-material.
   const material = materialOf(values["look.material"]);
-  return { ...FIXED_LOOK, "data-colours": colourChoiceOf(values["look.colour"]), "data-character": characterOf(values["look.character"], values["look.style"]), "data-material": material };
+  return { ...FIXED_LOOK, "data-colours": colourChoiceOf(values["look.colour"]), "data-character": characterOf(values["look.character"], values["look.style"]), "data-material": structureOf(material), "data-brand": material === "squibby" ? "squibby" : "none" };
 }
 /** Sets the look on a page's root (Home and Settings). */
 export function applyLookChoices(root: { setAttribute: (k: string, v: string) => void }, values: Partial<Record<string, unknown>>): void {

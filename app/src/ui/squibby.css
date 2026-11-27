@@ -1,0 +1,105 @@
+/* M125 (the founder, 28 Nov 2026: "make it according to our website and how it feels exactly"): the site's brand in the app.
+   Every rule hangs off [data-brand="squibby"] (lookfeel.ts lookAttrs, look.material "squibby", the usual), on top of the
+   glass structure (tabs, the black strip), so Glass and Before stay exactly as they were. From the site (getsquibby.com):
+   the night sky (true black, a few stars, faint graph paper), Geist and Geist Mono for words, Supreme for headlines, the
+   cream paper of the receipts with a torn foot, ticket buttons with a bite out of each end, white for the one filled button,
+   blue only for focus and work in progress, the meaning colours, and a short pixel moment when a result lands.
+   Its own rulebook (ui/squibby.test.ts): every colour, size and time is a token (tokens.css, the --sq-* block); gradients
+   only draw the sky and cut the paper's shapes (a mask is no colour); fonts are the site's own files inside the app
+   (public/fonts), never fetched; motion is opacity only. */
+@font-face { font-family: "Geist"; src: url("/fonts/geist-latin.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: block; }
+@font-face { font-family: "Geist Mono"; src: url("/fonts/geist-mono-latin.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: block; }
+@font-face { font-family: "Supreme"; src: url("/fonts/supreme-500.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: block; }
+@font-face { font-family: "Supreme"; src: url("/fonts/supreme-700.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: block; }
+
+/* ---------- The sky behind Home: true black, a few stars, the site's faint graph paper ---------- */
+[data-brand="squibby"] .card.home, [data-brand="squibby"] .home-stage[data-told] .home-frame > .card.home {
+  background-color: var(--sq-sky);
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, var(--sq-star), transparent 60%),
+    radial-gradient(1px 1px at 78% 9%, var(--sq-star), transparent 60%),
+    radial-gradient(1.5px 1.5px at 64% 42%, var(--sq-star), transparent 60%),
+    radial-gradient(1px 1px at 27% 71%, var(--sq-star), transparent 60%),
+    radial-gradient(1px 1px at 91% 63%, var(--sq-star), transparent 60%),
+    radial-gradient(1px 1px at 45% 93%, var(--sq-star), transparent 60%),
+    linear-gradient(var(--sq-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--sq-grid) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, var(--sq-cell) var(--sq-cell), var(--sq-cell) var(--sq-cell);
+}
+[data-brand="squibby"] .home .askwrap, [data-brand="squibby"] .home:not([data-side]):not([data-view="settings"]) .work > .askwrap { background: transparent; }
+[data-brand="squibby"] .home[data-side] .work > .askwrap { --band: transparent; }
+/* No recent work yet: the side list is empty, so it takes no room and Now has the whole width. */
+[data-brand="squibby"] .home[data-side]:has(.side > .side-list:empty) > .inner { grid-template-columns: minmax(0, 1fr); }
+[data-brand="squibby"] .home[data-side]:has(.side > .side-list:empty) > .inner > .side { display: none; }
+
+/* ---------- Words: Geist everywhere, Supreme for the headline, as on the site ---------- */
+[data-brand="squibby"] body, [data-brand="squibby"] .home, [data-brand="squibby"] .tray { font-family: var(--font); }
+[data-brand="squibby"] .home .hero .hero-words > h1.ui-lead-title.headline, [data-brand="squibby"] .home .headline { font-family: var(--sq-display); font-weight: var(--w-bold); letter-spacing: -0.02em; color: var(--fg); }
+
+/* ---------- Tickets: the main button and the open tab, a filled slip with a bite out of each end ---------- */
+/* The fill is a layer under the words (::before), so the bites never cut the focus ring. */
+[data-brand="squibby"] :is(.btn.primary, .gl-tab[aria-selected="true"], .tr-act.primary) { position: relative; isolation: isolate; background: transparent !important; box-shadow: none; }
+[data-brand="squibby"] :is(.btn.primary, .gl-tab[aria-selected="true"], .tr-act.primary)::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: var(--sq-r-ticket); background: var(--acc);
+  -webkit-mask: radial-gradient(circle var(--sq-notch) at 0 50%, transparent 96%, var(--mask-solid)) left / 51% 100% no-repeat, radial-gradient(circle var(--sq-notch) at 100% 50%, transparent 96%, var(--mask-solid)) right / 51% 100% no-repeat;
+  mask: radial-gradient(circle var(--sq-notch) at 0 50%, transparent 96%, var(--mask-solid)) left / 51% 100% no-repeat, radial-gradient(circle var(--sq-notch) at 100% 50%, transparent 96%, var(--mask-solid)) right / 51% 100% no-repeat;
+}
+[data-brand="squibby"] :is(.btn.primary, .tr-act.primary) { color: var(--acc-ink) !important; font-weight: var(--w-strong); }
+[data-brand="squibby"] :is(.btn.primary, .tr-act.primary):hover:not(:disabled)::before { background: var(--acc-hover); }
+/* The tabs: plain words on the sky, the open one a white ticket (the site's header buttons). */
+[data-brand="squibby"] .gl-tabs { background: transparent; gap: var(--space-1); }
+[data-brand="squibby"] .gl-tab { border-radius: var(--sq-r-ticket); color: var(--mat-ink-2); }
+[data-brand="squibby"] .gl-tab[aria-selected="true"] { color: var(--sq-ink); }
+/* Other buttons: a hairline outline on the sky, like the site's quiet buttons. */
+[data-brand="squibby"] :is(.home .view, .home .hero) .btn:not(.primary):not(.quiet):not(.danger):not(.icon) { background: transparent; box-shadow: inset 0 0 0 var(--hair) var(--line-strong); border-radius: var(--sq-r); }
+[data-brand="squibby"] :is(.home .view, .home .hero) .btn:not(.primary):not(.quiet):not(.danger):not(.icon):hover:not(:disabled) { background: var(--mat-raised-hover); }
+
+/* ---------- Receipts: every card on Now is a slip of cream paper with a torn foot, words in ink ---------- */
+[data-brand="squibby"] .home .view .panel:not(.panel .panel), [data-brand="squibby"] .home .work > .setup {
+  --fg: var(--sq-ink); --fg-2: var(--sq-ink-2); --fg-3: var(--sq-ink-3);
+  --surface-1: var(--sq-paper); --surface-2: var(--sq-paper-2); --surface-3: var(--sq-paper-3); --inset: var(--sq-paper-2);
+  --edge: var(--sq-rule); --line: var(--sq-rule); --line-strong: var(--sq-rule-strong);
+  --ok: var(--sq-proven); --bad: var(--sq-caught); --amber: var(--sq-review);
+  --acc: var(--sq-ink); --acc-hover: var(--sq-ink-hover); --acc-ink: var(--sq-paper); --acc-text: var(--sq-link);
+  --ring-working: var(--sq-working); --mat-focus: var(--sq-link);
+  position: relative; color: var(--sq-ink); background: var(--sq-paper) !important; box-shadow: none !important; border-radius: var(--sq-r-slip) var(--sq-r-slip) 0 0 !important;
+  padding-bottom: calc(var(--space-4) + var(--sq-tooth));
+  -webkit-mask: linear-gradient(var(--mask-solid) 0 0) top / 100% calc(100% - var(--sq-tooth)) no-repeat, conic-gradient(from -45deg at bottom, transparent, var(--mask-solid) 1deg 89deg, transparent 90deg) bottom / calc(var(--sq-tooth) * 2) var(--sq-tooth) repeat-x;
+  mask: linear-gradient(var(--mask-solid) 0 0) top / 100% calc(100% - var(--sq-tooth)) no-repeat, conic-gradient(from -45deg at bottom, transparent, var(--mask-solid) 1deg 89deg, transparent 90deg) bottom / calc(var(--sq-tooth) * 2) var(--sq-tooth) repeat-x;
+}
+/* The small print of a receipt: times, counts and step results in Geist Mono. */
+[data-brand="squibby"] .home .view .panel :is(.muted, .run-line, .run-count, .proof, small) { font-family: var(--font-code); letter-spacing: 0; }
+[data-brand="squibby"] :is(.home .view .panel, .home .work > .setup) .btn:not(.primary):not(.quiet):not(.danger):not(.icon) { box-shadow: inset 0 0 0 var(--hair) var(--sq-rule-strong); color: var(--sq-ink); }
+[data-brand="squibby"] :is(.home .view .panel, .home .work > .setup) .btn:not(.primary):not(.quiet):not(.danger):not(.icon):hover:not(:disabled) { background: var(--sq-paper-2); }
+/* A card that needs you keeps its colour as a stamp along its top, never a coloured slip. */
+[data-brand="squibby"] .home .view .panel.amber:not(.panel .panel) { box-shadow: inset 0 var(--hair-2) 0 var(--sq-stamp) !important; }
+
+/* The pixel moment (the site's pixel effects): as a result lands, a layer of paper squares over it goes in three steps,
+   big squares, then small, then none. Opacity only; reduce motion shows the result at once. */
+[data-brand="squibby"] .home .view .panel:is(.receipt, .practice)[data-landed]::before {
+  content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0;
+  background: repeating-conic-gradient(var(--sq-paper) 0 25%, transparent 0 50%) 0 0 / var(--sq-pixel-2) var(--sq-pixel-2);
+  animation: sq-pixel-out var(--sq-dur-pixel) var(--sq-ease-pixel) both;
+}
+@keyframes sq-pixel-out { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { [data-brand="squibby"] .home .view .panel[data-landed]::before { animation: none; display: none; } }
+
+/* ---------- The ask box: the site's cream field, a dark ticket to send ---------- */
+[data-brand="squibby"] .home .askwrap .ask {
+  --fg: var(--sq-ink); --fg-2: var(--sq-ink-2); --fg-3: var(--sq-ink-3); --surface-2: var(--sq-paper-2); --surface-3: var(--sq-paper-3); --edge: var(--sq-rule); --mat-focus: var(--sq-link);
+  background: var(--sq-paper); border-radius: var(--sq-r-slip); box-shadow: none;
+}
+[data-brand="squibby"] .home .askwrap .ask:focus-within { box-shadow: 0 0 0 var(--hair-2) var(--sq-link); }
+[data-brand="squibby"] .home .askwrap .ask > textarea { color: var(--sq-ink); background: transparent; }
+[data-brand="squibby"] .home .askwrap .ask textarea::placeholder { color: var(--sq-ink-3); }
+[data-brand="squibby"] .home .askwrap .ask .send { border-radius: var(--sq-r); }
+[data-brand="squibby"] .home .askwrap .ask .send:not(:disabled) { background: var(--sq-ink); color: var(--sq-paper); }
+[data-brand="squibby"] .home .askwrap .ask :is(.ask-chip, .ask-token) { background: var(--sq-paper-2); color: var(--sq-ink); border-radius: var(--sq-r); }
+
+/* ---------- Small things on the sky: the project chip, the status tag, a problem line ---------- */
+[data-brand="squibby"] .home .bar-chip { background: transparent; box-shadow: inset 0 0 0 var(--hair) var(--line-strong); border-radius: var(--sq-r); }
+[data-brand="squibby"] .home .hero .ui-mtag { font-family: var(--font-code); letter-spacing: 0; background: transparent; box-shadow: inset 0 0 0 var(--hair) var(--line-strong); border-radius: var(--sq-r-ticket); }
+[data-brand="squibby"] .home .view > .error { color: var(--bad); background: transparent; box-shadow: inset 0 0 0 var(--hair) var(--bad); border-radius: var(--sq-r); }
+
+/* ---------- The menu bar's popover: the same sky ---------- */
+[data-brand="squibby"] .tray { background: var(--sq-sky); -webkit-backdrop-filter: none; backdrop-filter: none; border-color: var(--sq-tray-edge); }

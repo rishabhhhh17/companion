@@ -22,21 +22,24 @@ const m = (o: Partial<Model> = {}): Model => ({ ...initial(), folder: P, runnerU
 const pro: PlanStatus = { ...OFF, paymentsOn: true, plan: "pro", state: "pro" };
 const free: PlanStatus = { ...OFF, paymentsOn: true, plan: "free", state: "free" };
 
-describe("the material: Glass, the usual, or the look from before", () => {
-  test("two choices, Glass first; anything odd is Glass", () => {
-    expect([...MATERIALS]).toEqual(["glass", "classic"]);
-    expect(materialOf(undefined)).toBe("glass");
+describe("the material: Squibby, the usual (M125, the website's look), Glass, or the look from before", () => {
+  test("three choices, Squibby first; anything odd is Squibby", () => {
+    expect([...MATERIALS]).toEqual(["squibby", "glass", "classic"]);
+    expect(materialOf(undefined)).toBe("squibby");
+    expect(materialOf("glass")).toBe("glass");
     expect(materialOf("classic")).toBe("classic");
-    expect(materialOf("chrome")).toBe("glass");
+    expect(materialOf("chrome")).toBe("squibby");
   });
-  test("the page's root says which (data-material), so every glass rule hangs off one attribute", () => {
+  test("the page's root says which: the structure (data-material) and the brand layer (data-brand)", () => {
     expect(lookAttrs({})["data-material"]).toBe("glass");
-    expect(lookAttrs({ "look.material": "classic" })["data-material"]).toBe("classic");
+    expect(lookAttrs({})["data-brand"]).toBe("squibby");
+    expect(lookAttrs({ "look.material": "glass" })).toMatchObject({ "data-material": "glass", "data-brand": "none" });
+    expect(lookAttrs({ "look.material": "classic" })).toMatchObject({ "data-material": "classic", "data-brand": "none" });
   });
   test("Settings offers it on the Look page, beside Colour (customizable everything)", () => {
     const look = PAGES.look.groups.find((g) => g.id === "look.home");
     expect(look?.items).toContain("look.material");
-    expect(S.set["look.material"].options).toEqual({ glass: "Glass", classic: "Before" });
+    expect(S.set["look.material"].options).toEqual({ squibby: "Squibby", glass: "Glass", classic: "Before" });
   });
 });
 

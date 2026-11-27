@@ -159,7 +159,7 @@ describe("the choices are real settings, with their words and one place in Setti
 describe("M71: one black look; Colour and Character are the choices, the retired keys load and are ignored", () => {
   const FOUNDER = { "look.style": "friendly", "look.colour": "vivid", "look.theme": "deep" };
   test("the usual values give the fixed black look, Colourful and the Visor", () => {
-    expect(lookAttrs({})).toEqual({ ...FIXED_LOOK, "data-colours": "colourful", "data-character": "visor", "data-material": "glass" });
+    expect(lookAttrs({})).toEqual({ ...FIXED_LOOK, "data-colours": "colourful", "data-character": "visor", "data-material": "glass", "data-brand": "squibby" });
     expect(FIXED_LOOK["data-theme"]).toBe("black");
     expect(FIXED_LOOK["data-tone"]).toBe("dark");
     expect(COLOUR_CHOICES).toEqual(["colourful", "calm"]);
@@ -191,7 +191,7 @@ describe("M71: one black look; Colour and Character are the choices, the retired
   test("Home sets them on its root and keeps them in step; the island and the character keep the notch's look", () => {
     const attrs: Record<string, string> = {};
     applyLookChoices({ setAttribute: (k, v) => { attrs[k] = v; } }, { "look.colour": "calm", "look.corners": "crisp" });
-    expect(attrs).toEqual({ ...FIXED_LOOK, "data-colours": "calm", "data-character": "visor", "data-material": "glass" });
+    expect(attrs).toEqual({ ...FIXED_LOOK, "data-colours": "calm", "data-character": "visor", "data-material": "glass", "data-brand": "squibby" });
     const theme: Record<string, string> = {};
     applyLook({ style: { setProperty: () => {} }, setAttribute: (k, v) => { theme[k] = v; } });
     expect(theme["data-theme"]).toBe("black");
@@ -232,7 +232,7 @@ describe("Material is the one look choice the code may branch on, in one place",
   test("card.tsx reads look.material once, through materialOf, and the other parts never", () => {
     const card = read("./card.tsx");
     expect(card.match(/"look\.material"/g) ?? []).toHaveLength(1);
-    expect(card).toContain('const glassOn = materialOf(useSetting("look.material")) === "glass" && onboarded;');
+    expect(card).toContain('const glassOn = materialOf(useSetting("look.material")) !== "classic" && onboarded;');
     for (const f of ["./homeSide.tsx", "./practicePanel.tsx", "./itemMarks.tsx", "./itemLook.ts", "./glassHome.tsx"]) expect(read(f), f).not.toContain('"look.material"');
   });
 });

@@ -118,7 +118,9 @@ describe("every word a person sees is in strings.ts", () => {
 describe("the style lints cover every stylesheet Home loads", () => {
   test("ALL_CSS has every ./ui stylesheet card.tsx imports", () => {
     const all = ALL_CSS();
-    for (const [, f] of read("./card.tsx").matchAll(/^import "\.\/ui\/([\w]+\.css)";$/gm)) expect(all, f).toContain(read(`./ui/${f}`).slice(0, 400));
+    // M125: squibby.css (the website's look) has its own rulebook, ui/squibby.test.ts, and is the one stylesheet outside ALL_CSS.
+    for (const [, f] of read("./card.tsx").matchAll(/^import "\.\/ui\/([\w]+\.css)";$/gm)) if (f !== "squibby.css") expect(all, f).toContain(read(`./ui/${f}`).slice(0, 400));
+    expect(read("./ui/squibby.test.ts")).toContain("squibby.css");
     expect(all).toContain(HOME_NOW_CSS().slice(0, 400));
   });
   test("styleLint checks the M69 stylesheets for upper case, theme gates and colours", () => {

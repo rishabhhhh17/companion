@@ -155,6 +155,7 @@ import "./ui/fix.css";
 import "./ui/homeNow.css";
 import "./ui/black.css";
 import "./ui/glass.css";
+import "./ui/squibby.css";
 import { checksOnOpen, Landing, onlyStreamChanged, revealTo, scrollerOf, STREAM_LINES, waitNeedsScroll, waitScroll } from "./homeFlow.ts";
 import { changeSize } from "./changeSize.ts";
 import { contentAtMs, fromOf } from "./homeShape.ts";
@@ -2446,7 +2447,7 @@ export function Card() {
   // GLASS (19 Nov 2026, the founder picked direction B): the glass material puts the places in a tablist in the middle of
   // the top, under the notch's black strip with the greeting (glassHome.tsx); the side keeps the recent work. Before keeps
   // everything as it was.
-  const glassOn = materialOf(useSetting("look.material")) === "glass" && onboarded;
+  const glassOn = materialOf(useSetting("look.material")) !== "classic" && onboarded;
   // What stops any work (the audit, item 12) and changes waiting for a review (item 11): each leads Now when it is there.
   const [claudeSt, setClaudeSt] = useClaudeStatus();
   // Feel round 2: the engine has a moment to say hello before Home says it is starting (homeHero.ts HELLO_GRACE_MS).

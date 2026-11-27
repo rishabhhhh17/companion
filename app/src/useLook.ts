@@ -6,7 +6,7 @@
 // Friendly store that never picked a character says "friendly" on the root, as Home and the edge draw it.
 import { useEffect } from "react";
 import { storedSetting, useSetting } from "./settingsStore.ts";
-import { applyLook, applyLookChoices, flowColours, materialOf } from "./lookfeel.ts";
+import { applyLook, applyLookChoices, flowColours, materialOf, structureOf } from "./lookfeel.ts";
 
 export function useLook(opts: { keepNight?: boolean; choices?: boolean } = {}): { light: string; deep: string } {
   useEffect(() => { applyLook(document.documentElement); }, []);
@@ -20,6 +20,11 @@ export function useLook(opts: { keepNight?: boolean; choices?: boolean } = {}): 
     if (choices) applyLookChoices(document.documentElement, { "look.colour": colour, "look.character": character, "look.style": style, "look.material": material });
   }, [choices, colour, character, style, material]);
   // Every page (the notch's and the menu bar's too) knows the material, so their glass rules apply without the Home choices.
-  useEffect(() => { document.documentElement.setAttribute("data-material", materialOf(material)); }, [material]);
+  // M125: the attribute is the structure (squibby is built on glass) and data-brand says whether the website's look is on.
+  useEffect(() => {
+    const m = materialOf(material);
+    document.documentElement.setAttribute("data-material", structureOf(m));
+    document.documentElement.setAttribute("data-brand", m === "squibby" ? "squibby" : "none");
+  }, [material]);
   return flowColours("ocean");
 }

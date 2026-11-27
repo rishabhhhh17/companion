@@ -243,7 +243,9 @@ describe("M71: one black look, colour for meaning only", () => {
   test("the lint covers every stylesheet in the app", () => {
     const all = readdirSync(new URL(".", import.meta.url)).filter((f) => f.endsWith(".css")).filter((f) => f !== "tokens.css");
     const covered = new Set(M71_FILES.map(([f]) => f));
-    for (const f of all) expect(covered.has(f), f).toBe(true);
+    // M125: squibby.css, the website's look, is linted by its own rulebook (ui/squibby.test.ts): the site's sky and paper
+    // need gradients and its fonts, which the black look's rules forbid; everything else here still holds for it there.
+    for (const f of all) expect(covered.has(f) || f === "squibby.css", f).toBe(true);
     expect(covered.has("style.css")).toBe(true);
   });
   /** What may keep its gradients and its light: the character's own art (the Visor, the glass orb, the water character
