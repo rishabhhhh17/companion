@@ -132,7 +132,7 @@ fn start_runner(app: &AppHandle) {
     let bundle = std::env::current_exe().ok().and_then(|e| runner::bundled_engine(&e));
     let result = runner::locations_with_bundle(dev.as_deref(), &|k| std::env::var(k).ok(), data.join("runner"), bundle)
         // Anthropic's Claude as installed at first run (claude_install.rs, M22), used once it is there.
-        .map(|mut loc| { loc.claude = claude_install::dest(&claude_root(), &claude_install::pin().version); loc })
+        .map(|mut loc| { loc.claude = claude_install::dest(&claude_root(), &claude_install::pin().version); ENGINE_MANAGED.store(loc.managed(), Ordering::SeqCst); loc })
         .and_then(|loc| app.state::<runner::Runner>().start(app, &loc, { let handle = app.clone(); move |t| {
             log("runner_event", json!({ "kind": t }));
             // Each time the engine (re)starts it has no key yet; it is handed one as soon as it says hello.

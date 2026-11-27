@@ -150,8 +150,22 @@ pub fn locations_for(dev_json: Option<&str>, env: &dyn Fn(&str) -> Option<String
         },
     };
     // The engine's settings come from the developer file only in a development build: a file any program on the Mac could
-    // write must not choose the route or the Keychain item of a process that holds the person's key (rule 3).
-    Ok(Locations { bun, runner, data, env: if developer { allowed_env(&dev) } else { BTreeMap::new() }, claude: None, developer })
+    // write must not choose the route or the Keychain item of a process that holds the person's key (rule 3). A release
+    // always gets the fixed RELEASE_ENV (F29: Squibby's own server, never a person's key).
+    Ok(Locations { bun, runner, data, env: if developer { allowed_env(&dev) } else { release_env() }, claude: None, developer })
+}
+
+/// Squibby's own server (usage-proxy, live on Cloudflare). Sign in, model requests, teams and share links all go here.
+pub const ACCOUNT_SERVER: &str = "https://api.getsquibby.com";
+/// F29 (founder, 1 Nov 2026, and again 28 Nov 2026: "I don't want people to connect. Our own API will talk to them"): a
+/// release never asks for a key. It runs on managed usage through Squibby's server, with the light lanes on the plain
+/// Messages API and fixing on Squibby's own loop (M100), never on Claude Code (F22). The server's switches (PROXY_ON,
+/// LOOP_ON) are the remote switch: off, every model request is refused there with a plain sentence.
+pub const RELEASE_ENV: &[(&str, &str)] = &[("COMPANION_ROUTE", "managed"), ("COMPANION_MANAGED_BASE", ACCOUNT_SERVER), ("COMPANION_LANES", "direct"), ("COMPANION_FIXING_LOOP", "on")];
+pub fn release_env() -> BTreeMap<String, String> { RELEASE_ENV.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect() }
+impl Locations {
+    /// True when the engine runs on managed usage: it is handed the Squibby sign in token, never a Claude key.
+    pub fn managed(&self) -> bool { self.env.get("COMPANION_ROUTE").map(String::as_str) == Some("managed") }
 }
 
 /// What the engine is told about Anthropic's Claude at each start.
@@ -1485,7 +1499,12 @@ mod tests {
         let l = locations_for(Some(dev), &env, "/d".into(), Some(eng.clone()), false).unwrap();
         assert_eq!((l.bun.clone(), l.runner.clone()), (eng.join("bin/bun"), eng.join("runner/src/main.ts")));
         assert!(!l.developer);
-        assert!(l.env.is_empty(), "a release takes no engine settings from dev.json: {:?}", l.env);
+        // A release takes no engine settings from dev.json: only the fixed managed usage ones (F29), on Squibby's own server.
+        assert_eq!(l.env, release_env(), "a release takes no engine settings from dev.json");
+        assert!(l.managed());
+        assert_eq!(l.env.get("COMPANION_MANAGED_BASE").map(String::as_str), Some("https://api.getsquibby.com"));
+        assert_eq!(l.env.get("COMPANION_FIXING_LOOP").map(String::as_str), Some("on"), "fixing on Squibby's loop, never Claude Code on our bill");
+        assert!(!l.env.keys().any(|k| k.contains("KEY") || k.contains("TOKEN")), "no secret ever rides in the release settings");
         let l = locations_for(Some(r#"{"bun":"/dev/bun"}"#), &env, "/d".into(), Some(eng.clone()), false).unwrap();
         assert_eq!(l.bun, eng.join("bin/bun"), "half a developer setup changes nothing either");
         // A release with no engine of its own never falls back to one named elsewhere.

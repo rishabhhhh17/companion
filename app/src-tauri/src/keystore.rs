@@ -4,6 +4,33 @@
 
 pub const SERVICE: &str = "companion";
 pub const ACCOUNT: &str = "anthropic";
+/// F29: the Squibby sign in token (from Sign in with Google, through Squibby's server). Its own item, so it never replaces a
+/// developer's own key, and on managed usage it is the only thing the engine is handed.
+pub const ACCOUNT_TOKEN: &str = "squibby-account";
+
+/// A sign in token as Squibby's server issues them (usage-proxy/src/tokens.ts): "cmp_" and at least 20 url safe characters.
+pub fn token_ok(raw: &str) -> Option<String> {
+    let t = raw.trim();
+    (t.len() >= 24 && t.len() <= 200 && t.starts_with("cmp_") && t[4..].chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')).then(|| t.to_string())
+}
+/// What the engine is handed at start: on managed usage the sign in token only (never a Claude key, which our server would
+/// refuse anyway); otherwise the person's own key, as before.
+pub fn engine_key(managed: bool, token: Option<String>, key: impl FnOnce() -> Option<String>) -> Option<String> {
+    if managed { token.and_then(|t| token_ok(&t)) } else { key() }
+}
+#[cfg(target_os = "macos")]
+pub fn read_token() -> Option<String> {
+    security_framework::passwords::get_generic_password(&service(), ACCOUNT_TOKEN).ok().and_then(|b| String::from_utf8(b).ok()).and_then(|t| token_ok(&t))
+}
+#[cfg(target_os = "macos")]
+pub fn save_token(token: &str) -> Result<(), String> {
+    let t = token_ok(token).ok_or("The sign in answer was not in the expected form. Try again.")?;
+    security_framework::passwords::set_generic_password(&service(), ACCOUNT_TOKEN, t.as_bytes()).map_err(|_| "The Keychain did not accept the sign in. Try again.".to_string())
+}
+#[cfg(not(target_os = "macos"))]
+pub fn read_token() -> Option<String> { None }
+#[cfg(not(target_os = "macos"))]
+pub fn save_token(_: &str) -> Result<(), String> { Err("not on this system".into()) }
 
 /// The Keychain item Companion uses. Tests may point it at an item of their own, but only one whose name starts with
 /// "companion-test-", so this can never be turned toward anything real.
@@ -238,6 +265,15 @@ mod tests {
         std::fs::write(d.join("key-owner-v2"), "1").unwrap();
         assert_eq!(move_old_item(&d), None);   // already moved: never asks the Mac again
         let _ = std::fs::remove_dir_all(&d);
+    }
+    #[test]
+    fn on_managed_usage_the_engine_gets_only_the_sign_in_token() {
+        let tok = || Some("cmp_abcdefghijklmnopqrstuvwx".to_string());
+        assert_eq!(engine_key(true, tok(), || Some("sk-ant-own".into())).as_deref(), Some("cmp_abcdefghijklmnopqrstuvwx"));
+        assert_eq!(engine_key(true, None, || Some("sk-ant-own".into())), None, "a Claude key never goes to our server");
+        assert_eq!(engine_key(true, Some("sk-ant-x".into()), || None), None, "a non token in the token item is refused");
+        assert_eq!(engine_key(false, tok(), || Some("sk-ant-own".into())).as_deref(), Some("sk-ant-own"), "own key route unchanged");
+        assert!(token_ok("cmp_short").is_none() && token_ok("cmp_abc def ghijklmnopqrstuvwx").is_none() && token_ok(" cmp_abcdefghijklmnopqrstuvwx\n").is_some());
     }
     #[test]
     fn the_handoff_line_is_one_line_and_a_missing_key_is_null() {

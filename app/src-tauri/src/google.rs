@@ -82,6 +82,8 @@ pub fn auth_url(client_id: &str, port: u16, scopes: &[&str], challenge: &str, st
     format!("{AUTH_URL}?{}", q.iter().map(|(k, v)| format!("{k}={}", enc(v))).collect::<Vec<_>>().join("&"))
 }
 pub fn redirect(port: u16) -> String { format!("http://127.0.0.1:{port}") }
+/// F29: the sign in page asks Google to put Squibby's server nonce in the ID token, so the server can tell it is fresh.
+pub fn with_nonce(url: String, nonce: &str) -> String { format!("{url}&nonce={}", enc(nonce)) }
 
 /// What came back to the loopback listener.
 #[derive(Debug, PartialEq, Eq)]
@@ -162,7 +164,7 @@ pub fn forget_all(index: &[String], read: &dyn Fn(&str) -> Option<String>, revok
 /// Google's token answer, read: an access token and how long it lasts, a refresh token (only on the first sign in), the ID
 /// token's person, and the scopes Google really granted (the person may untick some).
 #[derive(Debug, PartialEq)]
-pub struct Tokens { pub access: String, pub expires_in: u64, pub refresh: Option<String>, pub person: Option<Person>, pub granted: Vec<String> }
+pub struct Tokens { pub access: String, pub expires_in: u64, pub refresh: Option<String>, pub person: Option<Person>, pub granted: Vec<String>, pub id_token: Option<String> }
 #[derive(Clone, Debug, PartialEq)]
 pub struct Person { pub sub: String, pub email: String, pub name: String, pub picture: String }
 
@@ -177,6 +179,8 @@ pub fn read_tokens(body: &str) -> Result<Tokens, String> {
         access, expires_in: v.get("expires_in").and_then(Value::as_u64).unwrap_or(3600),
         refresh: v.get("refresh_token").and_then(Value::as_str).map(str::to_string),
         person, granted: v.get("scope").and_then(Value::as_str).map(|s| s.split(' ').map(str::to_string).collect()).unwrap_or_default(),
+        // F29: handed once to Squibby's server for the sign in token, never kept or logged.
+        id_token: v.get("id_token").and_then(Value::as_str).map(str::to_string),
     })
 }
 
@@ -452,7 +456,10 @@ mod tests {
         assert_eq!(client(r#"{"clientId":"","clientSecret":""}"#), None);
         assert_eq!(client(r#"{"clientId":"something"}"#), None);
         assert_eq!(client(r#"{"clientId":"1-a.apps.googleusercontent.com","clientSecret":"GOCSPX-x"}"#), Some(("1-a.apps.googleusercontent.com".into(), "GOCSPX-x".into())));
-        assert_eq!(client(include_str!("../../google.json")), None, "the repo carries no client id: the founder adds it");
+        // Since 28 Nov 2026 the repo carries the public client id (the secret is added on the build Mac only, never committed).
+        // Checked without printing the file: a failure message must never show the local client secret.
+        let id = client(include_str!("../../google.json")).map(|(id, _)| id);
+        assert!(id.as_deref().is_some_and(|i| i.starts_with("582733176070-")), "the committed client id is the squibby-sign-in one");
     }
 
     #[test]

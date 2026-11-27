@@ -214,9 +214,13 @@ describe("wrangler.toml and package.json", () => {
     expect(typeof store.prototype?.fetch).toBe("function");   // a class with fetch, as the binding needs
     expect(entry.default).toBe((await import("../src/worker.ts")).default);
   });
-  test("no account id, no real route, no secret value, and payments off", () => {
+  test("no account id, only Squibby's own route, no secret value, and payments off", () => {
     expect(settings).not.toMatch(/account_id/);
-    expect(settings).not.toMatch(/^\s*routes\s*=/m);
+    // Live since 28 Nov 2026: the one route is Squibby's own server name, as a custom domain. Nothing else.
+    const block = /^routes\s*=\s*\[([^\]]*)\]/m.exec(settings)?.[1] ?? "";
+    expect((settings.match(/^\s*routes\s*=/gm) ?? []).length).toBe(1);
+    expect(block.match(/pattern\s*=\s*"[^"]*"/g)).toEqual([`pattern = "api.getsquibby.com"`]);
+    expect(block).toMatch(/custom_domain\s*=\s*true/);
     expect(settings).toMatch(/^workers_dev = false$/m);
     expect(settings).toMatch(/^PAYMENT_PROVIDER = "none"$/m);
     expect(toml).not.toMatch(/sk-ant-|whsec_[A-Za-z0-9+/=]{8,}|cmp_[A-Za-z0-9_-]{20,}/);

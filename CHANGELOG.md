@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Nobody brings a key: 28 Nov 2026
+
+- **Sign in with Google, and Squibby does the rest.** The Mac app now runs on Squibby's own server (api.getsquibby.com). Squibby picks the AI and pays for it inside your plan. You never make a key or sign in to an AI company.
+- Signing in with Google in Settings also signs you in to Squibby's server. The sign in is kept in your Mac's Keychain.
+- Fixing runs on Squibby's own loop. The server can switch the AI off for everyone at once, and then the app says so plainly.
+
 ## Squibby for teams, built: 28 Nov 2026
 
 - **Your team, in History.** Make a team or join one with an invite code. Everyone in it can see the team's receipts: who, which project, which AI tool, the verdict, what was checked and whether what was asked for was there. That is the admin view the teams page promised.

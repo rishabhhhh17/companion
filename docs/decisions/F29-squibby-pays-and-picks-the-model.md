@@ -33,3 +33,9 @@ What this means:
 
 ## Revisit only if
 Anthropic or another provider changes its terms, or the costs of paying for every user make the plans unworkable.
+
+## The release app runs on managed usage (28 Nov 2026)
+The founder, during the first real Mac test of the release build: "I don't want people to connect. Our own API will talk to them." So:
+- A release build always starts the engine with route managed, Squibby's server (`https://api.getsquibby.com`), the light lanes on the plain Messages API, and fixing on Squibby's own loop (`app/src-tauri/src/runner.rs` `RELEASE_ENV`). No key screen, no developer file.
+- Sign in with Google also signs in to Squibby's server (nonce, then the ID token traded for a `cmp_` token at `/v1/signin/google`). The token is kept in its own Keychain item (`squibby-account`) and is the only thing the engine is handed on managed usage.
+- Claude Code is never on Squibby's bill: F22's gate holds. The server's PROXY_ON and LOOP_ON are the remote switches.

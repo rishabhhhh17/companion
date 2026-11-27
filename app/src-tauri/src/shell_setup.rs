@@ -95,7 +95,7 @@ fn google_start(app: AppHandle, window: tauri::WebviewWindow, signin: bool, apps
         let r = google_flow(&id, &secret, signin, &apps, label.as_deref().unwrap_or(""));
         GOOGLE_BUSY.store(false, std::sync::atomic::Ordering::SeqCst);
         match r {
-            Ok(()) => { log("google_connected", json!({ "signin": signin, "apps": apps.iter().map(|a| a.word()).collect::<Vec<_>>() })); let _ = app.emit("google-changed", ()); google_push(&app); }
+            Ok(()) => { log("google_connected", json!({ "signin": signin, "apps": apps.iter().map(|a| a.word()).collect::<Vec<_>>() })); let _ = app.emit("google-changed", ()); google_push(&app); if signin { hand_key_over(&app, None); } }
             Err(m) => { log("google_failed", json!({})); let _ = app.emit("google-failed", m); }
         }
     });
@@ -110,9 +110,12 @@ fn google_flow(id: &str, secret: &str, signin: bool, apps: &[google::App], label
     let (verifier, challenge) = google::pkce(google::random32());
     let state = google::b64url(&google::random32());
     let url = google::auth_url(id, port, &google::scopes_for(apps), &challenge, &state, None);
+    // F29: signing in to Squibby also signs in to Squibby's own server, which gives the token the engine runs on.
+    let url = if signin { google::with_nonce(url, &squibby_nonce()?) } else { url };
     std::process::Command::new("/usr/bin/open").arg(&url).spawn().map_err(|_| "Could not open the browser.".to_string())?;
     let code = google::wait_for_code(listener, &state, crate::product!())?;
     let t = google::read_tokens(&google::post_form(google::TOKEN_URL, &google::exchange_form(id, secret, &code, &verifier, port))?)?;
+    if signin { squibby_sign_in(t.id_token.as_deref().ok_or("Google did not say who signed in. Try again.")?)?; }
     let person = t.person.ok_or("Google did not say who signed in (the email must be verified).")?;
     let old = google_kept().into_iter().find(|k| k.person.sub == person.sub);
     let refresh = t.refresh.or_else(|| old.as_ref().map(|k| k.refresh.clone())).ok_or("Google gave no lasting sign in. Try again.")?;
@@ -178,9 +181,37 @@ fn hand_key_over(app: &AppHandle, key: Option<&str>) {
     // A key the person just saved is checked once with Anthropic (free); one read from the Keychain is not.
     let fresh = key.is_some();
     std::thread::spawn(move || {
-        let key = key.or_else(|| { let moved = keystore::move_old_item(&data_dir()); log("key_move", json!({ "moved": moved })); keystore::read() });
-        let _ = a.state::<runner::Runner>().hand_key(key.as_deref(), fresh);
+        let managed = ENGINE_MANAGED.load(std::sync::atomic::Ordering::SeqCst);
+        let key = if managed { keystore::engine_key(true, keystore::read_token(), || None) }
+            else { key.or_else(|| { let moved = keystore::move_old_item(&data_dir()); log("key_move", json!({ "moved": moved })); keystore::read() }) };
+        let _ = a.state::<runner::Runner>().hand_key(key.as_deref(), fresh && !managed);
     });
+}
+
+/// F29: whether the engine runs on managed usage (Squibby's server), set each time it starts (runner::Locations::managed).
+static ENGINE_MANAGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// F29: trades Google's ID token for a Squibby sign in token at Squibby's own server, keeps it in the Keychain and hands it
+/// to the engine. The ID token goes on curl's standard input, never its command line, and is never logged or kept.
+fn squibby_sign_in(id_token: &str) -> Result<(), String> {
+    let body = json!({ "idToken": id_token }).to_string();
+    let (code, answer) = license::post_json_with("/usr/bin/curl", &format!("{}/v1/signin/google", runner::ACCOUNT_SERVER), &body)
+        .ok_or(concat!("Could not reach ", crate::product!(), ". Check the internet connection and try again."))?;
+    let v: Value = serde_json::from_str(&answer).unwrap_or(Value::Null);
+    if code != 200 {
+        let said = v.pointer("/error/message").and_then(Value::as_str).unwrap_or("");
+        return Err(if said.is_empty() { concat!(crate::product!(), " could not finish the sign in. Try again.").to_string() } else { said.to_string() });
+    }
+    let token = v.get("token").and_then(Value::as_str).ok_or(concat!(crate::product!(), " could not finish the sign in. Try again."))?;
+    keystore::save_token(token)
+}
+
+/// A fresh sign in nonce from Squibby's server (it must come back inside Google's ID token).
+fn squibby_nonce() -> Result<String, String> {
+    let out = std::process::Command::new("/usr/bin/curl").args(["-q", "-sS", "--proto", "=https", "--max-time", "20", &format!("{}/v1/signin/nonce", runner::ACCOUNT_SERVER)])
+        .env_clear().env("PATH", "/usr/bin:/bin").output().map_err(|_| "Could not reach the sign in.".to_string())?;
+    serde_json::from_slice::<Value>(&out.stdout).ok().and_then(|v| v.get("nonce").and_then(Value::as_str).map(str::to_string))
+        .filter(|n| !n.is_empty() && n.len() < 512).ok_or(concat!(crate::product!(), " sign in is not ready just now. Try again in a moment.").to_string())
 }
 
 /// Settings: removes the person's key from the Keychain, after the page asked them first, and tells the engine at once
