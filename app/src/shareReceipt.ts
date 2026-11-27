@@ -7,6 +7,7 @@
 // folder paths (any word that is a path is hidden), decisions and house rules (words), and anything but the project's name.
 // The person sees the preview first; Save is their tap on the Mac's own save dialog (shell_tools.rs save_receipt, which
 // checks the page again). Every word is in strings.ts; the colours are read from ui/tokens.css (--report-*) on Save.
+import { askedCount } from "./model.ts";
 import type { WeekView } from "../../protocol/index.ts";
 import { cleanLine, type Palette, PALETTE_KEYS } from "./goLiveReport.ts";
 import type { HistoryItem } from "./model.ts";
@@ -53,6 +54,7 @@ export function shareFromTask(h: HistoryItem, project: string, now: Date, shot?:
   const summary = [
     shareLine(h.label, project),
     (h.changed ?? 0) > 0 ? s.filesChanged(h.changed ?? 0) : null,
+    askedCount(h.asked) ? s.asked(askedCount(h.asked)!.kept, askedCount(h.asked)!.missing) : null,
     h.undone ? s.undone : null,
   ].filter((x): x is string => !!x);
   const pic = shotOk(shot);

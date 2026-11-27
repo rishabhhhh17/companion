@@ -107,3 +107,21 @@ describe("undone tasks in the task history", () => {
     expect(new TaskLog(path).list("/p")[0].undone).toBe(true);
   });
 });
+
+describe("M123: what you asked, kept with the task", () => {
+  test("kept and missing counts come back on the row; none when nothing was asked", () => {
+    const log = new TaskLog(":memory:");
+    const a = log.start({ project: "/p", agent: "a", mode: "drive", label: "add a pricing page", startedAt: "2026-11-27T10:00:00.000Z" });
+    log.finish(a, "done", 0.1, "2026-11-27T10:01:00.000Z", { checkpoint: "cp_1", changed: 2, proof: "passed", asked: { kept: 1, missing: 1 } });
+    const b = log.start({ project: "/p", agent: "a", mode: "drive", label: "tidy the code", startedAt: "2026-11-27T10:02:00.000Z" });
+    log.finish(b, "done", 0.1, "2026-11-27T10:03:00.000Z", { checkpoint: "cp_2", changed: 1, proof: "passed" });
+    const rows = Object.fromEntries(log.list("/p").map((r) => [r.label, r.asked]));
+    expect(rows).toEqual({ "add a pricing page": { kept: 1, missing: 1 }, "tidy the code": undefined });
+  });
+  test("odd counts are not kept", () => {
+    const log = new TaskLog(":memory:");
+    const a = log.start({ project: "/p", agent: "a", mode: "drive", label: "x", startedAt: "2026-11-27T10:00:00.000Z" });
+    log.finish(a, "done", 0, "2026-11-27T10:01:00.000Z", { checkpoint: "cp_1", changed: 1, proof: "passed", asked: { kept: -1, missing: 99 } });
+    expect(log.list("/p")[0].asked).toBeUndefined();
+  });
+});

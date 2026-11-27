@@ -95,3 +95,19 @@ describe("slice 5: a receipt as a link", () => {
     expect(src).toContain('onClick={() => { waiting.current = true; setLink({ stage: "making" }); void send(receiptShare(html, doc.title)); }}');
   });
 });
+
+describe("what you asked, in History and on the shared page", () => {
+  test("a History row with a missing promise is not fixed yet; counts are checked", async () => {
+    const { historyFacts, askedCount } = await import("./model.ts");
+    expect(verdictOf(historyFacts({ status: "done", proof: "passed", changed: 2, asked: { kept: 1, missing: 1 } })).proven).toBe(false);
+    expect(verdictOf(historyFacts({ status: "done", proof: "passed", changed: 2, asked: { kept: 2, missing: 0 } })).proven).toBe(true);
+    expect(askedCount({ kept: 9, missing: 0 })).toBeNull();
+    expect(askedCount({ kept: 0, missing: 0 })).toBeNull();
+  });
+  test("the shared page says it in one line, only when something was asked", async () => {
+    const { shareFromTask } = await import("./shareReceipt.ts");
+    const h = { id: 1, label: "add a pricing page", status: "done", usd: 0, startedAt: "2026-11-27T10:00:00.000Z", endedAt: "2026-11-27T10:01:00.000Z", checkpoint: "cp_1", changed: 2, proof: "passed" };
+    expect(shareFromTask({ ...h, asked: { kept: 1, missing: 1 } }, "/Users/x/my-shop", new Date("2026-11-27T12:00:00Z")).summary).toContain("1 of 2 things you asked for were there when the hidden browser tried them.");
+    expect(shareFromTask(h, "/Users/x/my-shop", new Date("2026-11-27T12:00:00Z")).summary.join(" ")).not.toContain("you asked for");
+  });
+});

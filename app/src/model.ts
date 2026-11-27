@@ -84,6 +84,8 @@ export type Task = { agent: string; project?: string; checkpoint?: string; label
 // undone (M45): an Undo put the project back to before this task (the engine's task log says so). back: Bring the fix back
 // then put its files back again (undone stays set).
 export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string; failedCheck?: string; still?: number;
+  /** M123: promises of the ask kept and not there (counts only). */
+  asked?: { kept: number; missing: number };
   /** QA1: the safety copy the Undo that took this task back made first, while it is still kept: Bring back restores it. */
   undoSafety?: string };
 export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
@@ -1827,7 +1829,13 @@ export const receiptVerdict = (m: Pick<Model, "receipt" | "task" | "teach">): Ve
 export const receiptUndone = (r: Receipt | null | undefined): boolean => !!r?.undone && !r.fixKept;
 
 /** A What I did row as facts. "running" is not a verdict: callers check it first. */
-export function historyFacts(h: Pick<HistoryItem, "status" | "proof"> & Partial<Pick<HistoryItem, "changed" | "undone" | "back" | "still">>): Facts {
+/** M123: a History row's kept and missing counts, only when they are whole numbers of a sane size. */
+export function askedCount(a: unknown): { kept: number; missing: number } | null {
+  const v = a as { kept?: unknown; missing?: unknown } | null;
+  const ok = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 5;
+  return v && ok(v.kept) && ok(v.missing) && v.kept + v.missing > 0 ? { kept: v.kept, missing: v.missing } : null;
+}
+export function historyFacts(h: Pick<HistoryItem, "status" | "proof"> & Partial<Pick<HistoryItem, "changed" | "undone" | "back" | "still" | "asked">>): Facts {
   const s = h.status;
   const ended: Facts["ended"] = s === "done" ? "done" : s === "needs_you" ? "needsYou" : s === "interrupted" ? "stopped"
     : s === "error_max_budget_usd" || s === "daily_limit" || s === "error_max_turns" ? "limit" : "failed";
@@ -1837,7 +1845,7 @@ export function historyFacts(h: Pick<HistoryItem, "status" | "proof"> & Partial<
   // An unknown count (an older log, or a task cut short) may still have changed files: it is never said as "Nothing was
   // changed", and an Undo of it is an Undo (the engine's log marks it too).
   const still = typeof h.still === "number" && Number.isInteger(h.still) && h.still > 0 ? h.still : 0;
-  return { proof: p === "passed" || p === "partial" || p === "failed" ? p : "none", ended, limit, failWhy, undone: !!h.undone, back: !!h.back, changed: h.changed ?? 1, missing: [], ...(still ? { stillThere: still } : {}) };
+  return { proof: p === "passed" || p === "partial" || p === "failed" ? p : "none", ended, limit, failWhy, undone: !!h.undone, back: !!h.back, changed: h.changed ?? 1, missing: [], ...(still ? { stillThere: still } : {}), ...(askedCount(h.asked)?.missing ? { notKept: askedCount(h.asked)!.missing } : {}) };
 }
 
 // Let me try the next one: only for a receipt that made the same change twice, once (the engine keeps no second offer),

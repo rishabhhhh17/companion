@@ -1622,7 +1622,8 @@ export class AgentRunner {
         res = await this.inTurn(cmd.project, () => (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review, ...checking, askInstall: this.installAsker(session, cmd.agent, before.id), askScripts: this.scriptsAsker(session, cmd.agent, before.id), approvals: this.approvals(cmd.project),
           signIn: this.signInFor(cmd.agent, cmd.project, abort.signal), privatePages: this.setting<boolean>("check.privatePages", cmd.project) !== false,
           // M123: the ask's promises, tried after the page opens (rules only, from the request and the changed files).
-          promises: promisesFrom(opts.asked ?? cmd.prompt ?? "", changed.map((c) => c.file)) }));
+          // Only from the person's own words: never a practice's fixed move or a review's Fix it, whose prompts Squibby wrote.
+          promises: cmd.practice || this.fixChecks.has(cmd.id) ? [] : promisesFrom(opts.asked ?? cmd.prompt ?? "", changed.map((c) => c.file)) }));
       } catch (e) {
         res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: CHECKER_STOPPED, summary: CHECKER_STOPPED, ms: 0, forModel: `The checker itself stopped: ${clip(redactOutput(String((e as Error)?.message ?? e)), 300)}` }] };
       } finally { this.watchers.get(cmd.agent)?.end("ladder"); }
@@ -1635,6 +1636,16 @@ export class AgentRunner {
         dbOpenBefore ??= await databaseOpenAt(store, before.id, cmd.project);
         if (dbOpenBefore && (cmd.practice || changed.some((c) => DATABASE_FILE.test(c.file)))) res = await withDatabaseCheck(res, cmd.project);
       }
+      // M123: checks that passed while a promise of the ask is not there did not prove the work done (rule 14). The missing
+      // promise becomes the failed check's evidence, so the fix loop hands it back to Claude within the same tries and the
+      // same spending limit. Could not check never sends Claude back to work.
+      { const broken = (res.promises ?? []).filter((o) => o.result === "not_kept");
+        if (broken.length && (res.verdict === "passed" || res.verdict === "passed_with_gaps") && !abort.signal.aborted) {
+          const detail = `Something you asked for is not there: ${broken.map((b) => b.promise.say + (b.why ? ` (${b.why})` : "")).join("; ")}.`;
+          const step = { rung: "browser", label: "What you asked", status: "failed", detail, summary: detail, ms: 0,
+            forModel: `The hidden browser tried what the person asked for. ${detail} Make it there without breaking what already works, then stop.` } as Step;
+          res = { ...res, verdict: "failed", failedAt: step, steps: [...res.steps, step] };
+        } }
       // M58: "Try 1 of 3": the try, and this approach's limit (work.tries), so the card never guesses it.
       this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: forPerson(res.steps), tries: checks, of: MAX_TRIES, ...(res.openPrivate?.length ? { privateOpen: res.openPrivate } : {}) } as never);
       if (res.verdict !== "cancelled") this.setProven(cmd.project, { verdict: res.verdict, snapshot: after.id }, taskId);
@@ -1703,7 +1714,7 @@ export class AgentRunner {
     const still = stillCount(rechecked?.findings);
     // Save the task first, so a page that asks for the timeline when the receipt arrives sees it.
     book();
-    this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof, ...(proof === "failed" && failedCheck ? { failedCheck } : {}), ...(still ? { still } : {}) });
+    this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof, ...(proof === "failed" && failedCheck ? { failedCheck } : {}), ...(still ? { still } : {}), ...(promised.some((o) => o.result !== "could_not_check") ? { asked: { kept: promised.filter((o) => o.result === "kept").length, missing: promised.filter((o) => o.result === "not_kept").length } } : {}) });
     this.openTasks.delete(cmd.agent);
     // Our work ends here: the project as it is now is what this step left. Later differences are the person's own.
     started.ended = true;

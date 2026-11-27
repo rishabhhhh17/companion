@@ -59,7 +59,9 @@ export type TaskRow = { id: number; project: string; agent: string; mode: string
    *  can say which check failed. Never the check's output. */
   failedCheck?: string;
   /** M104: a review's Fix it left this many of its problems there, so it is not proven. */
-  still?: number };
+  still?: number;
+  /** M123: how many promises of the ask were kept and how many were not there (could not check is in neither). */
+  asked?: { kept: number; missing: number } };
 /** The rungs a task may keep as its failed check: anything else is dropped (never free text). */
 const RUNGS = ["install", "checks", "tests", "start", "browser", "review"];
 
@@ -96,6 +98,9 @@ export class TaskLog {
     if (!have.includes("failed_check")) this.db.run("ALTER TABLE tasks ADD COLUMN failed_check TEXT");
     // M104: how many of a review's problems a Fix it left there (null: none, or not a Fix it).
     if (!have.includes("still")) this.db.run("ALTER TABLE tasks ADD COLUMN still INTEGER");
+    // M123: what you asked, as counts only (the promises' words are on the receipt, never kept here).
+    if (!have.includes("asked_kept")) this.db.run("ALTER TABLE tasks ADD COLUMN asked_kept INTEGER");
+    if (!have.includes("asked_missing")) this.db.run("ALTER TABLE tasks ADD COLUMN asked_missing INTEGER");
     // M85: why an ask was asked (its plain reason, redacted), for an ask row.
     if (!have.includes("note")) this.db.run("ALTER TABLE tasks ADD COLUMN note TEXT");
     // M94: 1 when an ask was about a live system (a copy on this Mac can't bring it back), for What Squibby saved you.
@@ -257,11 +262,14 @@ export class TaskLog {
     const days = new Set([...tasks.map((t) => day(t.at)), ...reviews.map((r) => day(r.at))].filter(Boolean));
     return { jobs: tasks.filter((t) => t.mode !== GUARD_MODE && t.mode !== ASK_MODE).length, days: days.size };
   }
-  finish(id: number, status: string, usd: number, endedAt: string, receipt?: { checkpoint: string; changed: number; proof: string; failedCheck?: string; still?: number }) {
+  finish(id: number, status: string, usd: number, endedAt: string, receipt?: { checkpoint: string; changed: number; proof: string; failedCheck?: string; still?: number; asked?: { kept: number; missing: number } }) {
     const failed = receipt?.proof === "failed" && receipt.failedCheck && RUNGS.includes(receipt.failedCheck) ? receipt.failedCheck : null;
     const still = receipt?.still && Number.isInteger(receipt.still) && receipt.still > 0 ? Math.min(receipt.still, 20) : null;
-    this.db.query("UPDATE tasks SET status = ?, usd = ?, ended_at = ?, checkpoint = COALESCE(?, checkpoint), changed = ?, proof = ?, failed_check = ?, still = ? WHERE id = ?")
-      .run(status, usd, endedAt, receipt?.checkpoint ?? null, receipt?.changed ?? null, receipt?.proof ?? null, failed, still, id);
+    const count = (n: unknown) => (typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 5 ? n : null);
+    const ak = count(receipt?.asked?.kept), am = count(receipt?.asked?.missing);
+    const asked = ak !== null && am !== null && ak + am > 0 && ak + am <= 5 ? [ak, am] : [null, null];
+    this.db.query("UPDATE tasks SET status = ?, usd = ?, ended_at = ?, checkpoint = COALESCE(?, checkpoint), changed = ?, proof = ?, failed_check = ?, still = ?, asked_kept = ?, asked_missing = ? WHERE id = ?")
+      .run(status, usd, endedAt, receipt?.checkpoint ?? null, receipt?.changed ?? null, receipt?.proof ?? null, failed, still, asked[0], asked[1], id);
   }
   // An Undo back to checkpoint number fromN took back every task of this project that started there or later (upToN: only
   // up to that number, for an Undo of one task). Each is marked with the Undo's safety copy, unless an earlier Undo already
@@ -362,6 +370,7 @@ export class TaskLog {
       ...(r.undone_by && r.brought_back !== 1 ? { undoneBy: String(r.undone_by) } : {}),
       ...(r.failed_check && RUNGS.includes(r.failed_check) ? { failedCheck: r.failed_check as string } : {}),
       ...(typeof r.still === "number" && r.still > 0 ? { still: r.still as number } : {}),
+      ...(typeof r.asked_kept === "number" && typeof r.asked_missing === "number" ? { asked: { kept: r.asked_kept as number, missing: r.asked_missing as number } } : {}),
     }));
   }
 }

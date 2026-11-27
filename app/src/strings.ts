@@ -4416,7 +4416,7 @@ export const S = {
       button: "Share what my AI did",
       buttonLabel: (what: string) => `Share what my AI did: ${what}`,
       previewTitle: "This is the file you would save",
-      previewLine: "One web page, saved where you pick. Nothing is uploaded. It has no file contents, no keys and no folder names, only your project's name.",
+      previewLine: "One web page. Save keeps it on this Mac, where you pick. Copy a link puts it on Squibby's server for 30 days, only when you press it. It has no file contents, no keys and no folder names, only your project's name.",
       save: "Save as a file",
       saving: "Saving.",
       saved: (name: string) => `Saved as ${name}.`,
@@ -4431,6 +4431,8 @@ export const S = {
       proofTitle: "The proof",
       proof: { passed: "Its checks passed.", partial: "Some checks passed and some did not run.", failed: "Its checks did not pass.", skipped: "Its checks did not run, so it is not proven.", none: "No checks were run for this." } as Record<"passed" | "partial" | "failed" | "skipped" | "none", string>,
       undone: "It was put back with Undo afterwards.",
+      // M123: what you asked, as counts (the promises' own words are not kept with History).
+      asked: (kept: number, missing: number) => (missing === 0 ? `Everything you asked for was there when the hidden browser tried it (${kept} of ${kept}).` : `${kept} of ${kept + missing} things you asked for were there when the hidden browser tried them.`),
       filesChanged: (n: number) => (n === 1 ? "1 file changed." : `${n} files changed.`),
       shotAlt: "The page after the change, from the browser check",
       shotCaption: "The page after the change, as the browser check saw it.",

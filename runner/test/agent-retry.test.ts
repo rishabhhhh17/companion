@@ -94,3 +94,42 @@ describe("the fix loop", () => {
     expect(states(r.events)).not.toContain("done");
   });
 });
+
+describe("M123: a promise of the ask that is not there goes back to Claude like a failed check", () => {
+  const WHY = ["", "the menu is empty", "a link goes to /about", "there is no menu"];
+  const missing = (n = 0): LadderResult => ({ ...good(), promises: [
+    { promise: { kind: "opens", path: "/pricing", say: "a pricing page opens at /pricing" }, result: "kept", why: "" },
+    { promise: { kind: "links", path: "/", label: "pricing", to: "/pricing", say: "the menu links to /pricing" }, result: "not_kept", why: `Could not find a button or link called "pricing" on the page${n ? `: ${WHY[n]}` : ""}` },
+  ] });
+  const allKept = (): LadderResult => ({ ...good(), promises: [{ promise: { kind: "opens", path: "/pricing", say: "a pricing page opens at /pricing" }, result: "kept", why: "" }] });
+  test("the missing promise is the evidence, the fix keeps it, the task is done and proven", async () => {
+    const r = setup([[bash("echo 1 > x.txt")], [bash("echo 2 > x.txt")]], [missing(), allKept()]);
+    await r.runner.handle(start(r.project));
+    expect(r.engine.calls.length).toBe(2);
+    expect(r.engine.calls[1].prompt).toContain("the menu links to /pricing");
+    expect(results(r.events).map((x) => x.verdict)).toEqual(["failed", "passed"]);
+    expect(receipt(r.events).proof).toBe("passed");
+    expect(receipt(r.events).promises).toEqual([{ say: "a pricing page opens at /pricing", result: "kept" }]);
+  });
+  test("still missing after the tries: not done, with the promise on the receipt", async () => {
+    const r = setup([[bash("echo 1 > x.txt")], [bash("echo 2 > x.txt")], [bash("echo 3 > x.txt")]], [missing(1), missing(2), missing(3)]);
+    await r.runner.handle(start(r.project));
+    expect(receipt(r.events).proof).toBe("failed");
+    expect(receipt(r.events).promises.find((p: any) => p.result === "not_kept").say).toBe("the menu links to /pricing");
+    expect(r.log.list()[0].status).not.toBe("done");
+  });
+  test("could not check never sends Claude back to work", async () => {
+    const r = setup([[bash("echo 1 > x.txt")]], [{ ...good(), promises: [{ promise: { kind: "opens", path: "/x", say: "/x opens" }, result: "could_not_check", why: "It asked for a sign in." }] }]);
+    await r.runner.handle(start(r.project));
+    expect(r.engine.calls.length).toBe(1);
+    expect(receipt(r.events).proof).toBe("passed");
+  });
+});
+
+test("M123: a practice's own fixed move never becomes promises", async () => {
+  const project = tmp("pp"); writeFileSync(join(project, "a.txt"), "x");
+  const seen: unknown[] = [];
+  const runner = new AgentRunner({ shadowRoot: tmp("ps"), engine: new ScriptedEngine([[bash("echo 1 > x.txt")]]), log: new TaskLog(":memory:"), emit: () => {}, proof: async (o: any) => { seen.push(o.promises); return good(); } });
+  await runner.handle({ ...start(project), prompt: "Fix the link to /about in the menu", practice: "route" } as never);
+  expect(seen).toEqual([[]]);
+});
