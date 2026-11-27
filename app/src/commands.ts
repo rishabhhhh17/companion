@@ -116,6 +116,15 @@ export const watchCheck = (project: string, watch: string): Command => ({ v: 1, 
 // Fix it on a failed watch: asks for the evidence (read only); the page starts the task when it comes (fixWatch), never the engine.
 // M52 (F30): the review of another AI tool's changes. Each names the project and the batch the card shows (the shell holds
 // them to the chosen folder). Fix it starts an ordinary task in drive mode, with its safety copy and Undo, counted as a fix.
+// M124: Squibby for teams, each on the person's press.
+export const teamShow = (receipts = false): Command => ({ v: 1, id: id(), type: "team.show", ...(receipts ? { receipts: true } : {}) });
+export const teamMake = (name: string, me: string): Command => ({ v: 1, id: id(), type: "team.make", name: name.trim().slice(0, 60), me: me.trim().slice(0, 40) });
+export const teamJoin = (invite: string, me: string): Command => ({ v: 1, id: id(), type: "team.join", invite: invite.trim().slice(0, 120), me: me.trim().slice(0, 40) });
+export const teamLeave = (): Command => ({ v: 1, id: id(), type: "team.leave" });
+export const teamShare = (on: boolean): Command => ({ v: 1, id: id(), type: "team.share", on });
+export const teamRules = (rules: { kind: string; pattern: string }[]): Command => ({ v: 1, id: id(), type: "team.rules", rules: rules.slice(0, 50) });
+export const teamInvite = (): Command => ({ v: 1, id: id(), type: "team.invite" });
+export const teamRemove = (name: string): Command => ({ v: 1, id: id(), type: "team.remove", name });
 // M123 slice 5: a receipt page shared as a link, on the person's tap; delete one; list the ones alive.
 export const receiptShare = (html: string, title?: string): Command => ({ v: 1, id: id(), type: "receipt.share", html, ...(title ? { title: title.slice(0, 120) } : {}) });
 export const receiptUnshare = (link: string): Command => ({ v: 1, id: id(), type: "receipt.unshare", link });

@@ -18,6 +18,7 @@
 // meanwhile, so the other tool's writes during it are reviewed too. A file that appears during a task of the engine
 // cannot be told apart from the task's own: the task's receipt lists it, with Undo.
 // Stop everything (rule 11) ends a review that runs, and no review that was about to start begins after it.
+import { receiptSummary, type TeamReceipt } from "../team.ts";
 import { lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { commandsWhere } from "../../../protocol/commands.ts";
 import { join, resolve } from "node:path";
@@ -100,6 +101,8 @@ export type ReviewDeps = {
   /** The project's own build, tests and browser check, no model, nothing changed (agent.ts checkForReview). asked: the
    *  person pressed Review them, which is their yes to running the project's scripts in the safety box. */
   check?: (project: string, signal: AbortSignal, o: { asked: boolean; ask?: string; changed?: string[] }) => Promise<CheckOutcome>;
+  /** M124: share this review's plain summary with the person's team (team.ts); does nothing unless they turned sharing on. */
+  teamShare?: (s: TeamReceipt) => void;
   /** Starts Fix it: an ordinary task, admitted by the plan gate and run by the agent runner (main.ts). M104: check is
    *  called by that task once its last change is saved, before its receipt, so the receipt says problem by problem what
    *  the rules found again. */
@@ -1297,6 +1300,14 @@ export class ReviewService {
         ...(b.job ? { job: b.job } : {}), ...(overlap.length ? { overlap } : {}), ...(sayWaiting ? { waiting } : {}),
       });
       if (sheet && this.deps.setting("replay.model") === true && !rulesOnly && !checksOnly) void this.replayByModel(b, sheet, abort.signal, gen);
+      // M124: the team sees the plain summary (only with sharing on; team.ts). A stop or failed checks is not done.
+      if (this.deps.teamShare && !b.job) {
+        const missing = checkPromises.filter((x) => x.result === "not_kept").length;
+        try { this.deps.teamShare(receiptSummary({ project: b.project, tool: b.by ?? "ai", label: summary, changed: b.count,
+          proof: checks === "passed" ? "passed" : checks === "failed" ? "failed" : "skipped", ended: shown.rating === "stop" || checks === "failed" ? "failed" : shown.rating === "worth_a_look" ? "needs_you" : "done", undone: false,
+          checks: (checkRuns ?? []).map((c) => ({ label: c.label, status: c.status })), flags: shown.reasons.slice(0, 2).map((x) => x.say),
+          ...(checkPromises.length ? { asked: { kept: checkPromises.filter((x) => x.result === "kept").length, missing } } : {}) })); } catch { /* sharing never stops a review */ }
+      }
       // M57 feature 1: one row in the task log. Names of files only, the summary with secrets hidden; no file text.
       try { this.deps.history?.add({ project: b.project, batch: b.id, at: new Date().toISOString(), files: b.files.map((f) => f.file).slice(0, 20), count: b.count, rating: shown.rating, touches, checks, summary: clip(redact(summary), 400), kinds: [...new Set(shown.reasons.map((r) => r.kind))],
         // M106: a background job's versions are in the job's own shadow store, where the same ids mean other versions than in the

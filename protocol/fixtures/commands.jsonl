@@ -150,3 +150,11 @@
 {"v":1,"id":"c_m123s","type":"receipt.share","html":"<!doctype html><p>receipt</p>","title":"my-shop"}
 {"v":1,"id":"c_m123u","type":"receipt.unshare","link":"AAAAAAAAAAAAAAAAAAAAAA"}
 {"v":1,"id":"c_m123l","type":"receipt.shares"}
+{"v":1,"id":"c_m124a","type":"team.show","receipts":true}
+{"v":1,"id":"c_m124b","type":"team.make","name":"bloom studio","me":"Ana"}
+{"v":1,"id":"c_m124c","type":"team.join","invite":"AAAAAAAAAAAAAAAA.secret","me":"Jon"}
+{"v":1,"id":"c_m124d","type":"team.leave"}
+{"v":1,"id":"c_m124e","type":"team.share","on":true}
+{"v":1,"id":"c_m124f","type":"team.rules","rules":[{"kind":"never_edit","pattern":"pricing.txt"}]}
+{"v":1,"id":"c_m124g","type":"team.invite"}
+{"v":1,"id":"c_m124h","type":"team.remove","name":"Jon"}

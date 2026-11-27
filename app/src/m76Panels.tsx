@@ -5,7 +5,9 @@ import { buildReport, readPalette, reportFileName, reportHtml, reportPdf, type R
 import { Icon } from "./icons.tsx";
 import { changeSetting, useSetting } from "./settingsStore.ts";
 import { S } from "./strings.ts";
-import { invoke, proCommands } from "./tauri.ts";
+import { invoke, listen, proCommands } from "./tauri.ts";
+import { receiptShare, receiptUnshare } from "./commands.ts";
+import { linkWords, sharedFrom, type LinkState } from "./shareLink.ts";
 import { tourMove, type Tour, type TourStep } from "./tour.ts";
 import { Field, Switch } from "./ui/parts.tsx";
 import { planProblem, reportOffer, reportStatusFrom, tidyKey, type ReportStatus } from "./plan.ts";
@@ -16,7 +18,21 @@ const utf8b64 = (text: string) => b64(new TextEncoder().encode(text));
 
 /** Share report: a button, then a small panel with the answer as the report will say it, the two saves and the code lines
  *  switch. Saving opens the Mac's own save dialog (main.rs save_report); nothing is sent anywhere. */
-export function ShareReport({ input, id = "share-report" }: { input: Omit<ReportInput, "when" | "codeLines">; id?: string }) {
+export function ShareReport({ input, id = "share-report", send }: { input: Omit<ReportInput, "when" | "codeLines">; id?: string; send?: (cmd: unknown) => unknown }) {
+  // M124 (Studio, the go live report for a client): Copy a link puts the same page on Squibby's server for 30 days, only on
+  // this press, with the same checks as a receipt link (M123 slice 5). Delete link ends it.
+  const [link, setLink] = useState<LinkState>({ stage: "none" });
+  const waiting = useRef(false);
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      if (!waiting.current) return;
+      const got = sharedFrom(e.payload);
+      if (!got) return;
+      waiting.current = false; setLink(got);
+      if (got.stage === "made") void invoke("copy_text", { text: got.url }).catch(() => navigator.clipboard?.writeText(got.url));
+    });
+    return () => { void off.then((f) => f()); };
+  }, []);
   const [open, setOpen] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -64,8 +80,11 @@ export function ShareReport({ input, id = "share-report" }: { input: Omit<Report
       <div className="row">
         <button className="btn" type="button" disabled={busy} onClick={() => save("html")}>{S.goLive.saveHtml}</button>
         <button className="btn" type="button" disabled={busy} onClick={() => save("pdf")}>{S.goLive.savePdf}</button>
+        {send && link.stage !== "made" && <button className="btn" type="button" disabled={busy || link.stage === "making"} onClick={() => { if (!doc) return; waiting.current = true; setLink({ stage: "making" }); void send(receiptShare(reportHtml(doc, readPalette(css)), doc.title)); }}>{S.goLive.clientLink}</button>}
+        {send && link.stage === "made" && <button className="btn" type="button" onClick={() => { waiting.current = true; setLink({ stage: "deleting", id: link.id }); void send(receiptUnshare(link.id)); }}>{S.m123.link.remove}</button>}
         <button className="btn" type="button" onClick={() => setOpen(false)}>{S.goLive.close}</button>
       </div>)}
+      {link.stage !== "none" && <p className="line" role="status">{linkWords(link)}</p>}
       <label className="golive-switch"><Switch checked={codeLines} label={S.goLive.codeLines} onChange={(on) => { void changeSetting("report.codeLines", on); }} /><span>{S.goLive.codeLines}</span></label>
       <span className={said || busy ? "line muted" : "sr"} role="status">{busy ? S.goLive.saving : said ?? ""}</span>
     </div>

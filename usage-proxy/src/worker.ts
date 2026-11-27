@@ -38,6 +38,7 @@
 // scripts/deploy.sh --apply refuses while any of DEV_ONLY_SETTINGS (UPSTREAM_BASE, GOOGLE_KEYS_URL, DEV_TOKENS) is set on
 // Cloudflare, or is a var in wrangler.toml or the dry run's bindings.
 // Logs are the SafeEvent lines the proxy and the webhook already make: ids, reasons, counts and dollars, never a body or a secret.
+import { makeTeamRoutes } from "./team-routes.ts";
 import { hashToken } from "./tokens.ts";
 import { makeLinkRoutes, type LinkStore } from "./receipt-links.ts";
 import { createProxy, parseTestPayers, storeFailed, type SafeEvent } from "./proxy.ts";
@@ -63,6 +64,8 @@ export type Env = {
   PAYMENTS_ON?: string;
   /** M123 slice 5: the share link switch, off the same way, and the KV namespace that keeps the pages for 30 days. */
   SHARE_ON?: string;
+  /** M124: the teams switch, off the same way. */
+  TEAMS_ON?: string;
   RECEIPTS?: LinkStore;
   DODO_PAYMENTS_API_KEY?: string;
   DODO_API_BASE?: string;
@@ -236,6 +239,12 @@ async function route(req: Request, env: Env, ctx: Ctx, now: () => number): Promi
     userOf: async (t) => { const a = await parts.store.account(await hashToken(t), now()); return a ? { id: a.user.id, active: a.user.status !== "suspended" && a.user.status !== "revoked" && a.user.status !== "canceled" } : null; },
   })(req, url);
   if (shared) return shared;
+  // M124: teams (signed in only, off unless TEAMS_ON). Receipts and rules only, never a model request.
+  const teams = await makeTeamRoutes({
+    ns: env.STORE, on: () => switchOn(env.TEAMS_ON), now,
+    userOf: async (t) => { const a = await parts.store.account(await hashToken(t), now()); return a ? { id: a.user.id, active: a.user.status !== "suspended" && a.user.status !== "revoked" && a.user.status !== "canceled" } : null; },
+  })(req, url);
+  if (teams) return teams;
   // M116: checkout, portal and the /paid return page, ahead of the proxy and its switch.
   const billing = await parts.billing(req, url);
   if (billing) return billing;

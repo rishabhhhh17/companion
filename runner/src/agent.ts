@@ -2,6 +2,7 @@
 // stop at the spending limit, and finish with a receipt. The engine (real Claude or a
 // scripted stand in) only supplies turns; everything safe happens here.
 
+import { receiptSummary, type TeamReceipt } from "./team.ts";
 import { stillCount, type FixCheck, type FixFinding } from "./review/fixcheck.ts";
 import { claimsPassed } from "./review/weakened.ts";
 import { parseSketch, sketchRequest } from "./sketch.ts";
@@ -178,6 +179,8 @@ export type RunnerOptions = {
   browser?: typeof browserCheck;
   // The visual receipt: after a passing check, the page before and after, with the change circled. Without it, off.
   pictures?: { workDir: string; saveDir: string; before?: typeof captureBefore; draw?: typeof drawReceipt; card?: typeof makeShareCard };
+  /** M124: share a receipt's plain summary with the person's team (team.ts); does nothing unless they turned sharing on. */
+  teamShare?: (s: TeamReceipt) => void;
   // The free fix count (plan.ts, payments spec section 2): which admitted fix a task belongs to, read as the task starts, and
   // told when one is proven. Without it nothing is counted. Undo and Bring back never tell it anything.
   fixes?: FixCounter;
@@ -1583,6 +1586,7 @@ export class AgentRunner {
     let changed: Awaited<ReturnType<CheckpointStore["diff"]>> = [];
     let shot: PageShot | undefined;   // the page as it is after a passing check, for the visual receipt
     let promised: PromiseOutcome[] = [];   // M123: what happened to each promise of the ask, on the last check
+    let lastSteps: Step[] = [];   // M124: the last check's steps, for the team's summary
     let lastAfter = before.id;   // the snapshot the receipt's changes are measured to
     let ok = await round(withStaleCheck(cmd.prompt), opts.resumeSession);
     // Did the round that just ended stop to ask the person something (asks.ts: an offer of more work or a check in is not
@@ -1651,6 +1655,7 @@ export class AgentRunner {
       if (res.verdict !== "cancelled") this.setProven(cmd.project, { verdict: res.verdict, snapshot: after.id }, taskId);
       if (res.verdict === "cancelled") { status = "interrupted"; break; }
       promised = res.promises ?? [];
+      lastSteps = res.steps;
       if (res.verdict !== "failed") { if (res.verdict === "passed") proof = "passed"; else if (res.verdict === "passed_with_gaps") proof = "partial"; shot = res.shot; break; }   // partial: it passed, but a check could not run (for example the browser): never called proven
 
       proof = "failed"; status = "not_done";
@@ -1750,6 +1755,12 @@ export class AgentRunner {
     // M94: the flags' kinds only (never their words), so an Undo of this task later counts as a wrong change caught.
     for (const f of flags) this.markSaved("drift", cmd.project, taskId, f.kind);
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(lastSaid && proof !== "passed" && claimsPassed(lastSaid) ? { claimedPassed: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...(notesStay.length ? { notesStay } : {}), ...(flags.length ? { flags } : {}), ...(promised.length ? { promises: forReceipt(promised, { pictures: !!this.o.pictures && pictures.make && !cmd.offTheRecord }) } : {}), ...(rechecked ? { rechecked } : {}), ...practice } as never);
+    // M124: the team's plain summary, only when sharing is on (team.ts), never off the record and never for a practice.
+    if (this.o.teamShare && !offRecord && !cmd.practice && (status === "done" || status === "needs_you" || proof === "failed")) {
+      try { this.o.teamShare(receiptSummary({ project: cmd.project, tool: "squibby", label: lbl, changed: changed.length, proof, ended: status === "needs_you" ? "needs_you" : status === "done" ? "done" : "failed", undone: false,
+        checks: lastSteps.map((x) => ({ label: x.label, status: x.status })), flags: flags.map((f) => f.say),
+        ...(promised.some((o) => o.result !== "could_not_check") ? { asked: { kept: promised.filter((o) => o.result === "kept").length, missing: promised.filter((o) => o.result === "not_kept").length } } : {}) })); } catch { /* sharing never stops a task */ }
+    }
     // A proven fix (M45: it ended done and its checks passed) counts once toward Free's month (plan.ts). Nothing else does,
     // and an Undo or Bring back later never changes it. M104: nor a fix that left one of its review's problems there, nor
     // (hunt 20 Nov) one whose recheck could not run.

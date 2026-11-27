@@ -6,7 +6,7 @@ import { mkdirSync, statSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { resolveLinks, type ToolCall, type Verdict } from "./safety.ts";
 import { commandsOf, redirectTargets } from "./shell.ts";
-import { ruleOf, type RuleKind } from "../../protocol/settings.ts";
+import { ruleOf, ruleText, type RuleKind } from "../../protocol/settings.ts";
 import { companionDirUsable, readCompanionFile } from "./companionfile.ts";
 import { writeAtomic } from "./atomic.ts";
 
@@ -32,10 +32,23 @@ export type LoadedRules = { rules: Rule[]; problems: string[]; broken?: boolean 
 // It is read the one way the shell reads it (companionfile.ts, houserules.rs): never through a link, a plain file of at most
 // 64 KB, text only. Anything else (a link, a pipe, a huge file) counts as a file that could not be read.
 export function loadRules(project: string): LoadedRules {
+  const own = loadOwnRules(project);
+  // M124: the team's rules (team.ts) are added to the project's own, never in their place, so they can only make things
+  // stricter. A loosening kind (allow reading) is never taken from a team.
+  const team = TEAM_RULES.filter((t) => !own.rules.some((r) => r.text.toLowerCase() === t.text.toLowerCase()));
+  return team.length ? { ...own, rules: [...own.rules, ...team] } : own;
+}
+function loadOwnRules(project: string): LoadedRules {
   const r = readCompanionFile(project, "rules.txt");
   if (r.state === "none") return { rules: [], problems: [] };
   if (r.state === "ok") return parseRules(r.text);
   return { rules: [], problems: ["Your house rules file could not be read, so I will ask before anything that changes your project."], broken: true };
+}
+const STRICT_KINDS = new Set<string>(["never_edit", "never_run", "ask_edit", "ask_run", "ask_install"]);
+let TEAM_RULES: Rule[] = [];
+/** M124: the team's rules as the team server last said them; [] when not in a team. Only the five strict kinds. */
+export function setTeamRules(rules: readonly { kind: string; pattern: string }[]): void {
+  TEAM_RULES = rules.filter((r) => STRICT_KINDS.has(r.kind)).map((r) => ruleText(r.kind as RuleKind, r.pattern)).filter((t): t is string => !!t).map((t) => ruleOf(t)!).filter(Boolean);
 }
 
 // ---- matching ----

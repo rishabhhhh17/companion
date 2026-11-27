@@ -413,7 +413,23 @@ export type SharedLink = { id: string; url: string; expiresAt: string; title?: s
  *  the server's words), bad_answer, unknown (no such link here). */
 export type ReceiptShared = Envelope & { type: "receipt.shared"; links: SharedLink[];
   last?: { ok: boolean; url?: string; expiresAt?: string; removed?: string; reason?: "signIn" | "offline" | "refused" | "bad_answer" | "unknown"; say?: string } };
-export type Command = ReceiptShare | ReceiptUnshare | ReceiptShares | ReviewNow | ReviewDismiss | ReviewFix | ReviewUndoPlan | ReviewUndo | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | DoneSignalAnyLine | ToolJump | ToolAskAnswer | CostChoose | ProofSignIn | WeekShow | ShipWhyLive | JobsSave | JobsList | JobsDrop | TutorList | TutorNote | TutorForget;
+/** M124: Squibby for teams (runner/src/team.ts). Everything goes to Squibby's own server with the Squibby sign in, only on
+ *  the person's press; sharing receipts is off until they turn it on. */
+export type TeamShow = Envelope & { type: "team.show"; receipts?: boolean };
+export type TeamMake = Envelope & { type: "team.make"; name: string; me: string };
+export type TeamJoin = Envelope & { type: "team.join"; invite: string; me: string };
+export type TeamLeave = Envelope & { type: "team.leave" };
+export type TeamShareSet = Envelope & { type: "team.share"; on: boolean };
+export type TeamRulesSet = Envelope & { type: "team.rules"; rules: { kind: string; pattern: string }[] };
+export type TeamInvite = Envelope & { type: "team.invite" };
+export type TeamRemove = Envelope & { type: "team.remove"; name: string };
+export type TeamInfo = { id: string; name: string; me: string; share: boolean; role?: "admin" | "member"; members?: { name: string; role: "admin" | "member" }[]; rules?: { kind: string; pattern: string }[] };
+export type TeamReceiptRow = { seq: number; by: string; at: number; project: string; tool: string; verdict: "works" | "needs_you" | "not_done" | "put_back"; lines: string[]; checks: { label: string; result: "passed" | "failed" | "skipped" }[]; flags: string[]; asked?: { kept: number; missing: number } };
+/** The team as this Mac knows it (null: not in a team), the latest shared receipts when asked for, a new invite code right
+ *  after one was made, and what the last press did (reason: signIn, offline, refused with the server's words, none). */
+export type TeamStateEvent = Envelope & { type: "team.state"; team: TeamInfo | null; receipts?: TeamReceiptRow[]; invite?: string;
+  last?: { ok: boolean; did?: string; reason?: string; say?: string } };
+export type Command = TeamShow | TeamMake | TeamJoin | TeamLeave | TeamShareSet | TeamRulesSet | TeamInvite | TeamRemove | ReceiptShare | ReceiptUnshare | ReceiptShares | ReviewNow | ReviewDismiss | ReviewFix | ReviewUndoPlan | ReviewUndo | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | DoneSignalAnyLine | ToolJump | ToolAskAnswer | CostChoose | ProofSignIn | WeekShow | ShipWhyLive | JobsSave | JobsList | JobsDrop | TutorList | TutorNote | TutorForget;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -890,7 +906,7 @@ export type ReviewReplay = {
   checks: { label: string; status: "passed" | "failed" | "skipped"; exit?: number }[]; shot?: string;
 };
 export type ReviewUntold = { beyond: string[]; beyondMore: number; todos: number; checks: ReviewChecks };
-export type Event = ReceiptShared | ToolAskRequest | ToolAskResolved | ToolWhere | ToolJumped | DoneSignalAnyLineEvent | GuardSaved | GuardAsked | HookWaiting | HookBusy | FeedUpdate | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewUndoPlanEvent | ReviewUndone | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved | TutorLearned;
+export type Event = TeamStateEvent | ReceiptShared | ToolAskRequest | ToolAskResolved | ToolWhere | ToolJumped | DoneSignalAnyLineEvent | GuardSaved | GuardAsked | HookWaiting | HookBusy | FeedUpdate | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewUndoPlanEvent | ReviewUndone | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved | TutorLearned;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -1210,6 +1226,14 @@ const COMMANDS: Record<string, Check[]> = {
   "receipt.share": [str("html"), (m) => ((m.html as string).length <= 4_000_000 ? null : "the page is too big"), opt("title", str("title"))],
   "receipt.unshare": [str("link")],
   "receipt.shares": [],
+  "team.show": [opt("receipts", bool("receipts"))],
+  "team.make": [str("name"), str("me")],
+  "team.join": [str("invite"), str("me")],
+  "team.leave": [],
+  "team.share": [bool("on")],
+  "team.rules": [list("rules")],
+  "team.invite": [],
+  "team.remove": [str("name")],
   "review.dismiss": [str("project"), str("batch"), opt("how", oneOf("how", [...REVIEW_CLOSED_HOW]))],
   "review.fix": [str("project"), str("batch"), str("agent"), str("model"), num("budgetUsd")],
   "review.undoPlan": [str("project"), batchOk],
@@ -1319,6 +1343,7 @@ const COMMANDS: Record<string, Check[]> = {
 
 const EVENTS: Record<string, Check[]> = {
   "receipt.shared": [list("links")],
+  "team.state": [(m) => (m.team === null || (typeof m.team === "object" && m.team !== null) ? null : '"team" must be the team or null')],
   // M52, the review of every change (runner/src/review/service.ts).
   "review.batch": [str("project"), str("batch"), filesListOk("files"), whole("count"), bool("capped"), textList("secretFiles"), bool("auto"), opt("away", oneOf("away", [...REVIEW_AWAY])), opt("keys", keyPlacesOk), opt("by", oneOf("by", [...DONE_SIGNAL_TOOLS])), opt("job", jobOk), opt("waiting", whole("waiting"))],
   "review.started": [str("project"), str("batch"), bool("proof")],

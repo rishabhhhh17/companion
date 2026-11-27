@@ -10,6 +10,7 @@
 //
 // It needs nothing from Cloudflare at build time: the object talks through `fetch`, and the types below are the small part of the
 // Durable Object API it uses, so the tests run it on a fake of that API (test/fake-do.ts) with Bun alone.
+import { TEAM_OPS } from "./teams.ts";
 import { budgetCheck, dayKey, monthKey, type Plan, type Spent } from "./plans.ts";
 import { bestPlan, carriedFor, mergeCarry, chargeableSub, countsNow, keptSub, liveSubCount, shownPlan, usageSummary, type Account, type Billing, type Carry, type Deleted, type DodoMode, type FinishAsk, type OwnerPage, type OwnerUsage, type RefundNeeded, type Release, type ReportCredit, type ReportRemoved, type ReportUse, type SignIn, type StartAsk, type Started, type Store, type Sub, type SubChange, type SuspensionRecord, type UsageRecord, type User, type OwnerPlan } from "./store.ts";
 import type { DodoLedger, LinkBook } from "./dodo.ts";
@@ -285,6 +286,8 @@ async function prune(s: StorageLike, l: Live, now: number): Promise<void> {
 }
 
 const OPS: Record<string, Op> = {
+  // ---- team:<id> (M124, src/teams.ts) ----
+  ...TEAM_OPS,
   // ---- owner:<id> ----
   // Returns the hashes dropped past MAX_TOKENS_KEPT, so their token objects can be cleared too.
   "owner.addToken": async (s, a: { hash: string; tok: Tok }) => {

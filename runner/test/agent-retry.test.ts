@@ -133,3 +133,26 @@ test("M123: a practice's own fixed move never becomes promises", async () => {
   await runner.handle({ ...start(project), prompt: "Fix the link to /about in the menu", practice: "route" } as never);
   expect(seen).toEqual([[]]);
 });
+
+describe("M124: a finished task hands its plain summary to the team sharer", () => {
+  const make = (extra: Record<string, unknown> = {}) => {
+    const project = tmp("tm"); writeFileSync(join(project, "a.txt"), "x");
+    const shared: any[] = [];
+    const runner = new AgentRunner({ shadowRoot: tmp("ts"), engine: new ScriptedEngine([[bash("echo 1 > x.txt")]]), log: new TaskLog(":memory:"), emit: () => {}, proof: async () => good(), teamShare: (s: unknown) => shared.push(s), ...extra } as never);
+    return { project, shared, runner };
+  };
+  test("a done task: one summary, the project's name only", async () => {
+    const r = make();
+    await r.runner.handle({ ...start(r.project), prompt: "add a pricing page" } as never);
+    expect(r.shared.length).toBe(1);
+    expect(r.shared[0]).toMatchObject({ tool: "squibby", verdict: "works", lines: ["add a pricing page", "1 file changed"] });
+    expect(r.shared[0].project).not.toContain("/");
+  });
+  test("off the record and practice runs are never shared", async () => {
+    const a = make();
+    await a.runner.handle({ ...start(a.project), offTheRecord: true } as never);
+    const b = make();
+    await b.runner.handle({ ...start(b.project), practice: "route" } as never);
+    expect(a.shared.length + b.shared.length).toBe(0);
+  });
+});

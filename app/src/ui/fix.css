@@ -159,3 +159,14 @@
 .home .receipt-asked .asked-frames { display: flex; gap: var(--space-1); }
 .home .receipt-asked .asked-frames button[data-result="not_kept"] { color: var(--bad); }
 .home .receipt-asked .asked-frames button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--fg); }
+
+/* M124: Your team, in History. */
+.home .team-page .team-form { display: grid; gap: var(--space-2); margin: var(--space-3) 0; }
+.home .team-page .team-form label { display: grid; gap: var(--space-1); color: var(--fg); }
+.home .team-page .team-share { display: flex; gap: var(--space-2); align-items: center; color: var(--fg); font-weight: 600; }
+.home .team-page .team-invite code { overflow-wrap: anywhere; }
+.home .team-page ul { list-style: none; margin: var(--space-2) 0; padding: 0; display: grid; gap: var(--space-2); }
+.home .team-page .team-receipts li { padding: var(--space-2) 0; border-top: 1px solid var(--line); }
+.home .team-page .team-receipts li[data-verdict="works"] .team-verdict { color: var(--ok); }
+.home .team-page .team-receipts li[data-verdict="not_done"] .team-verdict { color: var(--bad); }
+.home .team-page .team-rules li, .home .team-page .team-members li { display: flex; justify-content: space-between; gap: var(--space-2); align-items: center; }

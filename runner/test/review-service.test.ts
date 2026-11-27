@@ -795,3 +795,18 @@ describe("M123 (F33): the ask typed on the done card", () => {
     expect(t.of("review.result")[0].promises).toBeUndefined();
   });
 });
+
+describe("M124: a review hands its plain summary to the team sharer", () => {
+  test("one summary per review, with the review's checks", async () => {
+    const shared: any[] = [];
+    const t = setup({ check: async () => ({ outcome: "ok", reason: "The checks passed.", runs: [{ label: "npm test", rung: "tests", status: "passed" }] }) });
+    (t.svc as any).deps.teamShare = (s: unknown) => shared.push(s);
+    await started(t);
+    t.change({ "src/App.tsx": "export const title = 'Hello there';\n" });
+    await t.until(() => t.of("review.batch").length === 1);
+    await t.svc.handle(t.cmd("review.now", { batch: t.of("review.batch")[0].batch, proof: true }) as never);
+    expect(shared.length).toBe(1);
+    expect(shared[0].checks).toEqual([{ label: "npm test", result: "passed" }]);
+    expect(JSON.stringify(shared[0])).not.toContain(t.project);
+  });
+});

@@ -2146,6 +2146,27 @@ export const S = {
   },
   // M75 (roadmap 19, F30): the done signal of another AI tool.
   // M77 (the safety net): the words the pages use. Honest words: never "Claude did"; a saved copy is Squibby's own shadow copy.
+  // M124: Squibby for teams, in History.
+  team: {
+    rowTitle: "Your team",
+    rowLine: "Share receipts with your team, and keep one set of house rules for everyone.",
+    open: "Open", close: "Close",
+    intro: "Teams share the plain summary of each receipt: the project's name, the AI tool, the verdict and what was checked. Never your code, your files or your conversation. You need a Squibby sign in.",
+    makeTitle: "Make a team", teamName: "Team name", yourName: "Your name in the team", make: "Make the team",
+    joinTitle: "Join a team", invite: "Invite code", join: "Join",
+    share: "Share my receipts with my team", shareLine: "Off until you turn it on. Only the plain summary is shared, after each check.",
+    members: "People", admin: "admin", rules: "Team house rules", rulesLine: "These are added to each project's own rules. They can only make things stricter.",
+    noRules: "No team rules yet.", ruleKind: "Kind", rulePattern: "What it is about", addRule: "Add the rule", removeRule: "Remove", saveRules: "Save the rules",
+    newInviteBtn: "Make a new invite code", inviteLine: "Send this code to someone you want in the team. Making a new one stops the old one.",
+    receipts: "The team's receipts", noReceipts: "No shared receipts yet.", refresh: "Show the latest",
+    leave: "Leave the team", removeMember: "Remove",
+    verdict: { works: "works", needs_you: "needs you", not_done: "not done yet", put_back: "put back" } as Record<"works" | "needs_you" | "not_done" | "put_back", string>,
+    ruleKinds: { never_edit: "never edit", never_run: "never run", ask_edit: "ask before editing", ask_run: "ask before running", ask_install: "ask before installing packages" },
+    made: "The team is made. Send the invite code to the people you want in it.", joined: "You are in the team.", left: "You left the team. Its rules no longer apply here.",
+    rulesSaved: "The team's rules are saved. They apply on every Mac in the team.", newInvite: "A new invite code is ready. The old one no longer works.", removed: "They are out of the team.",
+    signIn: "Sign in to Squibby first. Teams need a Squibby sign in.", offline: "Squibby's server could not be reached. Try again in a minute.", failed: "That did not work. Try again.",
+    asked: (kept: number, missing: number) => `${kept} of ${kept + missing} things asked for were there`,
+  },
   // M123 slice 5: a receipt shared as a link.
   m123: {
     link: {
@@ -4043,6 +4064,8 @@ export const S = {
     panelTitle: "Go live report",
     panelLine: "This is what the report will say. Save it, then send it yourself.",
     saveHtml: "Save as a web page",
+    // M124 (Studio): the go live report as a link a client can open, 30 days, only on this press.
+    clientLink: "Copy a link for a client",
     savePdf: "Save as PDF",
     saving: "Saving",
     saved: (name: string) => `Saved ${name}.`,

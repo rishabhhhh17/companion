@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Squibby for teams, built: 28 Nov 2026
+
+- **Your team, in History.** Make a team or join one with an invite code. Everyone in it can see the team's receipts: who, which project, which AI tool, the verdict, what was checked and whether what was asked for was there. That is the admin view the teams page promised.
+- **Sharing is yours to turn on.** "Share my receipts with my team" starts off. When it is on, each finished check sends only its plain summary: never your code, your files, a folder of your Mac, keys or the conversation. The server checks every summary again.
+- **One set of house rules for the whole team.** An admin writes them once; every Mac in the team adds them to each project's own rules. They can only make things stricter: a rule that loosens anything is never taken from a team.
+- Admins can make a new invite code (the old one stops working) and remove people. The last admin to leave hands the team to whoever joined first; the last person out deletes the team and its receipts.
+- **A go live report you can send a client.** The go live report already saves as a page or a PDF. Now "Copy a link for a client" puts that same page on Squibby's server for 30 days, only when you press it, and Delete link ends it. It uses the same checks as a receipt link.
+- **Not open yet.** Teams run on Squibby's account server, which is not live; until then nothing is sent. One bill for the team waits for payments.
+
 ## Did it do what you asked? Squibby tries it: 27 Nov 2026
 
 - **Your ask becomes things to try.** When Squibby does the work, it turns what you asked into up to five plain promises a person could check by looking: a page opens, some words show, a button works, the menu links to the new page. After the build and the tests, the hidden browser tries each one. Each says Kept, Not there, or Could not check.

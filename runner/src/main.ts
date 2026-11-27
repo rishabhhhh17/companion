@@ -8,6 +8,7 @@ import { PROTOCOL_VERSION, serialize, type Command, type Event } from "../../pro
 import { AgentRunner } from "./agent.ts";
 import { createEngine, createLanes, currentAuth, managedAuth, quickModelOf, readSettings, taskReachHost } from "./engines.ts";
 import { ReceiptLinks } from "./receiptlinks.ts";
+import { TeamClient } from "./team.ts";
 import { AssistService, ImageStore } from "./lanes.ts";
 import { Ledger } from "./ledger.ts";
 import { promptHelpMemory } from "./memory/recall.ts";
@@ -93,7 +94,13 @@ const taskLog = new TaskLog(join(settings.data, "tasks.db"), problem);
 const plan = new PlanGate({ fixes: () => new FreeFixes(taskLog.database), emit: (e) => say(e) });
 const taskHost = taskReachHost(settings);
 const receiptLinks = new ReceiptLinks({ dir: settings.data, auth: managedAuth(settings) });
-const runner = new AgentRunner({ reachable: taskHost ? () => claudeOnline(taskHost) : undefined, settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, reviewState: (p) => review.stateFor(p), shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), moneyTold: (p) => toldLines(p), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, startNotes: { refresh: (p, m) => sessionNotes.refresh(p, m) }, deployer: vercel, deployLogs: vercel, liveTools: realTools({ vercelAuthFile: join(homedir(), "Library", "Application Support", "com.vercel.cli", "auth.json"), browserReady: browserInstalled }), fixes: plan, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
+// M124: the team this Mac is in, if any. Its rules apply from the start (only when a team is kept here; one request).
+const team = new TeamClient({ dir: settings.data, auth: async () => { const a = await managedAuth(settings)(); return a ? { token: a.token, base: a.base } : null; } });
+if (team.state()) void team.refresh().catch(() => {});
+const teamInfo = () => { const s = team.state(), v = team.lastView(); return s ? { ...s, ...(v ? { role: v.role, members: v.members, rules: v.rules, name: v.name } : {}) } : null; };
+const sayTeam = (extra: Record<string, unknown> = {}) => say({ type: "team.state", team: teamInfo(), ...extra });
+const lastOf = (did: string, r: { ok: boolean; reason?: string; say?: string }) => ({ last: r.ok ? { ok: true, did } : { ok: false, did, ...(r.reason ? { reason: r.reason } : {}), ...(r.say ? { say: r.say } : {}) } });
+const runner = new AgentRunner({ reachable: taskHost ? () => claudeOnline(taskHost) : undefined, settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, reviewState: (p) => review.stateFor(p), shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), moneyTold: (p) => toldLines(p), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, startNotes: { refresh: (p, m) => sessionNotes.refresh(p, m) }, deployer: vercel, deployLogs: vercel, liveTools: realTools({ vercelAuthFile: join(homedir(), "Library", "Application Support", "com.vercel.cli", "auth.json"), browserReady: browserInstalled }), teamShare: (x) => { void team.share(x).catch(() => {}); }, fixes: plan, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
 const watches = new WatchEngine({
   file: join(settings.data, WATCH_FILE), emit: (e) => say(e), get: (k) => runnerSettings.get(k), onProblem: problem,
   checks: makeChecks({ vercel, gh, project: (p, sig) => runner.checkWithoutModel(p, sig) }), evidence: makeEvidence({ vercel, gh }),
@@ -129,6 +136,7 @@ const liveFeed = new LiveFeed({ emit: (e) => say(e), hookless: (p) => doneSignal
 // M115: where each session of the person's own tools runs, from the process table as its hook runs (jump.ts), and Go to.
 const sessionWhere = new SessionWhere({ emit: (e) => say(e), tab: () => runnerSettings.get("notch.jumpTab") !== false, bundleOf: (t) => toolBundleOf(t) });
 const review = new ReviewService({
+  teamShare: (x) => { void team.share(x).catch(() => {}); },
   emit: (e) => say(e), seen: (p, rel) => liveFeed.folder(p, rel), setting: (k, p) => runnerSettings.get(k, p), store: (p) => runner.checkpointsFor(p), dropStore: (d) => runner.dropCheckpoints(d),
   cheap: lanes && !settings.assistStub ? lanes.fast : null, strong: strongLane,
   spend: { room: (p) => runner.roomFor(p), book: (p, usd) => runner.bookSpend(p, usd) },
@@ -264,6 +272,15 @@ function dispatch(cmd: Command) {
   // The shell's Google accounts (M21): kept in memory for the Google tools; nothing is said back, and no token is ever logged.
   if (cmd.type === "google.accounts") { setGoogleAccounts(cmd.accounts); return; }
   // M123 slice 5: a receipt shared as a link, on the person's tap only, with the Squibby sign in (never a Claude key).
+  // M124: teams, on the person's press only.
+  if (cmd.type === "team.show") { const wantReceipts = cmd.receipts === true; void (async () => { const r = await team.refresh(); const rec = wantReceipts && r.ok ? await team.receipts() : null; sayTeam({ ...(rec && rec.ok ? { receipts: rec.j.receipts } : {}), ...(r.ok || r.reason === "none" ? {} : lastOf("show", r)) }); })(); return; }
+  if (cmd.type === "team.make") { const c = cmd; void team.make(c.name, c.me).then((r) => sayTeam({ ...lastOf("make", r), ...(r.ok ? { invite: r.invite } : {}) })); return; }
+  if (cmd.type === "team.join") { const c = cmd; void team.join(c.invite, c.me).then((r) => sayTeam(lastOf("join", r))); return; }
+  if (cmd.type === "team.leave") { void team.leave().then((r) => sayTeam(lastOf("leave", r))); return; }
+  if (cmd.type === "team.share") { team.setShare(cmd.on); sayTeam({ last: { ok: true, did: "share" } }); return; }
+  if (cmd.type === "team.rules") { const rules = cmd.rules; void team.setRules(rules).then(async (r) => { if (r.ok) await team.refresh(); sayTeam(lastOf("rules", r)); }); return; }
+  if (cmd.type === "team.invite") { void team.newInvite().then((r) => sayTeam({ ...lastOf("invite", r), ...(r.ok ? { invite: r.j.invite } : {}) })); return; }
+  if (cmd.type === "team.remove") { const name = cmd.name; void team.remove(name).then(async (r) => { if (r.ok) await team.refresh(); sayTeam(lastOf("remove", r)); }); return; }
   if (cmd.type === "receipt.shares") { say({ type: "receipt.shared", links: receiptLinks.list() }); return; }
   if (cmd.type === "receipt.share") { void receiptLinks.share(cmd.html, cmd.title).then((r) => say({ type: "receipt.shared", links: receiptLinks.list(), last: r.ok ? { ok: true, url: r.url, expiresAt: r.expiresAt } : { ok: false, reason: r.reason, ...(r.say ? { say: r.say } : {}) } })); return; }
   if (cmd.type === "receipt.unshare") { const link = cmd.link; void receiptLinks.remove(link).then((r) => say({ type: "receipt.shared", links: receiptLinks.list(), last: r.ok ? { ok: true, removed: link } : { ok: false, reason: r.reason } })); return; }

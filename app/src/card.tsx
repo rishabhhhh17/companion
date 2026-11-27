@@ -1,4 +1,5 @@
 import { Fragment, StrictMode, useCallback, useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { TeamPart } from "./teamPanel.tsx";
 import { AskedList } from "./askedView.tsx";
 import { createRoot } from "react-dom/client";
 import { EMPTY_LINE, liveLine, type LiveLine } from "./a11y.ts";
@@ -597,7 +598,7 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
       {/* Feel round 2 (19 Nov 2026): History leads with its search and its list; the week and the numbers follow it, so after
           ten visits the person no longer scrolls past them. M79: the weekly summary, on this row's press only. M88 (a): Your
           numbers, on this row's press only (off in Settings, Privacy). */}
-      {project && <div className="hist-more"><WeekPart project={project} send={send} /><NumbersPart project={project} send={send} /></div>}
+      {project && <div className="hist-more"><WeekPart project={project} send={send} /><NumbersPart project={project} send={send} /><TeamPart send={send} /></div>}
     </section>
   );
 }
@@ -3588,7 +3589,7 @@ export function Card() {
         // online as the one main button once every gate passed (shipPanels.tsx; shipFinish.ts decides).
         <ShipGatesPanel ship={m.ship as { gates: Gate[]; canShip: boolean }} words={shipWords(m)} online={putOnlineShown(m.ship as { gates: Gate[]; canShip: boolean }, m.practice?.project === project)} practice={m.practice?.project === project}
           onPutOnline={shipOnline} onFix={gateFix} onCheck={() => shipIt()} onConfirm={(id) => shipIt({ confirm: [id] })} onClose={() => dispatch({ type: "ui.shipClosed" })}
-          share={project ? <ShareReport id="ship-share" input={{ project, proof: m.task?.proof ?? null, review: m.review ?? null, ship: m.ship }} /> : null}
+          share={project ? <ShareReport id="ship-share" send={send} input={{ project, proof: m.task?.proof ?? null, review: m.review ?? null, ship: m.ship }} /> : null}
           whyLive={m.whyLive ? null : whyLiveButton("gates")}
           money={m.ship.money && project ? (
             <MoneyFinesPart money={m.ship.money} copy={(text, label, name) => <CopyButton text={text} label={label} name={name} />}
@@ -3718,7 +3719,7 @@ export function Card() {
           {/* M76: on a proven result, Share report (the go live report) and Walk me through it (the tour of the fix). */}
           {resHero?.pill === "proven" && project && !undone && (
             <div className="row result-more">
-              <ShareReport id="result-share" input={{ project, proof: m.task?.proof ?? null, review: m.review ?? null, ship: m.ship ?? null }} />
+              <ShareReport id="result-share" send={send} input={{ project, proof: m.task?.proof ?? null, review: m.review ?? null, ship: m.ship ?? null }} />
               {setting("tour.offer") !== false && <WalkThrough id="result-walk" tour={tourFromReceipt(m.receipt, m.explain)} project={project} onCircle={(st) => { if (st.line && st.lineText) pointAt(pointChange(project, { file: st.file, line: st.line, lineText: st.lineText }, st.what)); }} />}
             </div>
           )}

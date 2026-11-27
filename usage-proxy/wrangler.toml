@@ -26,6 +26,7 @@
 #                             is forwarded (sign in, /v1/me and sign out still work). Turn on: `wrangler secret put PROXY_ON` and
 #                             type on. Turn off: `wrangler secret delete PROXY_ON`. Delete it, never set it to off: the deploy
 #                             check reads only the name, so a PROXY_ON set to off still asks for ANTHROPIC_API_KEY.
+#   TEAMS_ON                  M124: the teams switch, off the same way. Teams use the STORE objects; nothing else to create.
 #   SHARE_ON                  M123: the share link switch, off the same way. Needs the RECEIPTS KV namespace below.
 #   PAYMENTS_ON               the payments switch, off the same way. Set, it makes the deploy need the three Dodo secrets above.
 #   LOOP_ON                   the fixing loop's own switch (M100). Off the same way: the loop's tools are refused for every
