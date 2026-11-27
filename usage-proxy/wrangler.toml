@@ -40,10 +40,10 @@ compatibility_date = "2026-10-15"
 workers_dev = false
 preview_urls = false
 
-# Placeholder only: there is no domain yet. Uncomment and fill in when the founder has one.
-# routes = [
-#   { pattern = "usage.example.com", custom_domain = true },
-# ]
+# The account server's own address (28 Nov 2026): sign in, plans, teams, receipt links, updates.
+routes = [
+  { pattern = "api.getsquibby.com", custom_domain = true },
+]
 
 [vars]
 # none (the default) serves no payment webhook at all. Change to "dodo" when Dodo's account and products are ready.
@@ -58,9 +58,9 @@ DODO_API_BASE = "https://test.dodopayments.com"
 # One object per owner (and a few small shared ones), each doing its read, check and write as one step (src/store-do.ts).
 # M123 slice 5: receipts shared as links, kept 30 days (Cloudflare KV, free tier). Create it once with
 # `wrangler kv namespace create RECEIPTS`, put its id here, uncomment, then set SHARE_ON. Until then share links answer 404.
-# [[kv_namespaces]]
-# binding = "RECEIPTS"
-# id = ""
+[[kv_namespaces]]
+binding = "RECEIPTS"
+id = "b601707307d14e69a0e342cbd4ae97ae"
 
 [[durable_objects.bindings]]
 name = "STORE"
