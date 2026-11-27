@@ -38,6 +38,8 @@
 // scripts/deploy.sh --apply refuses while any of DEV_ONLY_SETTINGS (UPSTREAM_BASE, GOOGLE_KEYS_URL, DEV_TOKENS) is set on
 // Cloudflare, or is a var in wrangler.toml or the dry run's bindings.
 // Logs are the SafeEvent lines the proxy and the webhook already make: ids, reasons, counts and dollars, never a body or a secret.
+import { hashToken } from "./tokens.ts";
+import { makeLinkRoutes, type LinkStore } from "./receipt-links.ts";
 import { createProxy, parseTestPayers, storeFailed, type SafeEvent } from "./proxy.ts";
 import { createGoogleVerifier } from "./google.ts";
 import { createDodoWebhook, parseDodoCatalog, constantTimeEqual, type SafeDodoEvent } from "./dodo.ts";
@@ -59,6 +61,9 @@ export type Env = {
   PROXY_ON?: string;
   LOOP_ON?: string;
   PAYMENTS_ON?: string;
+  /** M123 slice 5: the share link switch, off the same way, and the KV namespace that keeps the pages for 30 days. */
+  SHARE_ON?: string;
+  RECEIPTS?: LinkStore;
   DODO_PAYMENTS_API_KEY?: string;
   DODO_API_BASE?: string;
   ANTHROPIC_API_KEY?: string;
@@ -225,6 +230,12 @@ async function route(req: Request, env: Env, ctx: Ctx, now: () => number): Promi
   // M116 step 5: the update feed, with no token, ahead of everything that reads one.
   const update = await parts.update(req, url);
   if (update) return update;
+  // M123 slice 5: a receipt shared as a link (signed in only, off unless SHARE_ON and RECEIPTS are set).
+  const shared = await makeLinkRoutes({
+    ...(env.RECEIPTS ? { links: env.RECEIPTS } : {}), on: () => switchOn(env.SHARE_ON), origin: url.origin, now,
+    userOf: async (t) => { const a = await parts.store.account(await hashToken(t), now()); return a ? { id: a.user.id, active: a.user.status !== "suspended" && a.user.status !== "revoked" && a.user.status !== "canceled" } : null; },
+  })(req, url);
+  if (shared) return shared;
   // M116: checkout, portal and the /paid return page, ahead of the proxy and its switch.
   const billing = await parts.billing(req, url);
   if (billing) return billing;

@@ -495,6 +495,8 @@ export const S = {
     failedThenLimit: (where: string) => `A check failed, and then it stopped at ${where}.`,
     // M104: the checks passed, but a problem the review found is still there when the rules look again.
     stillThere: (n: number) => (n === 1 ? "One problem the review found is still there." : `${n} problems the review found are still there.`),
+    // M123: the checks passed, but part of what you asked is not there when the hidden browser tries it.
+    notKept: (n: number) => (n === 1 ? "The checks passed, but one thing you asked for is not there." : `The checks passed, but ${n} things you asked for are not there.`),
     stopped: "Stopped",
     // M58 (the shortlist, item 9): a stopped run is never a fix, and the line says so.
     stoppedChanged: "It changed files before you stopped it. Nothing was checked. This run does not count as a fix.",
@@ -2144,6 +2146,32 @@ export const S = {
   },
   // M75 (roadmap 19, F30): the done signal of another AI tool.
   // M77 (the safety net): the words the pages use. Honest words: never "Claude did"; a saved copy is Squibby's own shadow copy.
+  // M123 slice 5: a receipt shared as a link.
+  m123: {
+    link: {
+      make: "Copy a link",
+      making: "Making a link...",
+      made: (until: string) => `Link copied. Anyone with it can see this receipt until ${until}. Nothing else about your project goes with it.`,
+      remove: "Delete link",
+      deleting: "Deleting the link...",
+      removed: "The link is deleted. It no longer opens.",
+      signIn: "Sign in to Squibby to share a link. Saving as a file works without it.",
+      offline: "Squibby's server could not be reached. Saving as a file still works.",
+      failed: "The link could not be made. Saving as a file still works.",
+    },
+  },
+  // M123: did it do what you asked. The receipt's promises, each with what the hidden browser found.
+  asked: {
+    title: "What you asked",
+    result: { kept: "Kept", not_kept: "Not there", could_not_check: "Could not check" } as Record<"kept" | "not_kept" | "could_not_check", string>,
+    // F33: the one optional line on the done card for another tool's ask. Squibby never reads it from the tool.
+    field: "What did you ask your AI? (optional)",
+    placeholder: "Paste or type it here",
+    hint: "Squibby turns it into a few things to try in the browser.",
+    watch: "Watch it try",
+    watchLine: "Your app as the hidden browser saw it while trying this. Never your screen.",
+    pictureOf: (what: string) => `The hidden browser trying: ${what}`,
+  },
   guard: {
     // The History row of a saved copy, and its Undo.
     savedRow: (command: string) => `Before Claude ran ${command}`,

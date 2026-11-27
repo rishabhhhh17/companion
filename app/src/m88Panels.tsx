@@ -3,7 +3,8 @@
 // nothing leaves the Mac by itself (the mail draft and the saved file are the person's own taps).
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { WeekView } from "../../protocol/index.ts";
-import { showDoneSignal } from "./commands.ts";
+import { receiptShare, receiptUnshare, showDoneSignal } from "./commands.ts";
+import { linkWords, sharedFrom, type LinkState } from "./shareLink.ts";
 import { doneStateFrom } from "./doneSignal.ts";
 import { readPalette } from "./goLiveReport.ts";
 import { useSetting } from "./settingsStore.ts";
@@ -92,9 +93,23 @@ export function NumbersPart({ project, send }: { project: string; send: (cmd: un
 /** Share what my AI did: the preview, then Save (the Mac's own save dialog) or Close. The preview is the very string that is
  *  saved, shown in a frame that runs nothing (sandbox without scripts; same origin only so its height can be read), so
  *  the two can never differ. */
-export function SharePreview({ doc, onClose, id = "share-receipt" }: { doc: ShareDoc; onClose: () => void; id?: string }) {
+export function SharePreview({ doc, onClose, id = "share-receipt", send }: { doc: ShareDoc; onClose: () => void; id?: string; send?: (cmd: unknown) => unknown }) {
   const [said, setSaid] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // M123 slice 5: Copy a link, only on a press; the answer comes back as receipt.shared.
+  const [link, setLink] = useState<LinkState>({ stage: "none" });
+  const waiting = useRef(false);
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      if (!waiting.current) return;
+      const got = sharedFrom(e.payload);
+      if (!got) return;
+      waiting.current = false;
+      setLink(got);
+      if (got.stage === "made") void invoke("copy_text", { text: got.url }).catch(() => navigator.clipboard?.writeText(got.url));
+    });
+    return () => { void off.then((f) => f()); };
+  }, []);
   const s = S.m88.share;
   const html = useMemo(() => receiptHtml(doc, readPalette(css)), [doc]);
   const fit = (f: HTMLIFrameElement) => {
@@ -115,9 +130,14 @@ export function SharePreview({ doc, onClose, id = "share-receipt" }: { doc: Shar
       <iframe className="share-frame" title={doc.title} sandbox="allow-same-origin" srcDoc={html} onLoad={(e) => fit(e.currentTarget)} />
       <div className="row">
         <Button size="sm" kind="primary" disabled={busy} onClick={save}>{s.save}</Button>
+        {send && link.stage !== "made" && <Button size="sm" disabled={link.stage === "making"} onClick={() => { waiting.current = true; setLink({ stage: "making" }); void send(receiptShare(html, doc.title)); }}>{S.m123.link.make}</Button>}
         <Button size="sm" onClick={onClose}>{s.close}</Button>
       </div>
       {said && <p className="line" role="status">{said}</p>}
+      {link.stage !== "none" && <p className="line" role="status">{linkWords(link)}</p>}
+      {send && link.stage === "made" && (
+        <div className="row"><Button size="sm" onClick={() => { waiting.current = true; setLink({ stage: "deleting", id: link.id }); void send(receiptUnshare(link.id)); }}>{S.m123.link.remove}</Button></div>
+      )}
     </section>
   );
 }

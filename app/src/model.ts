@@ -16,6 +16,7 @@ import { everydayReduce, everydaySettle, type Everyday } from "./everyday.ts";
 import type { ReviewRowView, WatchView, WhereNext } from "../../protocol/index.ts";
 import { reviewRowsOf } from "./reviewHistory.ts";
 import { askedRowsOf, caughtOf, flagsOf, savedRowsOf } from "./safetyNet.ts";
+import { notKeptOf, promisesOf, type AskedPromise } from "./asked.ts";
 import type { AskedRowView, CaughtView, SavedRowView } from "../../protocol/index.ts";
 import { validView } from "./watch.ts";
 import { limitShown, usageFrom, type LimitReason, type LimitView, type Usage } from "./plan.ts";
@@ -62,6 +63,8 @@ export type Receipt = { proof?: string; checkpoint: string; changed: { file: str
   claimedPassed?: boolean;
   /** M85: Not what you asked for, and Said one thing, ran another (the engine's review/drift.ts), at most one of each. */
   flags?: { kind: "not_asked" | "said_other"; say: string }[];
+  /** M123: did it do what you asked: each promise of the ask and what the hidden browser found (promisesOf). */
+  promises?: AskedPromise[];
   /** M77b: the notes for other AI tools (AGENTS.md, CLAUDE.md) that changed while the task ran, which Undo leaves. */
   notesStay?: string[];
   end?: "done" | "stopped" | "limit" | "needsYou" | "failed"; limit?: "spending" | "daily" | "turns"; failWhy?: "check" | "noConnection" | "claudeBusy" | "error";
@@ -1249,7 +1252,7 @@ function reduceRest(m: Model, e: Ev): Model {
       if (e.inPlan === true && m.drive && !m.drive.finished && typeof e.checkpoint === "string") m = { ...m, drive: { ...m.drive, whole: addPlanStep(m.drive.whole, e) } };
       // A new receipt is built fresh, so undone, back, fixKept and undoSafety start cleared: this is the only place they are.
       // What the engine said about the files since the last check is older than this result: it is asked again.
-      return { ...m, sinceCheck: undefined, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, ...(typeof e.askWords === "number" ? { askWords: e.askWords } : {}), commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e), ...endOf(e), ...(e.claimedPassed === true ? { claimedPassed: true } : {}), ...flagsOf((e as { flags?: unknown }).flags), ...notesStayOf(e), ...rechecked(e as { rechecked?: unknown }) } };
+      return { ...m, sinceCheck: undefined, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, ...(typeof e.askWords === "number" ? { askWords: e.askWords } : {}), commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e), ...endOf(e), ...(e.claimedPassed === true ? { claimedPassed: true } : {}), ...flagsOf((e as { flags?: unknown }).flags), ...promisesOf((e as { promises?: unknown }).promises), ...notesStayOf(e), ...rechecked(e as { rechecked?: unknown }) } };
     }
     // With no folder chosen, Settings asks for the settings for every project (the stand in project): only those are read
     // from it (settingsStore.ts), never a project's memory for the Memory tab.
@@ -1813,6 +1816,7 @@ export function receiptFacts(m: Pick<Model, "receipt" | "task" | "teach">): Fact
     canBringBack: !!r.undoSafety,
     turnOpen: !!(m.teach && m.teach.checkpoint === r.checkpoint && teachOpen(m.teach)),
     ...(stillOf(r.rechecked) ? { stillThere: stillOf(r.rechecked) } : {}),
+    ...(notKeptOf(r.promises) ? { notKept: notKeptOf(r.promises) } : {}),
   };
 }
 /** M104: the receipt's rechecked part, when it is of its known shape. */

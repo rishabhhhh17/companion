@@ -25,6 +25,7 @@ export type Facts = {
   canBringBack?: boolean;  // the Undo's safety copy is known, so the fix can be brought back
   turnOpen?: boolean;      // a "your turn" has put old code back in one place
   stillThere?: number;     // M104: a review's Fix it left this many of its problems there (the rules looked again)
+  notKept?: number;        // M123: promises of the ask the hidden browser found broken (did it do what you asked)
 };
 
 export type VerdictKind =
@@ -87,6 +88,8 @@ function body(f: Facts): Body {
   // M104: a review's Fix it whose checks passed, but the rules still find one of the problems it was asked to fix: not
   // fixed yet, never proven. After an Undo (rows 1, 2) the files are back, so this row is not reached.
   if (finished && (f.stillThere ?? 0) > 0) return { kind: "failed", headline: V.failed, line: V.stillThere(f.stillThere!), tone: "bad", icon: "cross" };
+  // M123: the checks passed, but the hidden browser found a promise of the ask broken: not done, never proven.
+  if (finished && (f.notKept ?? 0) > 0) return { kind: "failed", headline: V.failed, line: V.notKept(f.notKept!), tone: "bad", icon: "cross" };
   // 8 to 12: it finished (or did not say, which counts only with a pass: the checks run only after a whole round).
   if (finished && f.proof === "passed") {
     if (f.turnOpen) return { kind: "turn", headline: V.turn, line: V.turnLine, tone: "mixed", icon: "wait" };

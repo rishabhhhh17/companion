@@ -62,6 +62,7 @@ import { sqliteFiles } from "./dbsafety.ts";
 import { addHouseRule, allowedByAlways, alwaysLineFor, applyRules, loadRules, withHouseRule } from "./rules.ts";
 import { liveCommand } from "./livesystems.ts";
 import { driftFlags } from "./review/drift.ts";
+import { forReceipt, promisesFrom, type PromiseOutcome } from "./review/promises.ts";
 import { companionDirUsable } from "./companionfile.ts";
 import { buildChildEnv, commandsWithFolder, evaluate, evaluateReadOnly, leadsHome, NOT_GIVEN, refusal, taskScopeCovers, withLookup, type Verdict } from "./safety.ts";
 import { LOOK_TOOLS, RESEARCH_TOOLS, REVIEW_TOOLS, taskTools } from "./tools.ts";
@@ -615,10 +616,10 @@ export class AgentRunner {
    *  allowed, and says so in a review's words. */
   /** M77b: started inside another app's sandbox, where no check can run in the safety box (box.ts nestedSandbox). */
   private sandboxed(): Promise<boolean> { return (this.o.sandboxed ?? nestedSandbox)().catch(() => false); }
-  async checkForReview(project: string, signal: AbortSignal, o: { asked: boolean }): Promise<CheckResult | { skip: string } | null> {
+  async checkForReview(project: string, signal: AbortSignal, o: { asked: boolean; ask?: string; changed?: string[] }): Promise<CheckResult | { skip: string } | null> {
     return this.checkLive(project, signal, o);
   }
-  private async checkLive(project: string, signal: AbortSignal, review: { asked: boolean } | null): Promise<CheckResult | { skip: string } | null> {
+  private async checkLive(project: string, signal: AbortSignal, review: { asked: boolean; ask?: string; changed?: string[] } | null): Promise<CheckResult | { skip: string } | null> {
     const key = resolve(project);
     if (this.finding.has(project) || this.workBlocks(project) || this.watchRuns.has(key)) return { skip: `${PRODUCT} is working on this project right now.` };
     const run = { abort: new AbortController(), yielded: false };
@@ -638,7 +639,10 @@ export class AgentRunner {
       // Review them pressed: a yes for the safety box only. Outside it nothing that changed runs (rule 13).
       const askScripts = review?.asked ? async (_byTask: boolean, unboxed?: boolean) => unboxed !== true : undefined;
       let res: LadderResult;
-      try { res = await (this.o.proof ?? runLadder)({ project, store, beforeId: "live", afterId: "live", onStep: () => {}, signal: run.abort.signal, noInstall: true, noServer: !review, run: (c, ro) => runCommand(c, { ...ro, endWithUs: true }), ...this.checkFor(project), approvals, ...(askScripts ? { askScripts } : {}), privatePages: !!review && this.setting<boolean>("check.privatePages", project) !== false }); }
+      // M123 (F33): the ask the person typed on the done card becomes promises, tried after the page opens.
+      const promises = review?.ask ? promisesFrom(review.ask, review.changed ?? []) : [];
+      const withP = (x: CheckResult): CheckResult => (res.promises?.length ? { ...x, promises: forReceipt(res.promises, { pictures: !!this.o.pictures && this.setting<boolean>("pictures.make") !== false }) } : x);
+      try { res = await (this.o.proof ?? runLadder)({ project, store, beforeId: "live", afterId: "live", onStep: () => {}, signal: run.abort.signal, noInstall: true, noServer: !review, ...(promises.length ? { promises } : {}), run: (c, ro) => runCommand(c, { ...ro, endWithUs: true }), ...this.checkFor(project), approvals, ...(askScripts ? { askScripts } : {}), privatePages: !!review && this.setting<boolean>("check.privatePages", project) !== false }); }
       catch { return { outcome: "unknown", reason: (await this.sandboxed()) ? SANDBOXED_CHECKS : CHECKER_STOPPED }; }
       if (run.abort.signal.aborted || res.verdict === "cancelled") return run.yielded && !signal.aborted ? { skip: "Your own work on this project came first." } : null;
       const failed = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
@@ -646,13 +650,13 @@ export class AgentRunner {
       // output apart, for behind Details.
       if (res.verdict === "failed") return failed ? { outcome: "failing", reason: plainFailLine(failed), detail: clip(redactOutput(failed.detail).trim(), 1200), ...(review ? { runs: reviewRuns(res.steps) } : {}) } : { outcome: "failing", reason: "The project's checks did not pass." };
       if (res.verdict === "nothing_to_check") return { outcome: "unknown", reason: `There is nothing in this project that ${PRODUCT} can check yet.` };
-      if (res.verdict === "passed_with_gaps") return { outcome: "ok", reason: `The checks that could run passed. ${res.gaps?.[0] ? clip(redactOutput(res.gaps[0]), 120) : "Some could not run."}`.trim() };
+      if (res.verdict === "passed_with_gaps") return withP({ outcome: "ok", reason: `The checks that could run passed. ${res.gaps?.[0] ? clip(redactOutput(res.gaps[0]), 120) : "Some could not run."}`.trim() });
       if (review) {
         const browser = res.steps.find((x) => x.rung === "browser");
         // M86: the facts for Watch what changed: each check with its exit code, and the proof screenshot saved with the
         // receipts (Pictures to keep), only once the page opened in the browser.
         const facts = { runs: reviewRuns(res.steps), ...(browser?.status === "passed" && res.shot ? this.keepReviewShot(project, res.shot) : {}) };
-        if (browser?.status === "passed") return { outcome: "ok", reason: "All of the project's own checks passed, and the page opened in a browser.", ...(res.openPrivate?.length ? { open: res.openPrivate } : {}), ...facts };
+        if (browser?.status === "passed") return withP({ outcome: "ok", reason: "All of the project's own checks passed, and the page opened in a browser.", ...(res.openPrivate?.length ? { open: res.openPrivate } : {}), ...facts });
         const why = browser?.detail ? clip(redactOutput(browser.detail).replace(/\s+/g, " ").trim(), 140) : "";
         return { outcome: "ok", reason: why ? `The project's own checks passed. The browser check did not run: ${why.charAt(0).toLowerCase()}${why.slice(1)}` : "The project's own checks passed. The browser check did not run.", ...facts };
       }
@@ -1578,6 +1582,7 @@ export class AgentRunner {
     const endOf = (): LoopEnd => ({ tries: MAX_TRIES, same: sameRun(sigs) });
     let changed: Awaited<ReturnType<CheckpointStore["diff"]>> = [];
     let shot: PageShot | undefined;   // the page as it is after a passing check, for the visual receipt
+    let promised: PromiseOutcome[] = [];   // M123: what happened to each promise of the ask, on the last check
     let lastAfter = before.id;   // the snapshot the receipt's changes are measured to
     let ok = await round(withStaleCheck(cmd.prompt), opts.resumeSession);
     // Did the round that just ended stop to ask the person something (asks.ts: an offer of more work or a check in is not
@@ -1615,7 +1620,9 @@ export class AgentRunner {
       } : undefined;
       try {
         res = await this.inTurn(cmd.project, () => (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review, ...checking, askInstall: this.installAsker(session, cmd.agent, before.id), askScripts: this.scriptsAsker(session, cmd.agent, before.id), approvals: this.approvals(cmd.project),
-          signIn: this.signInFor(cmd.agent, cmd.project, abort.signal), privatePages: this.setting<boolean>("check.privatePages", cmd.project) !== false }));
+          signIn: this.signInFor(cmd.agent, cmd.project, abort.signal), privatePages: this.setting<boolean>("check.privatePages", cmd.project) !== false,
+          // M123: the ask's promises, tried after the page opens (rules only, from the request and the changed files).
+          promises: promisesFrom(opts.asked ?? cmd.prompt ?? "", changed.map((c) => c.file)) }));
       } catch (e) {
         res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: CHECKER_STOPPED, summary: CHECKER_STOPPED, ms: 0, forModel: `The checker itself stopped: ${clip(redactOutput(String((e as Error)?.message ?? e)), 300)}` }] };
       } finally { this.watchers.get(cmd.agent)?.end("ladder"); }
@@ -1632,6 +1639,7 @@ export class AgentRunner {
       this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: forPerson(res.steps), tries: checks, of: MAX_TRIES, ...(res.openPrivate?.length ? { privateOpen: res.openPrivate } : {}) } as never);
       if (res.verdict !== "cancelled") this.setProven(cmd.project, { verdict: res.verdict, snapshot: after.id }, taskId);
       if (res.verdict === "cancelled") { status = "interrupted"; break; }
+      promised = res.promises ?? [];
       if (res.verdict !== "failed") { if (res.verdict === "passed") proof = "passed"; else if (res.verdict === "passed_with_gaps") proof = "partial"; shot = res.shot; break; }   // partial: it passed, but a check could not run (for example the browser): never called proven
 
       proof = "failed"; status = "not_done";
@@ -1730,11 +1738,11 @@ export class AgentRunner {
     try { flags = driftFlags({ request: cmd.prompt ?? "", changed: changed.map((c) => c.file), steps, project: cmd.project }); } catch { flags = []; }
     // M94: the flags' kinds only (never their words), so an Undo of this task later counts as a wrong change caught.
     for (const f of flags) this.markSaved("drift", cmd.project, taskId, f.kind);
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(lastSaid && proof !== "passed" && claimsPassed(lastSaid) ? { claimedPassed: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...(notesStay.length ? { notesStay } : {}), ...(flags.length ? { flags } : {}), ...(rechecked ? { rechecked } : {}), ...practice } as never);
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(lastSaid && proof !== "passed" && claimsPassed(lastSaid) ? { claimedPassed: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...(notesStay.length ? { notesStay } : {}), ...(flags.length ? { flags } : {}), ...(promised.length ? { promises: forReceipt(promised, { pictures: !!this.o.pictures && pictures.make && !cmd.offTheRecord }) } : {}), ...(rechecked ? { rechecked } : {}), ...practice } as never);
     // A proven fix (M45: it ended done and its checks passed) counts once toward Free's month (plan.ts). Nothing else does,
     // and an Undo or Bring back later never changes it. M104: nor a fix that left one of its review's problems there, nor
     // (hunt 20 Nov) one whose recheck could not run.
-    if (status === "done" && proof === "passed" && !still && !unchecked) this.o.fixes?.proven(opts.fixTicket, taskId);
+    if (status === "done" && proof === "passed" && !still && !unchecked && !promised.some((o) => o.result === "not_kept")) this.o.fixes?.proven(opts.fixTicket, taskId);   // M123: nor one that left a promise of the ask broken
     // M78: a fix that ended not proven (the loop breaker stopped it, or its checks still failed) leaves one "tried and failed"
     // line with its proof. Never off the record, never for a practice copy, never after Stop.
     if (proof === "failed" && lastFailure && status !== "interrupted" && !offRecord && !cmd.practice) this.rememberTried(cmd.project, lbl, lastFailure, stuckOffered);

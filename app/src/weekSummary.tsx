@@ -50,7 +50,7 @@ export function WeekPart({ project, send }: { project: string; send: (cmd: unkno
               {!sharing && <Button size="sm" onClick={() => setSharing(true)}>{S.m88.share.button}</Button>}
               <Button size="sm" onClick={() => setOpen(false)}>{S.m79.week.close}</Button>
             </div>
-            {sharing && week && <SharePreview id="share-week" doc={shareFromWeek(week, project, null, new Date())} onClose={() => setSharing(false)} />}
+            {sharing && week && <SharePreview id="share-week" doc={shareFromWeek(week, project, null, new Date())} onClose={() => setSharing(false)} send={send} />}
           </>)}
         </section>
       )}

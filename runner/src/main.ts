@@ -6,7 +6,8 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROTOCOL_VERSION, serialize, type Command, type Event } from "../../protocol/index.ts";
 import { AgentRunner } from "./agent.ts";
-import { createEngine, createLanes, currentAuth, quickModelOf, readSettings, taskReachHost } from "./engines.ts";
+import { createEngine, createLanes, currentAuth, managedAuth, quickModelOf, readSettings, taskReachHost } from "./engines.ts";
+import { ReceiptLinks } from "./receiptlinks.ts";
 import { AssistService, ImageStore } from "./lanes.ts";
 import { Ledger } from "./ledger.ts";
 import { promptHelpMemory } from "./memory/recall.ts";
@@ -91,6 +92,7 @@ const taskLog = new TaskLog(join(settings.data, "tasks.db"), problem);
 // beside the task history and is opened only when it is first needed, so with payments off nothing about it is written.
 const plan = new PlanGate({ fixes: () => new FreeFixes(taskLog.database), emit: (e) => say(e) });
 const taskHost = taskReachHost(settings);
+const receiptLinks = new ReceiptLinks({ dir: settings.data, auth: managedAuth(settings) });
 const runner = new AgentRunner({ reachable: taskHost ? () => claudeOnline(taskHost) : undefined, settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, reviewState: (p) => review.stateFor(p), shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), moneyTold: (p) => toldLines(p), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, startNotes: { refresh: (p, m) => sessionNotes.refresh(p, m) }, deployer: vercel, deployLogs: vercel, liveTools: realTools({ vercelAuthFile: join(homedir(), "Library", "Application Support", "com.vercel.cli", "auth.json"), browserReady: browserInstalled }), fixes: plan, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
 const watches = new WatchEngine({
   file: join(settings.data, WATCH_FILE), emit: (e) => say(e), get: (k) => runnerSettings.get(k), onProblem: problem,
@@ -261,6 +263,10 @@ function dispatch(cmd: Command) {
   if (cmd.type === "plan.state") { plan.setState(cmd); return; }
   // The shell's Google accounts (M21): kept in memory for the Google tools; nothing is said back, and no token is ever logged.
   if (cmd.type === "google.accounts") { setGoogleAccounts(cmd.accounts); return; }
+  // M123 slice 5: a receipt shared as a link, on the person's tap only, with the Squibby sign in (never a Claude key).
+  if (cmd.type === "receipt.shares") { say({ type: "receipt.shared", links: receiptLinks.list() }); return; }
+  if (cmd.type === "receipt.share") { void receiptLinks.share(cmd.html, cmd.title).then((r) => say({ type: "receipt.shared", links: receiptLinks.list(), last: r.ok ? { ok: true, url: r.url, expiresAt: r.expiresAt } : { ok: false, reason: r.reason, ...(r.say ? { say: r.say } : {}) } })); return; }
+  if (cmd.type === "receipt.unshare") { const link = cmd.link; void receiptLinks.remove(link).then((r) => say({ type: "receipt.shared", links: receiptLinks.list(), last: r.ok ? { ok: true, removed: link } : { ok: false, reason: r.reason } })); return; }
   // After a key is saved the app asks again who we are signed in as.
   if (cmd.type === "auth.check") { void announceAuth(); return; }
   // The settings line from the shell: each value checked again, names (never values) in the answer.

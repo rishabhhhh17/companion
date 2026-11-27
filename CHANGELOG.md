@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Did it do what you asked? Squibby tries it: 27 Nov 2026
+
+- **Your ask becomes things to try.** When Squibby does the work, it turns what you asked into up to five plain promises a person could check by looking: a page opens, some words show, a button works, the menu links to the new page. After the build and the tests, the hidden browser tries each one. Each says Kept, Not there, or Could not check.
+- **A broken promise means not done.** If the checks passed but something you asked for is not there, the result says "Not fixed yet" and why, and it is never counted as a proven fix. Could not check never counts as kept.
+- **For Claude Code, Cursor, Codex and other tools,** the review card has one optional line: "What did you ask your AI?". Type or paste your ask and press Review now, and the same promises are tried. Squibby still only hears "done" from those tools; it never reads what you typed to them. Leave the line empty and the review works as before.
+- **Watch it try.** Each promise keeps the picture the hidden browser took while trying it: your app being built, never your screen. The one that broke opens first, and the numbered buttons step through the rest. Only when Make pictures is on, and never off the record.
+- **A receipt you can send as a link.** In the share preview, Copy a link puts a link on your clipboard. Anyone with it can see that receipt for 30 days, and Delete link ends it at once. It needs a Squibby sign in, happens only when you press it, and the page is checked on the server too: nothing in it can run, link anywhere or load anything. It stays switched off until Squibby's server goes live; saving as a file works as before.
+- Not yet tried on a real Mac. The promises were tried with the real hidden browser on a small test page: the page was kept, the missing menu link was caught.
+
 ## The notch says your own words, and names the work it is about: 24 Nov 2026
 
 - **The words in the notch can be yours.** The greeting, the quiet line under the row and the words on the button when nothing is waiting come from the choices you make in Settings. The usual words stay as they were, so nothing changes until you pick your own. Your words never cover what is happening: Stop, Answer, Review and the other moments keep their own words, and the moment's own line always shows over your quiet line.

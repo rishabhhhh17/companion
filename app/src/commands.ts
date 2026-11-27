@@ -116,7 +116,12 @@ export const watchCheck = (project: string, watch: string): Command => ({ v: 1, 
 // Fix it on a failed watch: asks for the evidence (read only); the page starts the task when it comes (fixWatch), never the engine.
 // M52 (F30): the review of another AI tool's changes. Each names the project and the batch the card shows (the shell holds
 // them to the chosen folder). Fix it starts an ordinary task in drive mode, with its safety copy and Undo, counted as a fix.
-export const reviewNow = (project: string, batch?: string, proof?: boolean): Command => ({ v: 1, id: id(), type: "review.now", project, ...(batch ? { batch } : {}), ...(proof ? { proof: true } : {}) });
+// M123 slice 5: a receipt page shared as a link, on the person's tap; delete one; list the ones alive.
+export const receiptShare = (html: string, title?: string): Command => ({ v: 1, id: id(), type: "receipt.share", html, ...(title ? { title: title.slice(0, 120) } : {}) });
+export const receiptUnshare = (link: string): Command => ({ v: 1, id: id(), type: "receipt.unshare", link });
+export const receiptShares = (): Command => ({ v: 1, id: id(), type: "receipt.shares" });
+// M123 (F33): asked is what the person typed on the done card as their ask to the other tool (optional).
+export const reviewNow = (project: string, batch?: string, proof?: boolean, asked?: string): Command => ({ v: 1, id: id(), type: "review.now", project, ...(batch ? { batch } : {}), ...(proof ? { proof: true } : {}), ...(asked && asked.trim() ? { asked: asked.trim().slice(0, 2000) } : {}) });
 /** how (M57 feature 1): Looks fine, or closed after Copy for my AI, for the review's row in History. None for Skip this one. */
 export const reviewDismiss = (project: string, batch: string, how?: "looksFine" | "sentBack" | "quiet"): Command => ({ v: 1, id: id(), type: "review.dismiss", project, batch, ...(how ? { how } : {}) });
 // M101: Put these files back. The look only reads; the yes names the files changed again since only when the person said

@@ -766,3 +766,32 @@ describe("changes that arrive while a review runs are never lost", () => {
     expect(t.of("review.batch")[1].files).toEqual([{ file: "src/theirs.ts", kind: "added" }]);
   });
 });
+
+describe("M123 (F33): the ask typed on the done card", () => {
+  test("it reaches the checks with the changed files, and the result carries the promises", async () => {
+    const seen: { ask?: string; changed?: string[]; asked: boolean }[] = [];
+    const t = setup({ check: async (_dir, _s, o) => { seen.push(o); return { outcome: "ok", reason: "The checks passed.", promises: [{ say: "a pricing page opens at /pricing", result: "not_kept", why: "The page answered 404." }] }; } });
+    await started(t);
+    t.change({ "src/App.tsx": "export const title = 'Hello there';\n" });
+    await t.until(() => t.of("review.batch").length === 1);
+    await t.svc.handle(t.cmd("review.now", { batch: t.of("review.batch")[0].batch, asked: "  add a pricing page\n with sk_live_51HabcdefghijklmnopQRSTUVwx " }) as never);
+    expect(seen.length).toBe(1);
+    expect(seen[0].asked).toBe(true);
+    expect(seen[0].ask).toContain("add a pricing page with");
+    expect(seen[0].ask).not.toContain("QRSTUVwx");
+    expect(seen[0].changed).toEqual(["src/App.tsx"]);
+    expect(t.of("review.result")[0].promises).toEqual([{ say: "a pricing page opens at /pricing", result: "not_kept", why: "The page answered 404." }]);    // A broken promise means the checks did not prove it done.
+    expect(t.of("review.result")[0].checks).toBe("failed");
+    expect(t.of("review.result")[0].checksNote).toContain("something you asked for is not there");
+  });
+  test("no typed ask: the checks are asked exactly as before", async () => {
+    const seen: object[] = [];
+    const t = setup({ check: async (_dir, _s, o) => { seen.push(o); return { outcome: "ok", reason: "The checks passed." }; } });
+    await started(t);
+    t.change({ "src/App.tsx": "export const title = 'Hi';\n" });
+    await t.until(() => t.of("review.batch").length === 1);
+    await t.svc.handle(t.cmd("review.now", { batch: t.of("review.batch")[0].batch, proof: true }) as never);
+    expect(seen).toEqual([{ asked: true }]);
+    expect(t.of("review.result")[0].promises).toBeUndefined();
+  });
+});

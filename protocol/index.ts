@@ -387,7 +387,10 @@ export const REVIEW_PROOF_BY = ["rule", "line", "check", "osv", "house_rule", "s
 export type ReviewProofBy = (typeof REVIEW_PROOF_BY)[number];
 export type ReviewProof = { by: ReviewProofBy; file?: string; line?: number; check?: string; exit?: number; outcome?: "failed" | "not_run"; id?: string; rule?: string; count?: number; max?: number };
 export type ReviewReason = { kind: ReviewReasonKind; say: string; file?: string; line?: number; lines?: CodeLine[]; proof?: ReviewProof };
-export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?: string; proof?: boolean };
+export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?: string; proof?: boolean;
+  /** M123 (F33): what the person typed or pasted on the done card as their ask to the other tool. Optional; the engine cleans
+   *  it (promises.ts cleanAsk) and keeps it only with this review. The done hook itself never reads the tool's input. */
+  asked?: string };
 /** M57 feature 1: how the card was closed, for its row in History. looksFine: Looks fine. sentBack: Copy for my AI was
  *  pressed on this card before it was closed. Absent: closed with no review (Skip this one). */
 // M74: quiet, closed by itself after a review that found nothing (review.whenNothing).
@@ -400,7 +403,17 @@ export type ReviewFix = Envelope & { type: "review.fix"; project: string; batch:
 // put back too (their version is kept in the recovery folder first). Never the whole project, never a .env file, never git.
 export type ReviewUndoPlan = Envelope & { type: "review.undoPlan"; project: string; batch: string };
 export type ReviewUndo = Envelope & { type: "review.undo"; project: string; batch: string; confirm: true; overwrite?: string[] };
-export type Command = ReviewNow | ReviewDismiss | ReviewFix | ReviewUndoPlan | ReviewUndo | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | DoneSignalAnyLine | ToolJump | ToolAskAnswer | CostChoose | ProofSignIn | WeekShow | ShipWhyLive | JobsSave | JobsList | JobsDrop | TutorList | TutorNote | TutorForget;
+/** M123 slice 5: a receipt page shared as a link on the person's tap (runner/src/receiptlinks.ts): share it, delete one, or
+ *  list the ones still alive. The page is the app's own share page (M88); the Squibby sign in carries it, never a Claude key. */
+export type ReceiptShare = Envelope & { type: "receipt.share"; html: string; title?: string };
+export type ReceiptUnshare = Envelope & { type: "receipt.unshare"; link: string };
+export type ReceiptShares = Envelope & { type: "receipt.shares" };
+export type SharedLink = { id: string; url: string; expiresAt: string; title?: string };
+/** The links alive now, and what the last share or delete did. reason: signIn (no Squibby sign in), offline, refused (with
+ *  the server's words), bad_answer, unknown (no such link here). */
+export type ReceiptShared = Envelope & { type: "receipt.shared"; links: SharedLink[];
+  last?: { ok: boolean; url?: string; expiresAt?: string; removed?: string; reason?: "signIn" | "offline" | "refused" | "bad_answer" | "unknown"; say?: string } };
+export type Command = ReceiptShare | ReceiptUnshare | ReceiptShares | ReviewNow | ReviewDismiss | ReviewFix | ReviewUndoPlan | ReviewUndo | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | DoneSignalAnyLine | ToolJump | ToolAskAnswer | CostChoose | ProofSignIn | WeekShow | ShipWhyLive | JobsSave | JobsList | JobsDrop | TutorList | TutorNote | TutorForget;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -467,6 +480,10 @@ export type Receipt = Envelope & {
   /** M85 (research feature 4): not_asked, the task changed files the request did not name or said to leave alone;
    *  said_other, a command it ran goes against what it said it would do (review/drift.ts). Plain words, at most two. */
   flags?: { kind: "not_asked" | "said_other"; say: string }[];
+  /** M123: did it do what you asked. Each promise of the ask (review/promises.ts) in plain words, and what the hidden browser
+   *  found: kept, not_kept or could_not_check (with why). At most five. The stamp says works only when the checks passed and
+   *  none is not_kept; could_not_check never counts as kept. */
+  promises?: { say: string; result: "kept" | "not_kept" | "could_not_check"; why?: string; /** slice 4: the app being built, as the hidden browser saw it while trying this (base64 JPEG); never the screen. */ image?: string }[];
   asks?: boolean;  // those words stop to ask the person something: the follow up box is where they answer
   /** M104: a Fix it from a review: each problem that review found, checked again by its rules (never a model) against
    *  what the fix left. gone: checked again, it is not there. still: it is still there (the result is then not proven).
@@ -843,6 +860,8 @@ export type ReviewResultEvent = Envelope & {
   secretFiles?: string[]; checks?: ReviewChecks; checksNote?: string; sendBack?: string; lane?: (typeof REVIEW_LANES)[number]; usdEstimate: number;
   /** M77b: when the checks failed, their own output (secrets hidden), shown only behind Details; checksNote stays the plain line. */
   checksDetail?: string;
+  /** M123 (F33): did it do what you asked, for a typed ask: each promise and what the hidden browser found. */
+  promises?: { say: string; result: "kept" | "not_kept" | "could_not_check"; why?: string; /** slice 4: the app being built, as the hidden browser saw it while trying this (base64 JPEG); never the screen. */ image?: string }[];
   /** One plain line about the words when no model wrote them: the day's limit reached, or no Claude connected. */
   note?: string;
   /** M57: the project's own notes for AI tools (AGENTS.md, CLAUDE.md, Cursor rules) the words were written with, by name.
@@ -869,7 +888,7 @@ export type ReviewReplay = {
   checks: { label: string; status: "passed" | "failed" | "skipped"; exit?: number }[]; shot?: string;
 };
 export type ReviewUntold = { beyond: string[]; beyondMore: number; todos: number; checks: ReviewChecks };
-export type Event = ToolAskRequest | ToolAskResolved | ToolWhere | ToolJumped | DoneSignalAnyLineEvent | GuardSaved | GuardAsked | HookWaiting | HookBusy | FeedUpdate | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewUndoPlanEvent | ReviewUndone | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved | TutorLearned;
+export type Event = ReceiptShared | ToolAskRequest | ToolAskResolved | ToolWhere | ToolJumped | DoneSignalAnyLineEvent | GuardSaved | GuardAsked | HookWaiting | HookBusy | FeedUpdate | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewUndoPlanEvent | ReviewUndone | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved | TutorLearned;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -1185,7 +1204,10 @@ const reviewOk: Check = (m) => {
 };
 
 const COMMANDS: Record<string, Check[]> = {
-  "review.now": [str("project"), opt("batch", str("batch")), opt("proof", bool("proof"))],
+  "review.now": [str("project"), opt("batch", str("batch")), opt("proof", bool("proof")), opt("asked", (m) => (typeof m.asked === "string" && m.asked.length <= 2000 ? null : '"asked" must be text of at most 2000 characters'))],
+  "receipt.share": [str("html"), (m) => ((m.html as string).length <= 4_000_000 ? null : "the page is too big"), opt("title", str("title"))],
+  "receipt.unshare": [str("link")],
+  "receipt.shares": [],
   "review.dismiss": [str("project"), str("batch"), opt("how", oneOf("how", [...REVIEW_CLOSED_HOW]))],
   "review.fix": [str("project"), str("batch"), str("agent"), str("model"), num("budgetUsd")],
   "review.undoPlan": [str("project"), batchOk],
@@ -1294,6 +1316,7 @@ const COMMANDS: Record<string, Check[]> = {
 };
 
 const EVENTS: Record<string, Check[]> = {
+  "receipt.shared": [list("links")],
   // M52, the review of every change (runner/src/review/service.ts).
   "review.batch": [str("project"), str("batch"), filesListOk("files"), whole("count"), bool("capped"), textList("secretFiles"), bool("auto"), opt("away", oneOf("away", [...REVIEW_AWAY])), opt("keys", keyPlacesOk), opt("by", oneOf("by", [...DONE_SIGNAL_TOOLS])), opt("job", jobOk), opt("waiting", whole("waiting"))],
   "review.started": [str("project"), str("batch"), bool("proof")],

@@ -128,3 +128,34 @@
 .panel.job > .run-list:last-child { margin-bottom: 0; }
 .panel.job > .run-list:last-child > .run-row:last-child { border-bottom: 0; padding-bottom: 0; }
 .home:not([data-side]) .work > .view > .panel.job { margin-bottom: 0; }
+
+/* M123: did it do what you asked. One line per promise, with what the hidden browser found. */
+.home .panel.receipt > .receipt-asked { margin: 0 0 var(--space-3); padding: var(--space-3); }
+.home .panel.receipt .receipt-asked-title { margin: 0 0 var(--space-2); font-weight: 600; color: var(--fg); }
+.home .panel.receipt .receipt-asked ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.home .panel.receipt .receipt-asked li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--space-3); color: var(--fg); overflow-wrap: anywhere; }
+.home .panel.receipt .receipt-asked li b { font-weight: 600; color: var(--fg-2); }
+.home .panel.receipt .receipt-asked li[data-result="kept"] b { color: var(--ok); }
+.home .panel.receipt .receipt-asked li[data-result="not_kept"] b { color: var(--bad); }
+.home .panel.receipt .receipt-asked li small { grid-column: 1 / -1; color: var(--fg-2); }
+
+/* M123 (F33): the done card's optional ask line, and the promises on a review. */
+.home .rv-asked { display: grid; gap: var(--space-1); margin: 0 0 var(--space-2); color: var(--fg); }
+.home .rv-asked > span { font-weight: 600; }
+.home .rv-asked > small { color: var(--fg-2); }
+.home .rv-asked-list { grid-column: 1 / -1; margin-top: var(--space-2); }
+.home .rv-asked-list ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.home .rv-asked-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--space-3); overflow-wrap: anywhere; }
+.home .rv-asked-list li b { font-weight: 600; color: var(--fg-2); }
+.home .rv-asked-list li[data-result="kept"] b { color: var(--ok); }
+.home .rv-asked-list li[data-result="not_kept"] b { color: var(--bad); }
+.home .rv-asked-list li small { grid-column: 1 / -1; color: var(--fg-2); }
+
+/* M123 slice 4: watch it try. One picture at a time, the broken promise first; the frame buttons change it. */
+.home .receipt-asked li[data-on] > span { text-decoration: underline; text-underline-offset: 3px; }
+.home .receipt-asked .asked-watch { margin: var(--space-3) 0 0; display: grid; gap: var(--space-2); }
+.home .receipt-asked .asked-watch img { width: 100%; height: auto; border-radius: 8px; box-shadow: 0 0 0 1px var(--line); }
+.home .receipt-asked .asked-watch figcaption { color: var(--fg-2); }
+.home .receipt-asked .asked-frames { display: flex; gap: var(--space-1); }
+.home .receipt-asked .asked-frames button[data-result="not_kept"] { color: var(--bad); }
+.home .receipt-asked .asked-frames button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--fg); }

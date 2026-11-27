@@ -26,6 +26,7 @@
 #                             is forwarded (sign in, /v1/me and sign out still work). Turn on: `wrangler secret put PROXY_ON` and
 #                             type on. Turn off: `wrangler secret delete PROXY_ON`. Delete it, never set it to off: the deploy
 #                             check reads only the name, so a PROXY_ON set to off still asks for ANTHROPIC_API_KEY.
+#   SHARE_ON                  M123: the share link switch, off the same way. Needs the RECEIPTS KV namespace below.
 #   PAYMENTS_ON               the payments switch, off the same way. Set, it makes the deploy need the three Dodo secrets above.
 #   LOOP_ON                   the fixing loop's own switch (M100). Off the same way: the loop's tools are refused for every
 #                             sign in token until the go live checklist turns it on.
@@ -54,6 +55,12 @@ DODO_API_BASE = "https://test.dodopayments.com"
 # RELEASES_REPO = "owner/squibby-releases"
 
 # One object per owner (and a few small shared ones), each doing its read, check and write as one step (src/store-do.ts).
+# M123 slice 5: receipts shared as links, kept 30 days (Cloudflare KV, free tier). Create it once with
+# `wrangler kv namespace create RECEIPTS`, put its id here, uncomment, then set SHARE_ON. Until then share links answer 404.
+# [[kv_namespaces]]
+# binding = "RECEIPTS"
+# id = ""
+
 [[durable_objects.bindings]]
 name = "STORE"
 class_name = "StoreObject"

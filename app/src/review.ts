@@ -4,6 +4,7 @@
 // that found something (stop, worth a look) is never replaced before the person closes it: newer changes wait behind it
 // (later), with their own review if one ran, and take its place once it is closed. Nothing here
 // starts work: Review them, Fix it and Looks fine are the person's presses (card.tsx sends them), and Fix it asks first.
+import { promisesOf, type AskedPromise } from "./asked.ts";
 import { replayOf, type ReplayView } from "./replay.ts";
 import { DONE_SIGNAL_TOOLS, type DoneSignalTool, proofOk, REVIEW_AWAY, REVIEW_JOB_NAME, type ReviewOverlap, REVIEW_CHECKS, REVIEW_CLOSED_HOW, REVIEW_LANES, REVIEW_RATINGS, REVIEW_REASONS, REVIEW_SILENCE_LINES, REVIEW_TOUCHES, type Command, type CodeLine, type ReviewChecks, type ReviewFile, type ReviewKeyPlace, type ReviewProof, type ReviewRating, type ReviewReason, type ReviewReasonKind, type ReviewTouch, type ReviewUntold } from "../../protocol/index.ts";
 import { addMemory } from "./commands.ts";
@@ -29,6 +30,8 @@ export type ReviewDone = {
   checks: ReviewChecks; checksNote?: string; sendBack: string; lane: (typeof REVIEW_LANES)[number]; usdEstimate: number;
   /** M77b: the failed checks' own output, secrets hidden again, only ever shown behind Details. */
   checksDetail?: string;
+  /** M123 (F33): did it do what you asked, for the ask typed on this card (asked.ts promisesOf). */
+  promises?: AskedPromise[];
   /** Why no model wrote the words (the day's limit, no Claude connected, Claude not reached). */
   note?: string;
   /** M57: the project's notes for AI tools the words were written with, by name (read as notes only). */
@@ -153,7 +156,7 @@ function doneOf(e: Ev): (ReviewDone & { files: ReviewFile[]; count: number; capp
   return {
     ...(untold ? { untold } : {}), ...(replay ? { replay } : {}), ...(overlap ? { overlap } : {}),
     rating: e.rating as ReviewRating, touches: [...new Set(e.touches as ReviewTouch[])], summary, notes, reasons, checks: e.checks as ReviewChecks,
-    ...(checksNote ? { checksNote } : {}), ...(checksDetail ? { checksDetail: redact(checksDetail) } : {}), sendBack, lane, usdEstimate: typeof e.usdEstimate === "number" && e.usdEstimate >= 0 ? e.usdEstimate : 0, ...(note ? { note } : {}),
+    ...(checksNote ? { checksNote } : {}), ...(checksDetail ? { checksDetail: redact(checksDetail) } : {}), ...promisesOf(e.promises), sendBack, lane, usdEstimate: typeof e.usdEstimate === "number" && e.usdEstimate >= 0 ? e.usdEstimate : 0, ...(note ? { note } : {}),
     ...(ruleFiles?.length ? { ruleFiles: ruleFiles.map((f) => f.slice(0, 200)) } : {}), ...(hidden ? { hidden } : {}),
     files, count: whole(e.count) ?? files.length, capped: e.capped === true, secretFiles: strings(e.secretFiles ?? [], MAX_SECRET_FILES) ?? [],
   };

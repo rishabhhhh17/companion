@@ -5,6 +5,7 @@ import { redact } from "../redact.ts";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckpointStore } from "../checkpoints.ts";
+import { tryPromises, type AskPromise, type PromiseOutcome } from "../review/promises.ts";
 import { browserCheck, knownSignIn, openWithoutSignIn, SIGN_IN_GAP, type BrowserOptions, type BrowserResult } from "./browser.ts";
 import { privateRoutes } from "./privatepages.ts";
 /** M75: said on the browser step after the person's sign in carried the check past the wall. */
@@ -67,7 +68,7 @@ export type Verdict = "passed" | "passed_with_gaps" | "failed" | "nothing_to_che
 // (NO_ROOM). It says nothing about the project.
 export type Unclear = { rung: Rung; missing: boolean };
 export type CheckOutcome = { name: string; status: "passed" | "failed" | "missing" | "not_started" };
-export type LadderResult = { /** M75: private looking pages that opened without a sign in. */ openPrivate?: string[]; verdict: Verdict; steps: Step[]; failedAt?: Step; serverUrl?: string; shot?: import("./browser.ts").PageShot; gaps?: string[]; unclear?: Unclear[]; checks?: CheckOutcome[]; noRoom?: true };
+export type LadderResult = { /** M75: private looking pages that opened without a sign in. */ openPrivate?: string[]; /** M123: what happened to each promise of the ask. */ promises?: PromiseOutcome[]; verdict: Verdict; steps: Step[]; failedAt?: Step; serverUrl?: string; shot?: import("./browser.ts").PageShot; gaps?: string[]; unclear?: Unclear[]; checks?: CheckOutcome[]; noRoom?: true };
 export type Limits = { installMs: number; checkMs: number; testMs: number; startMs: number; browserMs: number };
 export const DEFAULT_LIMITS: Limits = { installMs: 5 * 60_000, checkMs: 5 * 60_000, testMs: 5 * 60_000, startMs: 60_000, browserMs: 30_000 };
 /** Time allowed for checks (check.time): today's limits times a factor (1, 2 or 4), for every rung. */
@@ -76,6 +77,9 @@ export const scaleLimits = (factor: number): Limits => ({ installMs: DEFAULT_LIM
 export type LadderOptions = {
   project: string; store: Pick<CheckpointStore, "readFiles">; beforeId: string; afterId: string;
   onStep?: (u: StepUpdate) => void; signal?: AbortSignal; limits?: Partial<Limits>;
+  /** M123: the promises of the ask (promises.ts), tried one by one after the page opened with no errors. Their outcomes come
+   *  back on the result; they never change the verdict here (the receipt's stamp weighs them, stampWith). */
+  promises?: readonly AskPromise[];
   run?: (command: string, o: RunOptions) => Promise<RunResult>;
   browser?: (url: string, o: BrowserOptions) => Promise<BrowserResult>;
   // How the project is started for the browser check (tests give a stand in); startServer by default.
@@ -734,11 +738,17 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       if (cancelled()) return result("cancelled", undefined, srv.url);
       if (openPrivate.length) notDone.push(privateOpenLine(openPrivate));
     }
+    // M123: did it do what you asked. Each promise is one more hidden browser step on the running app, with the same hints.
+    let promised: PromiseOutcome[] = [];
+    if (o.promises?.length && !cancelled()) {
+      promised = await tryPromises(srv.url, o.promises, browser, { ...hints, timeoutMs: limits.browserMs, ...(sizes[0] === "phone" ? { viewport: { ...VIEWPORTS.phone } } : {}), ...(o.signal ? { signal: o.signal } : {}) });
+      if (cancelled()) return result("cancelled", undefined, srv.url);
+    }
     const opened = two ? "The page opened with no errors, at desktop and at phone size." : sizes[0] === "phone" ? "The page opened with no errors at phone size." : "The page opened with no errors.";
     // M58: behind a sign in wall (M67's detection, browser.ts) the page is the person's turn: the step says so, and the
     // result stays passed with gaps (left holds the gap). The check never types into the page.
     finish("browser", "passed", notDone.length ? `${opened} ${notDone.join(" ")}` : opened, t0, null, notDone.includes(SIGN_IN_GAP) ? "signIn" : undefined);
-    return { ...result("passed", undefined, srv.url), ...(shot ? { shot } : {}), ...(openPrivate.length ? { openPrivate } : {}) };
+    return { ...result("passed", undefined, srv.url), ...(shot ? { shot } : {}), ...(openPrivate.length ? { openPrivate } : {}), ...(promised.length ? { promises: promised } : {}) };
   } finally {
     if (srv.ok) await srv.stop();
     if (dbBefore) removeNewEmptyDatabases(o.project, dbBefore);

@@ -1,4 +1,5 @@
 import { Fragment, StrictMode, useCallback, useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { AskedList } from "./askedView.tsx";
 import { createRoot } from "react-dom/client";
 import { EMPTY_LINE, liveLine, type LiveLine } from "./a11y.ts";
 import { ConfirmStep } from "./confirm.tsx";
@@ -587,7 +588,7 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
                 <SaveMarksActions star={h.star} name={h.name} subject={task} onMark={(mk) => void send(markSave(project, h.checkpoint!, mk))} />
                 {/* M88 (b): Share what my AI did, for a task that ended: the preview first, then Save. */}
                 {h.status !== "running" && sharing !== h.id && <div className="row"><button className="btn" type="button" aria-label={S.m88.share.buttonLabel(task)} onClick={() => setSharing(h.id)}>{S.m88.share.button}</button></div>}
-                {sharing === h.id && <SharePreview id={`share-${h.id}`} doc={shareFromTask(h, project, new Date(now), h.checkpoint ? shotFor?.(h.checkpoint) : undefined)} onClose={() => setSharing(null)} />}
+                {sharing === h.id && <SharePreview id={`share-${h.id}`} doc={shareFromTask(h, project, new Date(now), h.checkpoint ? shotFor?.(h.checkpoint) : undefined)} onClose={() => setSharing(null)} send={send} />}
               </li>}
             </Fragment>;
           })}
@@ -1487,11 +1488,11 @@ export function Card() {
     undoDone: undoneHere,
     // M76: Circle it on a Walk me through it step: Point at the problem's own ring on that line, on the person's press.
     onPoint: (st: TourStep) => { const r = nowModel.current.review; if (r && project && st.line && st.lineText) pointAt(pointChange(project, { file: st.file, line: st.line, lineText: st.lineText }, st.what)); },
-    onReview: (proof: boolean) => {
+    onReview: (proof: boolean, asked?: string) => {
       const r = nowModel.current.review;
       if (!r || !project) return;
       dispatch({ type: "ui.reviewAsked", batch: r.batch });
-      void sendQuiet(reviewNow(project, r.batch, proof)).catch((e) => dispatch({ type: "ui.reviewRefused", batch: r.batch, reason: refusalNotice(e) }));
+      void sendQuiet(reviewNow(project, r.batch, proof, asked)).catch((e) => dispatch({ type: "ui.reviewRefused", batch: r.batch, reason: refusalNotice(e) }));
     },
     // M69 step 3: Fix it on a key warning: the review runs with checks first, then Fix it asks its own question.
     onReviewFix: () => {
@@ -3705,6 +3706,8 @@ export function Card() {
               {m.receipt.flags.map((f) => <p key={f.kind} className="receipt-flag"><b>{S.guard.flags[f.kind]}.</b> {plainPath(f.say, project)}</p>)}
             </div>
           )}
+          {/* M123: did it do what you asked. Each promise of the ask, kept, not there, or could not check, before Keep. */}
+          {!undone && <AskedList ps={m.receipt.promises} say={(t) => plainPath(t, project)} className="panel" />}
           {resHero?.pill === "proven" && (
             <div className="row result-actions receipt-top">
               <Button kind="primary" label={S.fixRun.keepLabel} onClick={() => { const cp = m.receipt?.checkpoint; setKept(cp && undoCan(m, project) ? { checkpoint: cp, n: Date.now() } : null); dispatch({ type: "ui.resultKept" }); }}>{S.homeNow.keep}</Button>

@@ -6,6 +6,7 @@
 // (copies a ready message and says it is copied; nothing is ever typed into another app), and Looks fine (Skip this one
 // before any review has run). The gel pill
 // (the one glossy thing, beside Home's own main button) is kept for the final yes of Fix it.
+import { AskedList } from "./askedView.tsx";
 import { useEffect, useState, type ReactNode } from "react";
 import { showWherePaste } from "./pasteHere.ts";
 import { WalkThrough } from "./m76Panels.tsx";
@@ -37,7 +38,7 @@ const FIX_ID = "home-review-fix";
 
 type Props = {
   r: ReviewCard;
-  onReview: (proof: boolean) => void; onDismiss: () => void;
+  onReview: (proof: boolean, asked?: string) => void; onDismiss: () => void;
   /** M69: Fix it on a key warning before any review: the review runs with checks, then Fix it's own question shows. */
   onReviewFix?: () => void;
   onAskFix: () => void; onFix: () => void; onCancelFix: () => void;
@@ -225,11 +226,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
           </>
         )}
         {r.stage === "ready" && !r.asked && !keyWarned(r) && (
-          <div className="row result-actions rv-actions">
-            <button className="btn primary" type="button" onClick={() => onReview(true)}>{S.review.reviewNow}</button>
-            <button className="btn" type="button" onClick={() => onReview(false)}>{S.review.quickLook}</button>
-            <button className="btn" type="button" onClick={onDismiss}>{S.review.skipThis}</button>
-          </div>
+          <AskThenReview onReview={onReview} onDismiss={onDismiss} rowClass="row result-actions rv-actions" quickClass="btn" />
         )}
         {r.stage === "reviewed" && r.fix !== "sent" && !undoTook && (
           <div className="row result-actions rv-actions">
@@ -321,6 +318,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
                 : <ProofChip kind={checks.kind} label={checks.label} />}
               {res?.checksNote && <span className="review-checks-note">{res.checksNote}</span>}
               {res?.checksDetail && <CheckDetail parts={{ summary: "", place: "", raw: res.checksDetail }} />}
+              <AskedList ps={res?.promises} className="rv-asked-list" />
             </div>
         )}
         <ChangesCard changed={r.files} keys={keyFiles(r)} />
@@ -412,12 +410,8 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
       {r.stage === "ready" && !r.asked && (
         <>
           <div className="line muted">{r.auto ? S.review.autoLine : S.review.askFirst}</div>
-          <div className="row result-actions">
-            <button className="btn primary" type="button" onClick={() => onReview(true)}>{S.review.reviewNow}</button>
-            <button className="btn quiet" type="button" onClick={() => onReview(false)}>{S.review.quickLook}</button>
-            {/* Nothing was looked at yet, so closing it is skipping it, never a judgement (the audit, item 16). */}
-            <button className="btn" type="button" onClick={onDismiss}>{S.review.skipThis}</button>
-          </div>
+          {/* Nothing was looked at yet, so closing it is skipping it, never a judgement (the audit, item 16). */}
+          <AskThenReview onReview={onReview} onDismiss={onDismiss} rowClass="row result-actions" quickClass="btn quiet" />
         </>
       )}
       {r.stage === "reviewed" && r.fix !== "sent" && !undoTook && (
@@ -472,6 +466,7 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
             : <ProofChip kind={checks.kind} label={checks.label} />}
           {res?.checksNote && <span className="review-checks-note">{res.checksNote}</span>}
               {res?.checksDetail && <CheckDetail parts={{ summary: "", place: "", raw: res.checksDetail }} />}
+              <AskedList ps={res?.promises} className="rv-asked-list" />
         </div>
       )}
       <ChangesCard changed={r.files} keys={keyFiles(r)} />
@@ -480,5 +475,26 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
       {res?.note && <div className="line muted">{res.note}</div>}
       {res?.ruleFiles && res.ruleFiles.length > 0 && <div className="line muted">{S.review.ruleFiles(res.ruleFiles.join(", "))}</div>}
     </section>
+  );
+}
+
+/** M123 (F33): the one optional line on the done card: what the person asked the other tool. Review now sends it, and
+ *  Squibby tries its promises in the hidden browser. Quick look never runs the browser, so it never sends it. */
+function AskThenReview({ onReview, onDismiss, rowClass, quickClass }: { onReview: (proof: boolean, asked?: string) => void; onDismiss: () => void; rowClass: string; quickClass: string }) {
+  const [asked, setAsked] = useState("");
+  return (
+    <>
+      <label className="rv-asked">
+        <span>{S.asked.field}</span>
+        <input type="text" autoComplete="off" spellCheck={false} value={asked} maxLength={2000} placeholder={S.asked.placeholder}
+          onChange={(e) => setAsked(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) onReview(true, asked); }} />
+        <small>{S.asked.hint}</small>
+      </label>
+      <div className={rowClass}>
+        <button className="btn primary" type="button" onClick={() => onReview(true, asked)}>{S.review.reviewNow}</button>
+        <button className={quickClass} type="button" onClick={() => onReview(false)}>{S.review.quickLook}</button>
+        <button className="btn" type="button" onClick={onDismiss}>{S.review.skipThis}</button>
+      </div>
+    </>
   );
 }

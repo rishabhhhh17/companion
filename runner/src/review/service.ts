@@ -56,6 +56,7 @@ import { moneyFilesAt, moneyReasons, type MoneyItem } from "../money/review.ts";
 import { CODE as MONEY_CODE, PAGE as MONEY_PAGE } from "../money/text.ts";
 import type { DoneTool } from "../donesignal.ts";
 import { existsSync } from "node:fs";
+import { cleanAsk } from "./promises.ts";
 import { JobWatch, knownJobs, type JobBatch } from "./jobs.ts";
 
 /** The commands whose work can write in the project (a task, a plan, Undo, an install, a check or a ship step that builds
@@ -70,7 +71,9 @@ const LIGHT_OWN_FILE = /(^|\/)(AGENTS\.md|CLAUDE\.md|package-lock\.json|npm-shri
 
 /** What the project's own checks said (agent.ts checkForReview): a result, a reason it was not run, or stopped (null). */
 export type CheckOutcome = { outcome: "ok" | "failing" | "unknown"; reason: string; /** M75: private looking pages that opened without a sign in. */ open?: string[]; /** M77b: a failed check's own output, for behind Details. */ detail?: string;
-  /** M86: each check with its exit code, and the proof screenshot's path (Watch what changed). */ runs?: CheckRun[]; shot?: string } | { skip: string } | null;
+  /** M86: each check with its exit code, and the proof screenshot's path (Watch what changed). */ runs?: CheckRun[]; shot?: string;
+  /** M123 (F33): each promise of the typed ask and what the hidden browser found. */ promises?: AskedOutcome[] } | { skip: string } | null;
+export type AskedOutcome = { say: string; result: "kept" | "not_kept" | "could_not_check"; why?: string; /** M123 slice 4: the hidden browser's picture while it tried this (base64 JPEG). */ image?: string };
 /** M75: each private looking page that opened without a sign in is a Worth a look reason (never a stop: a page can be
  *  public on purpose). A safe rating becomes worth a look; a stop stays a stop. */
 export function withOpenPages<T extends { rating: ReviewRating; reasons: Reason[] }>(rated: T, open: readonly string[]): T {
@@ -96,7 +99,7 @@ export type ReviewDeps = {
   spend: { room(project: string): number; book(project: string, usd: number): void };
   /** The project's own build, tests and browser check, no model, nothing changed (agent.ts checkForReview). asked: the
    *  person pressed Review them, which is their yes to running the project's scripts in the safety box. */
-  check?: (project: string, signal: AbortSignal, o: { asked: boolean }) => Promise<CheckOutcome>;
+  check?: (project: string, signal: AbortSignal, o: { asked: boolean; ask?: string; changed?: string[] }) => Promise<CheckOutcome>;
   /** Starts Fix it: an ordinary task, admitted by the plan gate and run by the agent runner (main.ts). M104: check is
    *  called by that task once its last change is saved, before its receipt, so the receipt says problem by problem what
    *  the rules found again. */
@@ -901,7 +904,9 @@ export class ReviewService {
       if (!b) { this.notReviewed(cmd.project, NOTHING); return; }
     }
     // A batch from while away runs the project's checks only when the person asks for them, whatever review.mode says.
-    await this.reviewBatch(b, cmd.proof === true || (this.auto() && !b.away), stops, cmd.proof === true);
+    // M123 (F33): a typed ask makes the browser check worth running: its promises are tried there.
+    const ask = cleanAsk(cmd.asked ?? "");
+    await this.reviewBatch(b, cmd.proof === true || !!ask || (this.auto() && !b.away), stops, cmd.proof === true || !!ask, ask);
   }
 
   private async fix(cmd: Extract<ReviewCmd, { type: "review.fix" }>): Promise<void> {
@@ -1110,7 +1115,7 @@ export class ReviewService {
 
   /** stops: Stop everything's count when this review was asked for; a Stop since means it does not start. asked: the
    *  person pressed Review them (their yes to running the project's scripts in the safety box). */
-  private async reviewBatch(b: Batch, proof: boolean, stops: number, asked: boolean): Promise<void> {
+  private async reviewBatch(b: Batch, proof: boolean, stops: number, asked: boolean, ask = ""): Promise<void> {
     if (stops !== this.stops) { this.notReviewed(b.project, STOPPED, b.id); return; }
     if (this.reviewing) { this.notReviewed(b.project, BUSY_REASON, b.id); return; }
     const abort = new AbortController();
@@ -1183,7 +1188,7 @@ export class ReviewService {
       // The project's own checks, only when asked (or automatic), never beside the engine's other work in the project.
       let checks: Checks = "not_run", checksNote: string | undefined, checksDetail: string | undefined;
       let privateOpen: string[] = [];
-      let checkRuns: CheckRun[] | undefined, checkShot: string | undefined;
+      let checkRuns: CheckRun[] | undefined, checkShot: string | undefined, checkPromises: AskedOutcome[] = [];
       if (proof) {
         if (!this.deps.check) { checks = "unknown"; checksNote = "The project's checks cannot run here."; }
         else if (this.ownOf(b.project) > 0 || this.deps.busy?.(b.project)) { checks = "unknown"; checksNote = `${PRODUCT} is working on this project right now, so its checks were not run.`; }
@@ -1192,11 +1197,14 @@ export class ReviewService {
           // Not the engine's own work in the folder: the checks only build (their output folders are ignored), and what the
           // other tool changes meanwhile must still be counted. A batch waits while a review runs.
           let r: CheckOutcome;
-          try { r = await later(this.deps.check(dir, abort.signal, { asked }), this.deps.checkTimeoutMs ?? 10 * 60_000, abort.signal); }
+          try { r = await later(this.deps.check(dir, abort.signal, { asked, ...(ask ? { ask, changed: b.files.map((f) => f.file) } : {}) }), this.deps.checkTimeoutMs ?? 10 * 60_000, abort.signal); }
           catch { r = abort.signal.aborted ? null : { outcome: "unknown", reason: "The checks took too long, so they were stopped." }; }
           if (abort.signal.aborted || r === null) throw new Error("stopped");
           if ("skip" in r) { checks = "unknown"; checksNote = r.skip; }
-          else { checks = r.outcome === "ok" ? "passed" : r.outcome === "failing" ? "failed" : "unknown"; checksNote = r.reason; privateOpen = r.open ?? []; checkRuns = r.runs; checkShot = r.shot; checksDetail = r.outcome === "failing" && r.detail ? clip(redactOutput(r.detail).trim(), 1200) : undefined; }
+          else { checks = r.outcome === "ok" ? "passed" : r.outcome === "failing" ? "failed" : "unknown"; checksNote = r.reason; privateOpen = r.open ?? []; checkRuns = r.runs; checkShot = r.shot; checkPromises = r.promises ?? []; checksDetail = r.outcome === "failing" && r.detail ? clip(redactOutput(r.detail).trim(), 1200) : undefined; }
+          // M123 (F33): checks that passed while a promise of the typed ask is not there did not prove it done (rule 14).
+          const broken = checkPromises.find((x) => x.result === "not_kept");
+          if (checks === "passed" && broken) { checks = "failed"; checksNote = `The checks passed, but something you asked for is not there: ${broken.say}.`; }
           checksNote = checksNote ? clip(redactOutput(checksNote).replace(/\s+/g, " ").trim(), 240) : undefined;
         }
       }
@@ -1284,7 +1292,7 @@ export class ReviewService {
       this.deps.emit({
         type: "review.result", project: b.project, batch: b.id, ok: true, rating: shown.rating, touches, summary: clip(redact(summary), 400), notes,
         reasons: withLines(shown.reasons, after), files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20),
-        checks, ...(checksNote ? { checksNote } : {}), ...(checksDetail ? { checksDetail } : {}), sendBack: sendBackText(review), lane, usdEstimate: Math.round(usd * 1e6) / 1e6, ...(note ? { note } : {}),
+        checks, ...(checksNote ? { checksNote } : {}), ...(checksDetail ? { checksDetail } : {}), ...(checkPromises.length ? { promises: checkPromises } : {}), sendBack: sendBackText(review), lane, usdEstimate: Math.round(usd * 1e6) / 1e6, ...(note ? { note } : {}),
         ...(ruleFiles.length ? { ruleFiles } : {}), ...(shown.hidden ? { hidden: shown.hidden } : {}), untold, ...(replay ? { replay } : {}), ...(b.by ? { by: b.by } : {}),
         ...(b.job ? { job: b.job } : {}), ...(overlap.length ? { overlap } : {}), ...(sayWaiting ? { waiting } : {}),
       });
