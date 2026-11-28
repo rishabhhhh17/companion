@@ -14,7 +14,7 @@
 
 thread_local! {
     static TRAYPOP: RefCell<Option<Retained<NSPanel>>> = const { RefCell::new(None) };
-    static HOME_FX: RefCell<Option<Retained<objc2_app_kit::NSVisualEffectView>>> = const { RefCell::new(None) };
+    static HOME_FX: RefCell<Option<Retained<NSView>>> = const { RefCell::new(None) };
 }
 static TRAYPOP_OPEN: AtomicBool = AtomicBool::new(false);
 /// Each open, so a late close or a late fade never acts on a newer open.
@@ -33,14 +33,26 @@ const HOME_FX_AFTER_MS: u64 = 380;
 fn fr(f: NSRect) -> traypop::Frame { traypop::Frame { x: f.origin.x, y: f.origin.y, w: f.size.width, h: f.size.height } }
 fn ns(f: traypop::Frame) -> NSRect { NSRect::new(NSPoint::new(f.x, f.y), NSSize::new(f.w, f.h)) }
 
-/// A dark, always active blur of what is behind the window, rounded (`bottom_only`: only its two bottom corners, for Home's
-/// body, whose top joins the notch). Main thread.
-fn glass_view(mtm: MainThreadMarker, frame: NSRect, radius: f64, bottom_only: bool) -> Retained<objc2_app_kit::NSVisualEffectView> {
+/// Behind the window: Apple's Liquid Glass (NSGlassEffectView) where the Mac has it (macOS 26 and later; M125, the founder
+/// 28 Nov 2026: "I need it to be like liquid glass"), else a dark, always active blur. Rounded (`bottom_only`: only its two
+/// bottom corners, for Home's body, whose top joins the notch). Main thread.
+fn glass_view(mtm: MainThreadMarker, frame: NSRect, radius: f64, bottom_only: bool) -> Retained<NSView> {
     use objc2_app_kit::{NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSAutoresizingMaskOptions, NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView};
-    let v = NSVisualEffectView::initWithFrame(mtm.alloc::<NSVisualEffectView>(), frame);
-    v.setMaterial(NSVisualEffectMaterial::HUDWindow);
-    v.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
-    v.setState(NSVisualEffectState::Active);
+    let v: Retained<NSView> = if liquid_glass_here() {
+        use objc2_app_kit::{NSGlassEffectView, NSGlassEffectViewStyle};
+        let g = NSGlassEffectView::initWithFrame(mtm.alloc::<NSGlassEffectView>(), frame);
+        g.setStyle(NSGlassEffectViewStyle::Regular);
+        g.setCornerRadius(radius);
+        // A light dark tint, so white words read over any wallpaper; the glass itself stays clear and bright at its edges.
+        g.setTintColor(Some(&NSColor::colorWithSRGBRed_green_blue_alpha(0.04, 0.04, 0.06, LIQUID_TINT)));
+        Retained::into_super(g)
+    } else {
+        let e = NSVisualEffectView::initWithFrame(mtm.alloc::<NSVisualEffectView>(), frame);
+        e.setMaterial(NSVisualEffectMaterial::HUDWindow);
+        e.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
+        e.setState(NSVisualEffectState::Active);
+        Retained::into_super(e)
+    };
     if let Some(dark) = NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua }) { v.setAppearance(Some(&dark)); }
     v.setAutoresizingMask(NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable);
     v.setWantsLayer(true);
@@ -56,8 +68,13 @@ fn glass_view(mtm: MainThreadMarker, frame: NSRect, radius: f64, bottom_only: bo
     v
 }
 
-/// Puts the blur under a panel's web view (below every view already in it). Main thread.
-fn put_glass_under(content: &NSView, v: &objc2_app_kit::NSVisualEffectView) {
+/// How dark the Liquid Glass's own tint is (0 clear, 1 solid): enough for white words over a bright wallpaper.
+const LIQUID_TINT: f64 = 0.38;
+/// Whether this Mac has Liquid Glass (the class exists from macOS 26). Looked up by name, so an older Mac never touches it.
+fn liquid_glass_here() -> bool { objc2::runtime::AnyClass::get(c"NSGlassEffectView").is_some() }
+
+/// Puts the glass under a panel's web view (below every view already in it). Main thread.
+fn put_glass_under(content: &NSView, v: &NSView) {
     content.addSubview_positioned_relativeTo(v, objc2_app_kit::NSWindowOrderingMode::Below, None);
 }
 

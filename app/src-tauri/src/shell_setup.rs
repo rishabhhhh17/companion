@@ -46,8 +46,11 @@ fn claude_install_now(app: AppHandle, window: tauri::WebviewWindow) -> Result<()
 
 /// The client id the founder made in Google's console (app/google.json, read when the app is built). Empty: not set up.
 const GOOGLE_CONFIG: &str = include_str!("../../google.json");
-/// Only one Google sign in at a time (a second press while the browser is open does nothing).
+/// Whether a Google sign in is waiting on the browser now (shown to the page).
 static GOOGLE_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Which Google sign in is the current one. A new press starts a new one and ends the wait of the old (a tab closed without
+/// answering would otherwise hold the next sign in for google::WAIT_SECS).
+static GOOGLE_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// The accounts kept, in the order they were added. The list of who is kept is its own Keychain item; each account is one
 /// more item holding its refresh token (google.rs Kept). Nothing of it is ever logged.
@@ -75,11 +78,24 @@ fn google_forget(sub: &str) {
     google_set_index(&idx);
 }
 
+/// F29: whether the engine runs on Squibby's server (managed) and whether this Mac holds a Squibby sign in, so Home can
+/// say "Sign in to start" instead of a vague "not switched on". Never the token itself.
+#[tauri::command]
+async fn account_state() -> Value {
+    // Only whether the item is there (no secret read, so never the Mac's dialog), and off the main thread.
+    let signed_in = tauri::async_runtime::spawn_blocking(|| keystore::presence(&keystore::service(), keystore::ACCOUNT_TOKEN) == keystore::Presence::Found).await.unwrap_or(false);
+    let v = json!({ "managed": ENGINE_MANAGED.load(std::sync::atomic::Ordering::SeqCst), "signedIn": signed_in });
+    log("account_state", v.clone());
+    v
+}
+
 /// What the pages may know: whether Google is set up in this build, and each account without its tokens.
 #[tauri::command]
-fn google_accounts(window: tauri::WebviewWindow) -> Result<Value, String> {
+async fn google_accounts(window: tauri::WebviewWindow) -> Result<Value, String> {
     settings::only_card(window.label()).map_err(|e| e.to_string())?;
-    Ok(json!({ "ready": google::client(GOOGLE_CONFIG).is_some(), "busy": GOOGLE_BUSY.load(std::sync::atomic::Ordering::SeqCst), "accounts": google_kept().iter().map(google::shown).collect::<Vec<_>>() }))
+    // The Keychain is read off the main thread.
+    let accounts = tauri::async_runtime::spawn_blocking(|| google_kept().iter().map(google::shown).collect::<Vec<_>>()).await.unwrap_or_default();
+    Ok(json!({ "ready": google::client(GOOGLE_CONFIG).is_some(), "busy": GOOGLE_BUSY.load(std::sync::atomic::Ordering::SeqCst), "accounts": accounts }))
 }
 
 /// Sign in with Google (`signin`) or connect a Google account for some apps. Opens Google's own page in the person's
@@ -90,13 +106,19 @@ fn google_start(app: AppHandle, window: tauri::WebviewWindow, signin: bool, apps
     let Some((id, secret)) = google::client(GOOGLE_CONFIG) else { return Err("notSetUp".into()) };
     let apps: Vec<google::App> = apps.iter().filter_map(|a| google::App::from_word(a)).collect();
     if !signin && apps.is_empty() { return Err("noApps".into()); }
-    if GOOGLE_BUSY.swap(true, std::sync::atomic::Ordering::SeqCst) { return Err("busy".into()); }
+    use std::sync::atomic::Ordering::SeqCst;
+    // A new press ends any older wait (its tab may have been closed) instead of being refused as busy.
+    let mine = GOOGLE_GEN.fetch_add(1, SeqCst) + 1;
+    GOOGLE_BUSY.store(true, SeqCst);
     std::thread::spawn(move || {
-        let r = google_flow(&id, &secret, signin, &apps, label.as_deref().unwrap_or(""));
-        GOOGLE_BUSY.store(false, std::sync::atomic::Ordering::SeqCst);
+        let r = google_flow(&id, &secret, signin, &apps, label.as_deref().unwrap_or(""), &|| GOOGLE_GEN.load(SeqCst) == mine);
+        let current = GOOGLE_GEN.load(SeqCst) == mine;
+        if current { GOOGLE_BUSY.store(false, SeqCst); }
         match r {
             Ok(()) => { log("google_connected", json!({ "signin": signin, "apps": apps.iter().map(|a| a.word()).collect::<Vec<_>>() })); let _ = app.emit("google-changed", ()); google_push(&app); if signin { hand_key_over(&app, None); } }
-            Err(m) => { log("google_failed", json!({})); let _ = app.emit("google-failed", m); }
+            // A sign in a newer press replaced says nothing: the newer one reports for itself.
+            Err(m) if current && m != google::SUPERSEDED => { log("google_failed", json!({})); let _ = app.emit("google-failed", m); }
+            Err(_) => {}
         }
     });
     Ok(())
@@ -104,7 +126,7 @@ fn google_start(app: AppHandle, window: tauri::WebviewWindow, signin: bool, apps
 
 /// The sign in itself (google.rs): a one time listener on 127.0.0.1, Google's page in the browser, the code traded for
 /// tokens, and the account kept. Apps already connected on the same account stay; a new label replaces the old one.
-fn google_flow(id: &str, secret: &str, signin: bool, apps: &[google::App], label: &str) -> Result<(), String> {
+fn google_flow(id: &str, secret: &str, signin: bool, apps: &[google::App], label: &str, current: &dyn Fn() -> bool) -> Result<(), String> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").map_err(|_| "Could not start the sign in.".to_string())?;
     let port = listener.local_addr().map_err(|_| "Could not start the sign in.".to_string())?.port();
     let (verifier, challenge) = google::pkce(google::random32());
@@ -113,12 +135,19 @@ fn google_flow(id: &str, secret: &str, signin: bool, apps: &[google::App], label
     // F29: signing in to Squibby also signs in to Squibby's own server, which gives the token the engine runs on.
     let url = if signin { google::with_nonce(url, &squibby_nonce()?) } else { url };
     std::process::Command::new("/usr/bin/open").arg(&url).spawn().map_err(|_| "Could not open the browser.".to_string())?;
-    let code = google::wait_for_code(listener, &state, crate::product!())?;
-    let t = google::read_tokens(&google::post_form(google::TOKEN_URL, &google::exchange_form(id, secret, &code, &verifier, port))?)?;
-    if signin { squibby_sign_in(t.id_token.as_deref().ok_or("Google did not say who signed in. Try again.")?)?; }
+    let (code, tab) = google::wait_for_code(listener, &state, crate::product!(), current)?;
+    // The browser tab is answered only once the whole sign in is done, so it never says connected when it was not.
+    let r = google_finish(id, secret, signin, label, &code, &verifier, port);
+    google::answer_tab(tab, r.is_ok(), crate::product!());
+    r
+}
+fn google_finish(id: &str, secret: &str, signin: bool, label: &str, code: &str, verifier: &str, port: u16) -> Result<(), String> {
+    let t = google::read_tokens(&google::post_form(google::TOKEN_URL, &google::exchange_form(id, secret, code, verifier, port))?)?;
     let person = t.person.ok_or("Google did not say who signed in (the email must be verified).")?;
     let old = google_kept().into_iter().find(|k| k.person.sub == person.sub);
     let refresh = t.refresh.or_else(|| old.as_ref().map(|k| k.refresh.clone())).ok_or("Google gave no lasting sign in. Try again.")?;
+    // The Squibby token is saved only once the Google answer is known to be whole (who, and a lasting sign in).
+    if signin { squibby_sign_in(t.id_token.as_deref().ok_or("Google did not say who signed in. Try again.")?)?; }
     let mut granted = google::apps_granted(&t.granted);
     if let Some(o) = &old { for a in &o.apps { if !granted.contains(a) { granted.push(*a); } } }
     let label = if label.trim().is_empty() { old.as_ref().map(|k| k.label.clone()).unwrap_or_else(|| google::label_for("", &person.email)) } else { google::label_for(label, &person.email) };
@@ -135,6 +164,8 @@ fn google_disconnect(app: AppHandle, window: tauri::WebviewWindow, id: String, s
     settings::only_card(window.label()).map_err(|e| e.to_string())?;
     let sub = id.strip_prefix("google:").unwrap_or(&id).to_string();
     let Some(mut k) = google_kept().into_iter().find(|k| k.person.sub == sub) else { return Err("gone".into()) };
+    // The account signed in to Squibby: signing it out (or disconnecting it) signs this Mac out of Squibby too.
+    if k.signin { squibby_sign_out(); hand_key_over(&app, None); }
     if sign_out_only == Some(true) && !k.apps.is_empty() { k.signin = false; google_keep(&k)?; }
     else {
         let token = k.refresh.clone();
@@ -206,6 +237,21 @@ fn squibby_sign_in(id_token: &str) -> Result<(), String> {
     keystore::save_token(token)
 }
 
+/// Signs this Mac out of Squibby: the sign in token leaves the Keychain now, and Squibby's server is asked to stop it,
+/// best effort and off this thread. The token goes on curl's standard input (as a header), never its command line.
+fn squibby_sign_out() {
+    let token = keystore::read_token();
+    let _ = keystore::delete_token();
+    let Some(t) = token else { return };
+    std::thread::spawn(move || {
+        use std::io::Write;
+        let Ok(mut c) = std::process::Command::new("/usr/bin/curl").args(["-q", "-sS", "--proto", "=https", "--max-time", "10", "-X", "POST", "-H", "@-", "-o", "/dev/null", &format!("{}/v1/signout", runner::ACCOUNT_SERVER)])
+            .env_clear().env("PATH", "/usr/bin:/bin").stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() else { return };
+        if let Some(mut i) = c.stdin.take() { let _ = i.write_all(format!("Authorization: Bearer {t}\n").as_bytes()); }
+        let _ = c.wait();
+    });
+}
+
 /// A fresh sign in nonce from Squibby's server (it must come back inside Google's ID token).
 fn squibby_nonce() -> Result<String, String> {
     let out = std::process::Command::new("/usr/bin/curl").args(["-q", "-sS", "--proto", "=https", "--max-time", "20", &format!("{}/v1/signin/nonce", runner::ACCOUNT_SERVER)])
@@ -223,7 +269,8 @@ fn remove_api_key(app: AppHandle, window: tauri::WebviewWindow, confirm: String)
     keystore::remove_with(window.label(), &confirm, || keystore::delete_item(&svc, keystore::ACCOUNT), || !keystore::gone(&svc, keystore::ACCOUNT))?;
     log("api_key_removed", json!({}));
     // If the engine is not running now, it is told the same when it starts again: it reads the Keychain, which is empty.
-    let _ = app.state::<runner::Runner>().hand_key(None, false);
+    // hand_key_over reads what the engine should have now: on managed usage that is still the sign in token.
+    hand_key_over(&app, None);
     Ok(())
 }
 

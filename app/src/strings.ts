@@ -217,15 +217,17 @@ export const S = {
       // is not switched on for this Mac yet; checking still works, so Home's main button is Check my project (blockMainFor).
       // lineNoProject (review of M98): with no project open the line says what can be done now, never "your project".
       key: { headline: "Fixing is not switched on for this Mac yet", line: `Checking your project still works. ${PRODUCT} will tell you here when fixing is ready. Your project is safe.`, lineNoProject: `Fixing comes later. You can pick a project now and check that it works.`, main: "" },
+      // F29 (28 Nov 2026): on Squibby's own server with no sign in yet. One tap, Google's own page in the browser.
+      signIn: { headline: "Sign in to start", line: `${PRODUCT} runs the AI for you. Sign in with Google once, and checking and fixing both work. Your project is safe.`, main: "Sign in with Google" },
       engine: { headline: `${PRODUCT} stopped working`, line: "Restart it to carry on. Your work is kept.", main: "Restart" },
       claude: { headline: `${PRODUCT} is missing a part on this Mac`, line: "It is needed before anything can run.", main: "Get it" },
       claudeGetting: { headline: `${PRODUCT} is getting ready on this Mac`, line: "This takes a minute or two.", main: "" },
       // Feel round 2 (19 Nov 2026): the engine has not said hello yet, so Home never looks like a healthy, never checked
       // project with buttons that do nothing.
       starting: { headline: `${PRODUCT} is starting`, line: "This takes a few seconds. If it does not start, restart it. Your work is kept.", main: "Restart" },
-    } as Record<"key" | "engine" | "claude" | "claudeGetting" | "starting", { headline: string; line: string; main: string }> & { key: { lineNoProject: string } },
+    } as Record<"key" | "signIn" | "engine" | "claude" | "claudeGetting" | "starting", { headline: string; line: string; main: string }> & { key: { lineNoProject: string } },
     // Feel round 2 (19 Nov 2026): the short tag over each of those headlines, in the place every state's tag takes.
-    blockedTag: { key: "Fixing off", engine: "Stopped", claude: "A part missing", claudeGetting: "Setting up", starting: "Starting" } as Record<"key" | "engine" | "claude" | "claudeGetting" | "starting", string>,
+    blockedTag: { key: "Fixing off", signIn: "Not signed in", engine: "Stopped", claude: "A part missing", claudeGetting: "Setting up", starting: "Starting" } as Record<"key" | "signIn" | "engine" | "claude" | "claudeGetting" | "starting", string>,
     // Return with no project open (the audit, item 2): the words wait for the person to pick one of these.
     noProjectAsk: "Which project is this for?",
     chooseMine: "Choose my project",
@@ -237,7 +239,7 @@ export const S = {
     practiceOn: (title: string) => `${title}, on a practice copy.`,
     practiceLine: { start: "Start the practice runs its checks on a practice copy. Nothing real is touched.", found: "It found the problem. Fix it next.", failed: "That did not pass. Open the practice to try again.", blocked: "It could not run. Open the practice to see why.", done: "Fixed and proven. Open the practice for what is next." },
     // M69 (the YC benchmark spec 3.1): the box is pinned at the bottom of Home, its own question, no longer an "Or" after a button.
-    ask: "What are you stuck on?",
+    ask: "Ask Squibby to check, fix or explain something",   // the founder, 28 Nov 2026: "What are you stuck on? That does not make sense."
     talkKeys: "Hold these keys and talk",
     // The top bar's quiet buttons, with words.
     places: { did: "History", memory: "Memory", settings: "Settings", learn: "Learn" } as Record<"did" | "memory" | "settings" | "learn", string>,

@@ -5,6 +5,7 @@
 //!
 //! The Keychain items of Companion's own service (`keystore::service()`), exactly:
 //! - `anthropic`, the person's Claude key: removed by the helper, last, and only when everything else went.
+//! - `squibby-account`, the Squibby sign in token (F29): removed by the helper together with the Claude key.
 //! - `pro-license`, the Pro key (license.rs): removed only when the person answers yes to "Also turn off Pro on this
 //!   Mac?". Then the app first lets this Mac's activation go at Dodo (`license::deactivate`, which deletes the item)
 //!   before the helper starts; with no answer from Dodo nothing is deleted and the page says so. With no, the item

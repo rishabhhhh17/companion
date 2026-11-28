@@ -15,7 +15,7 @@ import type { ToolExecutor, ToolResult, ToolUse } from "../../engine.ts";
 import { boxReady } from "../../proof/box.ts";
 import { runCommand, shq, type RunOptions, type RunResult } from "../../proof/exec.ts";
 import { clip, redactOutput } from "../../redact.ts";
-import { commandsWithFolder, evaluate, isSettingsFile, PROTECTED, whereIs } from "../../safety.ts";
+import { commandsWithFolder, evaluate, isSettingsFile, PROTECTED, runsOnOpen, whereIs } from "../../safety.ts";
 import { commandsOf } from "../../shell.ts";
 import { isEnvFile } from "../../secretfiles.ts";
 import { PRODUCT, PRODUCT_S } from "../../names.ts";
@@ -56,7 +56,10 @@ export function screen(call: ToolUse, project: string): string | null {
   const p = call.name === "Glob" || call.name === "Grep" ? i.path : i.file_path;
   if (p === undefined && (call.name === "Glob" || call.name === "Grep")) return null;   // the whole project
   if (typeof p !== "string" || !p.trim()) return null;   // safety.ts names what is missing
-  return pathRefusal(project, p, call.name === "Glob" || call.name === "Grep");
+  const why = pathRefusal(project, p, call.name === "Glob" || call.name === "Grep");
+  // Editor and tool settings run code when the folder opens; this loop's commands cannot write them either (proof/box.ts).
+  const writes = call.name === "Write" || call.name === "Edit";
+  return why ?? (writes && runsOnOpen(whereIs(project, p).segments) ? KEPT_FOLDER : null);
 }
 
 /** Why a path is refused for a file tool, or null when it is inside the project and is not a kept or secret file. */
@@ -237,36 +240,79 @@ function globTool(project: string, i: Record<string, unknown>): ToolResult {
   return okOut(out.length ? out.join("\n") + (out.length >= MAX_LIST ? `\n[stopped at ${MAX_LIST}: narrow the pattern]` : "") : "No files match.");
 }
 
-function grepTool(project: string, i: Record<string, unknown>): ToolResult {
-  let re: RegExp;
-  try { re = new RegExp(String(i.pattern ?? "")); } catch { return fail("That is not a regular expression that can be read."); }
+/** Most time a Grep may spend matching one file: the pattern is the model's, and one that backtracks for ever must never
+ *  hold up the engine (or Stop). Matching runs in a worker, ended when this runs out. */
+export const GREP_FILE_MS = 3000;
+const GREP_WORKER = new URL("./grepworker.ts", import.meta.url).href;
+const TOO_LONG = "[stopped: this pattern took too long to search. Use a simpler one]";
+
+/** The matching line numbers of one file's text, or null when the worker ran out of time or the task was stopped. */
+function matchIn(w: Worker, pattern: string, text: string, max: number, ms: number, signal?: AbortSignal): Promise<number[] | null> {
+  return new Promise((done) => {
+    const finish = (r: number[] | null) => { clearTimeout(t); w.onmessage = null; w.onerror = null; signal?.removeEventListener("abort", stop); done(r); };
+    const stop = () => finish(null);
+    const t = setTimeout(stop, ms);
+    w.onmessage = (e: MessageEvent<number[]>) => finish(e.data);
+    w.onerror = stop;
+    signal?.addEventListener("abort", stop, { once: true });
+    w.postMessage({ pattern, text, max });
+  });
+}
+
+async function grepTool(project: string, i: Record<string, unknown>, ms: number, signal?: AbortSignal): Promise<ToolResult> {
+  const pattern = String(i.pattern ?? "");
+  try { new RegExp(pattern); } catch { return fail("That is not a regular expression that can be read."); }
   const only = typeof i.glob === "string" && i.glob ? new Bun.Glob(i.glob) : null;
   const target = typeof i.path === "string" && i.path.trim() ? i.path : ".";
-  const out: string[] = [];
-  const look = (rel: string, abs: string): boolean => {
-    if (isEnvFile(rel) || isSettingsFile(abs) || (only && !only.match(rel) && !only.match(rel.split("/").pop()!))) return true;
-    const text = readText(abs, 1024 * 1024);
-    if (text === null || text === "\u0000") return true;
-    const lines = text.split("\n");
-    for (let k = 0; k < lines.length; k++) if (re.test(lines[k])) { out.push(`${rel}:${k + 1}: ${clip(lines[k], 300)}`); if (out.length >= MAX_MATCHES) return false; }
+  const files: Inside[] = [];
+  const pick = (rel: string, abs: string): boolean => {
+    if (!(isEnvFile(rel) || isSettingsFile(abs) || (only && !only.match(rel) && !only.match(rel.split("/").pop()!)))) files.push({ rel, abs });
     return true;
   };
   if (target !== ".") {
     const why = pathRefusal(project, target, true); if (why) return fail(why);
     const at = inside(project, target, { folder: true }); if (!at) return fail("That file or folder was not found in the project.");
     let st; try { st = lstatSync(at.abs); } catch { return fail("That file or folder was not found in the project."); }
-    if (st.isFile()) look(at.rel, at.abs); else walk(project, at, look);
-  } else walk(project, inside(project, ".", { folder: true })!, look);
-  return okOut(out.length ? out.join("\n") + (out.length >= MAX_MATCHES ? `\n[stopped at ${MAX_MATCHES} matches: narrow the search]` : "") : "No matches.");
+    if (st.isFile()) pick(at.rel, at.abs); else walk(project, at, pick);
+  } else walk(project, inside(project, ".", { folder: true })!, pick);
+  const out: string[] = [];
+  let late = false;
+  const w = new Worker(GREP_WORKER);
+  try {
+    for (const f of files) {
+      if (signal?.aborted) { late = true; break; }
+      const text = readText(f.abs, 1024 * 1024);
+      if (text === null || text === "\u0000") continue;
+      const hits = await matchIn(w, pattern, text, MAX_MATCHES - out.length, ms, signal);
+      if (hits === null) { late = true; break; }
+      const lines = text.split("\n");
+      for (const k of hits) out.push(`${f.rel}:${k + 1}: ${clip(lines[k], 300)}`);
+      if (out.length >= MAX_MATCHES) break;
+    }
+  } finally { w.terminate(); }
+  const end = late ? `\n${signal?.aborted ? "[stopped]" : TOO_LONG}` : out.length >= MAX_MATCHES ? `\n[stopped at ${MAX_MATCHES} matches: narrow the search]` : "";
+  return okOut((out.length ? out.join("\n") : late ? "" : "No matches.") + end);
 }
 
 // ---------- 3. commands, in the box ----------
+
+/** Every part of the line (a cd aside) is on its own an install that asks. A line that cannot be read part by part is not. */
+function allInstalls(command: string, project: string): boolean {
+  let parts: { words: string[]; cwd: string }[];
+  try { parts = commandsWithFolder(command, project); } catch { return false; }
+  return parts.length > 0 && parts.every((p) => {
+    const v = evaluate({ tool: "Bash", input: { command: p.words.map(shq).join(" ") } }, { project: p.cwd });
+    return v.decision === "ask" && v.risk === "install";
+  });
+}
 
 export type ExecutorDeps = {
   /** How a command is run (runCommand); tests pass a stand in that records what it was given. */
   run?: (command: string, o: RunOptions) => Promise<RunResult>;
   /** Whether the box can be made on this Mac (box.ts boxReady); tests may say no. */
   boxReady?: () => boolean;
+  /** Most milliseconds a Grep may spend on one file (GREP_FILE_MS); tests make it short. */
+  grepLimitMs?: number;
 };
 
 /** The executor for the loop. The runner passes the task's stop signal, so Stop and Stop everything end a command at once. */
@@ -284,7 +330,7 @@ export function boxedExecutor(d: ExecutorDeps = {}): ToolExecutor {
         case "Write": return writeTool(project, i);
         case "Edit": return editTool(project, i);
         case "Glob": return globTool(project, i);
-        case "Grep": return grepTool(project, i);
+        case "Grep": return await grepTool(project, i, d.grepLimitMs ?? GREP_FILE_MS, ctx.signal);
         case "Bash": {
           const command = typeof i.command === "string" ? i.command : "";
           if (!command.trim()) return fail("The command is empty.");
@@ -293,7 +339,8 @@ export function boxedExecutor(d: ExecutorDeps = {}): ToolExecutor {
           // everything else gets this Mac's own addresses only. A project's own package install (npm install) is allowed by
           // safety.ts without a card, so it gets no internet here: the proof ladder's install step asks and installs.
           const v = evaluate({ tool: "Bash", input: { command } }, { project });
-          const net = v.decision === "ask" && v.risk === "install" ? "open" : "local";
+          // Only when every part of the line is that install: the yes to `pip install x` is not a yes to `&& node upload.js`.
+          const net = v.decision === "ask" && v.risk === "install" && allInstalls(command, project) ? "open" : "local";
           const secs = Math.min(MAX_COMMAND_S, Number.isInteger(i.timeout) && (i.timeout as number) > 0 ? (i.timeout as number) : USUAL_COMMAND_S);
           const r = await run(command, { cwd: project, timeoutMs: secs * 1000, box: { project, net }, ...(ctx.signal ? { signal: ctx.signal } : {}) });
           const said = `${r.stdout}${r.stderr ? (r.stdout ? "\n" : "") + r.stderr : ""}`;

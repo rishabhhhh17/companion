@@ -1,10 +1,10 @@
 // M124: the team routes. Signed in only (the Squibby sign in token, never a Claude key); off unless TEAMS_ON. Every shared
 // receipt is checked again here (shape, sizes, nothing that looks like a key, a password block or a folder of a Mac), so a
 // bad client cannot put more on the team's board than the plain summary the app shows.
-import { callObject, type NamespaceLike } from "./store-do.ts";
+import { callObject, OWNER, type NamespaceLike } from "./store-do.ts";
 import { hashToken, tokenFromHeaders } from "./tokens.ts";
 import { jsonNoStore, readCapped } from "./http.ts";
-import { MAX_RULES, RULE_KINDS, VERDICTS, type KeptReceipt, type SharedReceipt, type TeamRule, type TeamView } from "./teams.ts";
+import { MAX_RULES, POSTS_PER_DAY, RULE_KINDS, VERDICTS, type KeptReceipt, type SharedReceipt, type TeamRule, type TeamView } from "./teams.ts";
 
 export const TEAMS_PATH = "/v1/teams";
 const ID = /^[A-Za-z0-9_-]{16}$/;
@@ -58,6 +58,10 @@ const cleanName = (v: unknown) => { const t = text(v, 40); return t && /^[\p{L}\
 
 export function makeTeamRoutes(d: TeamDeps): (req: Request, url: URL) => Promise<Response | null> {
   const call = <T>(id: string, op: string, args: Record<string, unknown>) => callObject<T>(d.ns, TEAM(id), op, args);
+  // S13: the team is kept on the owner before it is joined or made, so an account delete can leave it.
+  const noteTeam = (ownerId: string, teamId: string) => callObject<"added" | "had" | false>(d.ns, OWNER(ownerId), "owner.joinTeam", { teamId });
+  const unnoteTeam = (ownerId: string, teamId: string) => callObject(d.ns, OWNER(ownerId), "owner.leaveTeam", { teamId }).catch(() => {});
+  const tooMany = () => bad("You are in as many teams as one person can be. Leave one first.", 409);
   const body = async (req: Request) => { const raw = await readCapped(req, 16_384); try { return raw === null ? null : JSON.parse(raw) as Record<string, unknown>; } catch { return null; } };
   const newInvite = async (id: string) => { const secret = b64url(crypto.getRandomValues(new Uint8Array(24))); return { code: `${id}.${secret}`, hash: await hashToken(secret) }; };
   const bad = (msg: string, status = 400) => jsonNoStore({ error: msg }, status);
@@ -76,15 +80,19 @@ export function makeTeamRoutes(d: TeamDeps): (req: Request, url: URL) => Promise
       const b = await body(req), name = text(b?.name, 60), memberName = cleanName(b?.me);
       if (!name || !memberName) return bad("A team needs a name, and you need a name in it.");
       const id = b64url(crypto.getRandomValues(new Uint8Array(12))), inv = await newInvite(id);
-      if (!(await call<boolean>(id, "team.create", { id, name, ownerId: user.id, memberName, inviteHash: inv.hash, now }))) return bad("Try again.", 409);
+      if (!(await noteTeam(user.id, id))) return tooMany();
+      if (!(await call<boolean>(id, "team.create", { id, name, ownerId: user.id, memberName, inviteHash: inv.hash, now }))) { await unnoteTeam(user.id, id); return bad("Try again.", 409); }
       return jsonNoStore({ id, name, invite: inv.code });
     }
     if (req.method === "POST" && parts.length === 1 && parts[0] === "join") {
       const b = await body(req), code = typeof b?.invite === "string" ? b.invite.trim() : "", name = cleanName(b?.me);
       const [id, secret] = code.split(".");
       if (!id || !ID.test(id) || !secret || !name) return bad("That invite code does not look right.");
+      const noted = await noteTeam(user.id, id);
+      if (!noted) return tooMany();
       const r = await call<string>(id, "team.join", { ownerId: user.id, name, inviteHash: await hashToken(secret), now });
       if (r === "joined" || r === "already") return jsonNoStore({ id, joined: true });
+      if (noted === "added") await unnoteTeam(user.id, id);   // S13: a failed join keeps no slot
       return bad(r === "full" ? "This team is full." : r === "name_taken" ? "Someone in this team already uses that name. Pick another." : "That invite code does not work. Ask for a new one.", r === "bad_invite" ? 403 : 409);
     }
     const id = parts[0];
@@ -98,7 +106,10 @@ export function makeTeamRoutes(d: TeamDeps): (req: Request, url: URL) => Promise
       if (req.method === "POST") {
         const b = await body(req), r = cleanReceipt(b?.receipt);
         if (!r) return bad("That receipt could not be shared.");
-        const seq = await call<number | null>(id, "team.post", { ownerId: user.id, receipt: r, now });
+        // S16: a daily cap per person across all their teams, kept on their own owner object.
+        if (!(await callObject<boolean>(d.ns, OWNER(user.id), "owner.postMade", { now, max: POSTS_PER_DAY }))) return jsonNoStore({ error: "You shared a lot of receipts today. Try again tomorrow." }, 429);
+        const seq = await call<number | "rate" | null>(id, "team.post", { ownerId: user.id, receipt: r, now });
+        if (seq === "rate") return jsonNoStore({ error: "You shared a lot of receipts just now. Try again in a minute." }, 429);
         return seq === null ? bad("You are not in this team.", 403) : jsonNoStore({ seq });
       }
       if (req.method === "GET") {
@@ -118,10 +129,13 @@ export function makeTeamRoutes(d: TeamDeps): (req: Request, url: URL) => Promise
       return admin(await call<string>(id, "team.invite", { ownerId: user.id, inviteHash: inv.hash }), () => jsonNoStore({ invite: inv.code }));
     }
     if (req.method === "DELETE" && rest[0] === "members" && rest.length === 2) {
-      return admin(await call<string>(id, "team.remove", { ownerId: user.id, name: decodeURIComponent(rest[1]) }), () => jsonNoStore({ removed: true }));
+      const r = await call<string | { r: "removed"; ownerId: string }>(id, "team.remove", { ownerId: user.id, name: decodeURIComponent(rest[1]) });
+      if (typeof r === "object") await unnoteTeam(r.ownerId, id);
+      return admin(typeof r === "object" ? r.r : r, () => jsonNoStore({ removed: true }));
     }
     if (req.method === "POST" && rest[0] === "leave" && rest.length === 1) {
       const r = await call<string>(id, "team.leave", { ownerId: user.id });
+      await unnoteTeam(user.id, id);   // S13: also when not a member (removed, or a stale entry), so the slot comes back
       return r === "not_member" ? bad("You are not in this team.", 403) : jsonNoStore({ left: true, ...(r === "team_gone" ? { teamGone: true } : {}) });
     }
     return bad("Not found.", 404);

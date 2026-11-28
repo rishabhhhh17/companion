@@ -1,13 +1,17 @@
 // M124: the team layer on the account server. Fake Durable Objects (test/fake-do.ts), stand in sign ins, no network.
 import { describe, expect, test } from "bun:test";
 import { FakeNamespace } from "./fake-do.ts";
+import { OWNER } from "../src/store-do.ts";
 import { cleanReceipt, makeTeamRoutes } from "../src/team-routes.ts";
+import { POSTS_PER_DAY, POSTS_PER_MINUTE } from "../src/teams.ts";
 
 const T = (n: string) => "cmp_" + n.padEnd(40, "x");
 const USERS: Record<string, { id: string; active: boolean }> = { [T("ana")]: { id: "u_ana", active: true }, [T("jon")]: { id: "u_jon", active: true }, [T("lee")]: { id: "u_lee", active: true }, [T("bad")]: { id: "u_bad", active: false } };
-function setup(on = true) {
+function setup(on = true, now = () => Date.UTC(2026, 10, 28)) {
   const ns = new FakeNamespace();
-  const routes = makeTeamRoutes({ ns, on: () => on, now: () => Date.UTC(2026, 10, 28), userOf: async (t) => USERS[t] ?? null });
+  // S13: each person is signed in on their own owner object, where the teams they are in are kept.
+  for (const u of Object.values(USERS)) ns.storageFor(OWNER(u.id)).data.set("tokens", [["h", { plan: "free", status: "active" }]]);
+  const routes = makeTeamRoutes({ ns, on: () => on, now, userOf: async (t) => USERS[t] ?? null });
   const call = async (method: string, path: string, token?: string, body?: unknown) => {
     const req = new Request(`https://api.example.test${path}`, { method, headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
     const r = (await routes(req, new URL(req.url)))!;
@@ -17,8 +21,8 @@ function setup(on = true) {
 }
 const RECEIPT = { project: "my-shop", tool: "cursor", verdict: "not_done", lines: ["a pricing page at /pricing", "the menu has no pricing link"], checks: [{ label: "npm test", result: "passed" }, { label: "real browser", result: "failed" }], flags: [], asked: { kept: 1, missing: 1 } };
 
-async function team() {
-  const s = setup();
+async function team(now?: () => number) {
+  const s = setup(true, now);
   const made = await s.call("POST", "/v1/teams", T("ana"), { name: "bloom studio", me: "Ana" });
   expect(made.status).toBe(200);
   const joined = await s.call("POST", "/v1/teams/join", T("jon"), { invite: made.j.invite, me: "Jon" });
@@ -76,12 +80,23 @@ describe("teams", () => {
 });
 
 test("the board keeps exactly the newest 500 receipts", async () => {
-  const t = await team();
+  let clock = Date.UTC(2026, 10, 28);
+  const t = await team(() => (clock += 900_000));   // slower than POSTS_PER_MINUTE and POSTS_PER_DAY
   for (let i = 0; i < 520; i++) await t.call("POST", `/v1/teams/${t.id}/receipts`, T("jon"), { receipt: RECEIPT });
   const keys = [...t.ns.objects.get(`team:${t.id}`)!.storage.data.keys()].filter((k) => k.startsWith("r:"));
   expect(keys.length).toBe(500);
   expect((await t.call("GET", `/v1/teams/${t.id}/receipts`, T("ana"))).j.receipts[0].seq).toBe(520);
 }, 120_000);
+
+test("S16: one member shares at most POSTS_PER_MINUTE receipts a minute; others still can, and a minute later so can they", async () => {
+  let clock = Date.UTC(2026, 10, 28);
+  const t = await team(() => clock);
+  for (let i = 0; i < POSTS_PER_MINUTE; i++) expect((await t.call("POST", `/v1/teams/${t.id}/receipts`, T("jon"), { receipt: RECEIPT })).status).toBe(200);
+  expect((await t.call("POST", `/v1/teams/${t.id}/receipts`, T("jon"), { receipt: RECEIPT })).status).toBe(429);
+  expect((await t.call("POST", `/v1/teams/${t.id}/receipts`, T("ana"), { receipt: RECEIPT })).status).toBe(200);
+  clock += 60_000;
+  expect((await t.call("POST", `/v1/teams/${t.id}/receipts`, T("jon"), { receipt: RECEIPT })).status).toBe(200);
+});
 
 describe("what a shared receipt may hold", () => {
   test("a plain receipt passes", () => { expect(cleanReceipt(RECEIPT)).toEqual(RECEIPT as never); });
@@ -91,3 +106,46 @@ describe("what a shared receipt may hold", () => {
       expect(cleanReceipt(bad)).toBeNull();
   });
 });
+
+describe("S13 regression: the teams kept on the owner follow what really happened", () => {
+  const kept = (s: { ns: FakeNamespace }, id: string) => (s.ns.storageFor(OWNER(id)).data.get("teams") as string[] | undefined) ?? [];
+  test("20 failed joins keep nothing, and the person can still join a real team", async () => {
+    const t = await team();
+    for (let i = 0; i < 20; i++) {
+      const id = `bad${String(i).padStart(2, "0")}aaaaaaaaaaa`;
+      expect((await t.call("POST", "/v1/teams/join", T("lee"), { invite: `${id}.wrong`, me: "Lee" })).status).toBe(403);
+    }
+    expect(kept(t, "u_lee")).toEqual([]);
+    expect((await t.call("POST", "/v1/teams/join", T("lee"), { invite: t.invite, me: "Lee" })).status).toBe(200);
+    expect(kept(t, "u_lee")).toEqual([t.id]);
+  });
+  test("a wrong invite from someone already in the team keeps their team", async () => {
+    const t = await team();
+    expect((await t.call("POST", "/v1/teams/join", T("jon"), { invite: `${t.id}.wrong`, me: "Jon" })).status).toBe(403);
+    expect(kept(t, "u_jon")).toEqual([t.id]);
+  });
+  test("an admin removing a member takes the team off that member's list", async () => {
+    const t = await team();
+    expect((await t.call("DELETE", `/v1/teams/${t.id}/members/Jon`, T("ana"))).status).toBe(200);
+    expect(kept(t, "u_jon")).toEqual([]);
+  });
+  test("leaving a team you are no longer in still clears it from your list", async () => {
+    const t = await team();
+    t.ns.storageFor(OWNER("u_lee")).data.set("teams", [t.id]);   // a stale entry, as left by the old code
+    expect((await t.call("POST", `/v1/teams/${t.id}/leave`, T("lee"))).status).toBe(403);
+    expect(kept(t, "u_lee")).toEqual([]);
+  });
+});
+
+test("S16: one person shares at most POSTS_PER_DAY receipts a day across all their teams", async () => {
+  let clock = Date.UTC(2026, 10, 28);
+  const s = setup(true, () => (clock += 7_000));
+  const ids: string[] = [];
+  for (let i = 0; i < 3; i++) ids.push((await s.call("POST", "/v1/teams", T("ana"), { name: `team ${i}`, me: "Ana" })).j.id);
+  let ok = 0, last = 0;
+  for (let i = 0; i < POSTS_PER_DAY + 5; i++) { last = (await s.call("POST", `/v1/teams/${ids[i % 3]}/receipts`, T("ana"), { receipt: RECEIPT })).status; if (last === 200) ok++; }
+  expect(ok).toBe(POSTS_PER_DAY);
+  expect(last).toBe(429);
+  clock = Date.UTC(2026, 10, 29, 1);
+  expect((await s.call("POST", `/v1/teams/${ids[0]}/receipts`, T("ana"), { receipt: RECEIPT })).status).toBe(200);
+}, 60_000);

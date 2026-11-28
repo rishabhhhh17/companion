@@ -2450,10 +2450,18 @@ export function Card() {
   const glassOn = materialOf(useSetting("look.material")) !== "classic" && onboarded;
   // What stops any work (the audit, item 12) and changes waiting for a review (item 11): each leads Now when it is there.
   const [claudeSt, setClaudeSt] = useClaudeStatus();
+  // F29 (28 Nov 2026): on Squibby's server, is this Mac signed in? Asked as Home opens and after every Google sign in or out.
+  const [account, setAccount] = useState<{ managed: boolean; signedIn: boolean } | null>(null);
+  useEffect(() => {
+    const ask = () => void invoke("account_state").then((v) => { const o = v as { managed?: unknown; signedIn?: unknown } | null; if (o) setAccount({ managed: o.managed === true, signedIn: o.signedIn === true }); }).catch(() => {});
+    ask();
+    const a = listen("google-changed", ask), b = listen("opened", ask);
+    return () => { a.then((f) => f()); b.then((f) => f()); };
+  }, []);
   // Feel round 2: the engine has a moment to say hello before Home says it is starting (homeHero.ts HELLO_GRACE_MS).
   const [helloLate, setHelloLate] = useState(false);
   useEffect(() => { const id = window.setTimeout(() => setHelloLate(true), HELLO_GRACE_MS); return () => window.clearTimeout(id); }, []);
-  const blocker = onboarded ? blockerOf({ connected: m.connected, runnerUp: m.runnerUp, claude: claudeSt?.state ?? null, starting: helloLate && !m.helloSeen }) : null;
+  const blocker = onboarded ? blockerOf({ connected: m.connected, runnerUp: m.runnerUp, claude: claudeSt?.state ?? null, starting: helloLate && !m.helloSeen, account }) : null;
   const rlead = reviewOn ? reviewLead(m.review, project) : null;
   const mode = homeMode(m, needNow, { blocker, review: rlead });
   const status = homeStatus(m, project, clock);
@@ -2500,6 +2508,7 @@ export function Card() {
   const reviewMain = mode === "review" && rlead?.main === "review";
   const doBlockMain = () => {
     // M98 (F29): fixing not switched on has no button of its own (blockMainFor); only a stopped engine restarts.
+    if (blocker === "signIn") { void invoke("google_start", { signin: true, apps: [], label: null }).catch(() => {}); return; }
     if (blocker === "engine" || blocker === "starting") void invoke("restart_engine").catch(() => {});
     else if (blocker === "claude") getClaude(setClaudeSt);
   };

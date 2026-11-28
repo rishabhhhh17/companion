@@ -1167,84 +1167,50 @@
   :root { --mat-tint: var(--mat-tint-solid); --mat-edge: var(--mat-edge-strong); }
 }
 
-/* M125 (28 Nov 2026): Squibby, the usual material, is the website's night (getsquibby.com assets/tokens.css): its sky, its
-   paper, its ink and its on-panel meaning colours. The rules that use them are in ui/squibby.css. */
+/* M125 (28 Nov 2026): Squibby, the usual material, is Glass with the website's touches (getsquibby.com assets/tokens.css):
+   its fonts, the white ticket, and the receipt's paper, ink and meaning colours. The rules are in ui/squibby.css. */
 :root[data-brand="squibby"] {
-  /* The site's night (tokens.css --color-panel and the on-panel colours, the sky's black). */
-  --sq-sky: #050507;
-  --sq-star: rgba(255, 255, 255, .55);
-  --sq-grid: rgba(255, 255, 255, .035);
-  --sq-paper: #f3f0e8;                  /* the receipt and the field (the site's paper under the night sky) */
-  --sq-paper-2: #e8e4d9;                /* a row's hover on paper, the carbon copy */
+  /* Only what the website's touches need; the glass keeps its own colours (the founder: "keep everything glassy"). */
+  --font: "Geist", -apple-system, sans-serif;
+  --font-code: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sq-display: "Supreme", "Geist", -apple-system, sans-serif;
+  /* Liquid Glass (the shell's NSGlassEffectView, macOS 26 and later) does the dark itself: the page adds only a light tint,
+     and the notch's black fades out just under the notch. Reduce transparency still gets the near solid tint (above). */
+  --mat-tint: rgba(10, 10, 14, .22);
+  --mat-fade-h: calc(var(--mat-top-h) + 8px);   /* the notch's black ends just under the notch, no long smudge */
+  /* The ask box: a piece of glass of its own, light on its top edge. */
+  --sq-float: rgba(255, 255, 255, .07); /* the ask box: a lighter piece of the same glass */
+  --sq-float-hover: rgba(255, 255, 255, .11);
+  --sq-float-edge: rgba(255, 255, 255, .14);
+  --sq-float-top: rgba(255, 255, 255, .22);   /* the light catching its top edge */
+  --sq-float-drop: 0 12px 32px -12px rgba(0, 0, 0, .45);
+  --acc: #f6f7fb;                       /* the one filled button is the site's white ticket */
+  --acc-hover: #ffffff;
+  --acc-press: #dcdde3;
+  --acc-ink: #121214;
+  --sq-notch: 5px;                      /* the bite out of each end of a ticket */
+  --sq-r-ticket: 3px;
+  /* The receipt: the site's cream paper, its ink and its day meaning colours. */
+  --sq-paper: #f3f0e8;
+  --sq-paper-2: #e8e4d9;
+  --sq-paper-3: #ddd8cb;
   --sq-ink: #121214;
   --sq-ink-2: #4f4f57;                  /* 7.6 to 1 on the paper */
   --sq-ink-3: #66666f;                  /* 5.3 to 1 on the paper: captions */
-  --sq-rule: rgba(18, 18, 20, .12);
-  --sq-tooth: 7px;                      /* the torn foot of a receipt */
-  --sq-notch: 5px;                      /* the bite out of each end of a ticket */
-  --sq-display: "Supreme", "Geist", -apple-system, sans-serif;
-
-  --font: "Geist", -apple-system, sans-serif;
-  --font-code: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
-
-  /* The glass steps, now the sky's. */
-  --mat-tint: var(--sq-sky);
-  --mat-tint-solid: var(--sq-sky);
-  --mat-top: #000000;
-  --mat-ink: #f6f7fb;
-  --mat-ink-2: #b9bbc6;                 /* 9.6 to 1 on the sky */
-  --mat-ink-3: #8a8c97;
-  --mat-raised: rgba(255, 255, 255, .05);
-  --mat-raised-hover: rgba(255, 255, 255, .09);
-  --mat-selected: transparent;
-  --mat-overlay: #141418;
-  --mat-edge: rgba(255, 255, 255, .08);
-  --mat-focus: #9cc0ff;
-
-  --bg: var(--sq-sky);
-  --surface-0: var(--sq-sky);
-  --surface-1: #0e0e12;
-  --surface-2: #17171c;
-  --surface-3: #212127;
-  --inset: #0e0e12;
-  --fg: #f6f7fb;
-  --fg-2: #b9bbc6;
-  --fg-3: #8a8c97;
-  --edge: rgba(255, 255, 255, .08);
-  --line: rgba(255, 255, 255, .08);
-  --line-strong: rgba(255, 255, 255, .18);
-  --acc: #f6f7fb;                       /* the one filled button is white, as on the site's night */
-  --acc-hover: #ffffff;
-  --acc-press: #dcdde3;
-  --acc-ink: var(--sq-ink);
-  --acc-text: #9cc0ff;
-  --ok: #6ee7a8;                        /* proven, on the sky */
-  --bad: #ff8f9a;                       /* caught */
-  --amber: #ffc23d;                     /* review */
-  --ring-working: #8ec9ff;
-  /* On the paper of a receipt (the site's day ink and meaning colours). */
-  --sq-paper-3: #ddd8cb;
-  --sq-rule-strong: rgba(18, 18, 20, .24);
   --sq-ink-hover: #2a2a30;
+  --sq-rule: rgba(18, 18, 20, .12);
+  --sq-rule-strong: rgba(18, 18, 20, .24);
   --sq-proven: #0f7a45;
   --sq-caught: #c8102e;
   --sq-review: #8a5a00;
-  --sq-stamp: #c98a00;                  /* the top stamp of a card that needs you */
   --sq-link: #1747c9;                   /* focus and links on paper, 7.4 to 1 */
   --sq-working: #17609f;                /* 5.6 to 1 on the paper (the site's #1f74c4 is 4.2 there) */
-  --sq-tray-edge: rgba(255, 255, 255, .1);
-  --sq-hc-ink-2: #d6d8e0;               /* Increase contrast */
-  --sq-hc-line: rgba(255, 255, 255, .45);
-  --sq-r: 4px;                          /* the site's small corners: a ticket, a field, a slip's top */
+  --sq-tooth: 7px;                      /* the torn foot of a receipt */
   --sq-r-slip: 6px;
-  --sq-r-ticket: 3px;
-  --sq-cell: 24px;                      /* the graph paper */
-  --sq-pixel-1: 16px;                   /* the pixel moment's three squares */
-  --sq-pixel-2: 8px;
-  --sq-pixel-3: 4px;
+  --sq-pixel-2: 8px;                    /* the pixel moment's squares */
   --sq-dur-pixel: var(--dur-4);
   --sq-ease-pixel: steps(3, end);       /* three jumps, never a smooth fade: it reads as pixels */
 }
-@media (prefers-contrast: more) {
-  :root[data-brand="squibby"] { --sq-grid: transparent; --sq-star: transparent; --mat-ink-2: var(--sq-hc-ink-2); --line-strong: var(--sq-hc-line); }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :root[data-brand="squibby"] { --mat-tint: var(--mat-tint-solid); }
 }

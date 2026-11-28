@@ -2,7 +2,7 @@
 // requests they have running, and one small record per request (counts and cost, never text). The in memory store below is for
 // tests and a first run; the real one, on Cloudflare Durable Objects (store-do.ts, M99), implements the same interface and the
 // same tests run against both (test/stores.ts).
-import { budgetCheck, dayKey, monthKey, type Plan, type Spent } from "./plans.ts";
+import { budgetCheck, dayKey, fitHold, MINUTE_MS, monthKey, type Plan, type Spent } from "./plans.ts";
 import type { Usage } from "./usage.ts";
 import { DELETED_PREFIX, deletedLineLive, deletedUntil, mergeDeletedLines, type DeletedLine } from "./deleted.ts";
 
@@ -169,10 +169,13 @@ export type UsageRecord = { userId: string; model: string; usage: Usage; usd: nu
  *  (audit run 2, finding 6): the part of `usd` that must fit under the limits with what is spent and held (the prompt). */
 /** `hash`: the token the request was found by; when given, a start for a token no longer on the owner (signed out, or the
  *  account deleted since it was read) is refused as `gone`. */
-export type StartAsk = { max: number; usd: number; now: number; limits: Plan | null; id: string; need?: number; hash?: string };
+/** S2: with `outUsd` (the answer's price a token) and `maxTokens`, a worst case past what is left is cut to the longest answer
+ *  that fits (at least `minTokens`), and the start says the new max_tokens. S3: `perMinute`, the most starts in any minute. */
+export type StartAsk = { max: number; usd: number; now: number; limits: Plan | null; id: string; need?: number; hash?: string; outUsd?: number; maxTokens?: number; minTokens?: number; perMinute?: number };
 /** Over the limit comes before busy, and either way nothing was taken. `spent` is what the limit was checked against. */
 /** `gone`: the owner holds nobody (its account was deleted after the token was read); the person signs in again. */
-export type Started = { ok: true } | { ok: false; why: "busy" } | { ok: false; why: "gone" } | { ok: false; why: "over"; spent: Spent };
+/** `maxTokens`: only when the answer was cut to fit (S2). `rate`: past `perMinute`, try again in `retryAfterMs` (S3). */
+export type Started = { ok: true; maxTokens?: number } | { ok: false; why: "busy" } | { ok: false; why: "gone" } | { ok: false; why: "over"; spent: Spent } | { ok: false; why: "rate"; retryAfterMs: number };
 /** One step to finish it: let go of its slot and hold and, with `record`, book what it really cost. */
 export type FinishAsk = { id: string; now: number; record?: UsageRecord };
 
@@ -278,6 +281,7 @@ export class MemoryStore implements Store {
   #running = new Map<string, number>();
   #held = new Map<string, number>();
   #started = new Map<string, { userId: string; usd: number }>();
+  #recent = new Map<string, number[]>();
   #suspended = new Set<string>();
   #plans = new Map<string, { plan: OwnerPlan; at?: number }>();
   #emails = new Map<string, string>();
@@ -486,16 +490,22 @@ export class MemoryStore implements Store {
   async start(userId: string, a: StartAsk): Promise<Started> {
     // Audit run 2, finding 4 (re-attack round 2): the token the request was found by must still be this owner's.
     if (a.hash !== undefined && this.#users.get(a.hash)?.id !== userId) return { ok: false, why: "gone" };
+    const recent = (this.#recent.get(userId) ?? []).filter((t) => a.now - t < MINUTE_MS);
+    if (a.perMinute !== undefined && recent.length >= a.perMinute) return { ok: false, why: "rate", retryAfterMs: MINUTE_MS - (a.now - recent[0]) };
+    let fit: { usd: number; maxTokens?: number } = { usd: a.usd };
     if (a.limits) {
       const spent = this.#spentNow(userId, a.now);
-      if (!budgetCheck(a.limits, spent, a.now, a.need ?? 0).ok) return { ok: false, why: "over", spent };
+      const f = budgetCheck(a.limits, spent, a.now, a.need ?? 0).ok ? fitHold(a.limits, spent, a) : null;
+      if (!f) return { ok: false, why: "over", spent };
+      fit = f;
     }
     const n = this.#running.get(userId) ?? 0;
     if (n >= a.max) return { ok: false, why: "busy" };
     this.#running.set(userId, n + 1);
-    if (a.usd > 0) this.#held.set(userId, (this.#held.get(userId) ?? 0) + a.usd);
-    this.#started.set(a.id, { userId, usd: a.usd });
-    return { ok: true };
+    if (a.perMinute !== undefined) this.#recent.set(userId, [...recent, a.now]);
+    if (fit.usd > 0) this.#held.set(userId, (this.#held.get(userId) ?? 0) + fit.usd);
+    this.#started.set(a.id, { userId, usd: fit.usd });
+    return fit.maxTokens !== undefined ? { ok: true, maxTokens: fit.maxTokens } : { ok: true };
   }
   // Audit run 2, finding 4 (re-attack round 2): a request started on this owner books (a delete clears what was started); any
   // other booking lands only on an owner someone is in, never on a deleted one.

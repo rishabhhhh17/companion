@@ -369,7 +369,7 @@ export type Model = {
   /** Return was pressed and the engine has not answered yet (the audit, item 27): the words sent, so Home shows them at once
    *  with Starting, and Flowflow thinks. Cleared once the engine starts the task, or refuses it, or anything else ends it. */
   sending?: { words: string } | null;
-  connected: "unknown" | "api_key" | "plan" | "none";
+  connected: "unknown" | "api_key" | "plan" | "managed" | "none";
   /** What Anthropic said about the key the person just saved (keytest.ts), and when it arrived, so setup shows only the
    *  answer for the key it saved. Null until a saved key was checked. */
   keyTested: { result: "works" | "refused" | "no_connection" | "unknown"; at: number } | null;
@@ -836,7 +836,7 @@ function reduceRest(m: Model, e: Ev): Model {
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
     case "app.stop_everything": return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, costPause: null, signIn: null, toast: null, followUp: "idle", task: m.task }, {}), notice: S.stoppedEverything, error: null, stopped: (m.stopped ?? 0) + 1, toolBusy: null, feed: null, toolAsks: null };
     case "auth.status": {
-      const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
+      const connected = e.method === "api_key" || e.method === "plan" || e.method === "managed" ? e.method : e.method === "none" ? "none" : "unknown";
       // Only this line is the connection's to set or clear: a notice about something else (the engine restarting, say) stays,
       // for the new engine says "none" for a moment before the shell hands over the key.
       const notice = connected === "none" ? (m.notice && m.notice !== S.notConnectedNotice ? m.notice : S.notConnectedNotice) : (m.notice === S.notConnectedNotice ? null : m.notice);

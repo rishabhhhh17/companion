@@ -69,11 +69,13 @@ export function readSettings(env: Record<string, string | undefined>): Settings 
 // For testing, a model set in the settings wins over the one the page asked for (a cheaper one).
 export const pickModel = (requested: string, override?: string): string => (override && override.trim() ? override.trim() : requested);
 
-export type Auth = { method: "api_key" | "plan" | "none"; apiKey?: string };
+export type Auth = { method: "api_key" | "plan" | "managed" | "none"; apiKey?: string };
 export async function currentAuth(s: Settings): Promise<Auth> {
   if (s.route === "plan") return { method: "plan" };
   // On managed usage what the app holds is a Companion sign in token, never an Anthropic key: it is not Claude Code's to use.
-  if (s.route === "managed") return { method: "none" };
+  // F29 (28 Nov 2026): signed in to Squibby (the shell handed a sign in token) reads as "managed", so Home stops saying
+  // fixing is off once the person has signed in. The token itself is never passed on from here.
+  if (s.route === "managed") { const a = await resolveAuth(s.ref); return a.method === "api_key" && MANAGED_TOKEN.test(a.apiKey) ? { method: "managed" } : { method: "none" }; }
   const a = await resolveAuth(s.ref);
   return a.method === "api_key" ? { method: "api_key", apiKey: a.apiKey } : { method: "none" };
 }

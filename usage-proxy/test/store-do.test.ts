@@ -115,15 +115,15 @@ describe("one step at a time, even across server instances", () => {
     const w = twoInstances();
     const t = await newToken();
     await w.stores[0].addUser(t.hash, { id: "u1", plan: "pro", status: "active" });
-    // Room for one worst case (2,000 tokens out on Sonnet) and not two: the first one's hold takes the day over the limit.
+    // Room for one answer cut to fit (S2: 1,500 of the 2,000 tokens out on Sonnet) and not two: the first one's hold takes the rest.
     const worst = costOf("claude-sonnet-5-5", { input_tokens: 0, output_tokens: 2000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 });
-    w.stores[0].setSpent("u1", NOW, { day: PLANS.pro.dailyUsd - worst * 0.5, month: 1 });
+    w.stores[0].setSpent("u1", NOW, { day: PLANS.pro.dailyUsd - worst * 0.75, month: 1 });
     const [a, b] = await Promise.all([w.send(0, t.token), w.send(1, t.token)]);
     expect([a.status, b.status].sort()).toEqual([200, 402]);
     expect(w.forwarded()).toBe(1);
     expect(w.stores[1].inFlight("u1")).toBe(0);
     const booked = w.stores[1].records.reduce((n, r) => n + r.usd, 0);
-    expect((await w.stores[1].spent("u1", NOW)).day).toBeCloseTo(PLANS.pro.dailyUsd - worst * 0.5 + booked, 8);   // no hold left behind
+    expect((await w.stores[1].spent("u1", NOW)).day).toBeCloseTo(PLANS.pro.dailyUsd - worst * 0.75 + booked, 8);   // no hold left behind
   });
   // Audit run 2, finding 6 (lease re-attack): the slot frees itself after the lease, the hold does not. It counts as spent
   // from then on (for that day and month), since the request may have run to its end and been billed.

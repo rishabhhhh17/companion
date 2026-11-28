@@ -117,8 +117,8 @@ describe("finding 6 round 2: end to end, a long stream, a delete, the stream end
     const send = (p: string, init: RequestInit = {}) => handle(new Request(`https://api.example${p}`, init));
     const t = await issueSignInToken(store, OWNER_ID, "free", { email: "pat@example.com", nonceId: crypto.randomUUID(), nonceUntil: T0 + 600_000, now: T0 });
     if (!t.ok) throw new Error("setup");
-    // Just under both Free limits, so the next request is over them only if this spend still counts after coming back.
-    store.setSpent(OWNER_ID, T0, { day: 0.1999, month: 1.9999 });
+    // Just under both Free limits (room for this one request, S2), so the next request is over them only if this spend still counts after coming back.
+    store.setSpent(OWNER_ID, T0, { day: 0.1993, month: 1.9993 });
     const msg = (tok: string) => send("/v1/messages", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${tok}` },
       body: JSON.stringify({ model: "claude-haiku-4-5", max_tokens: 100, stream: true, messages: [{ role: "user", content: "hi" }] }) });
     const del = () => send(ACCOUNT_DELETE_PATH, { method: "POST", headers: { authorization: `Bearer ${t.token}` }, body: JSON.stringify({ confirm: true }) });
@@ -135,8 +135,8 @@ describe("finding 6 round 2: end to end, a long stream, a delete, the stream end
     expect(si.status).toBe(200);
     const tok = ((await si.json()) as { token: string }).token;
     const spent = await store.spent(OWNER_ID, clock);
-    expect(spent.day).toBeGreaterThan(0.1999);
-    expect(spent.month).toBeGreaterThan(1.9999);
+    expect(spent.day).toBeGreaterThan(0.1993);
+    expect(spent.month).toBeGreaterThan(1.9993);
     const before = sent;
     const r2 = await msg(tok);
     expect(r2.status).toBe(402);

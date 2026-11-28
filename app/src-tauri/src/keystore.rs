@@ -74,6 +74,9 @@ pub fn gone(service: &str, account: &str) -> bool { is_gone(presence(service, ac
 #[cfg(target_os = "macos")]
 pub fn delete_item(service: &str, account: &str) -> bool { security_framework::passwords::delete_generic_password(service, account).is_ok() }
 
+/// Removes the Squibby sign in token (sign out, Delete everything). True when it is gone.
+pub fn delete_token() -> bool { delete_item(&service(), ACCOUNT_TOKEN) || gone(&service(), ACCOUNT_TOKEN) }
+
 /// The saved key, or None. The Keychain item is made by this app, so only this app is trusted to read it: any other
 /// program that asks gets the Mac's own "allow?" dialog. (An item an older version saved through Apple's `security`
 /// tool is moved by `move_old_item`.)

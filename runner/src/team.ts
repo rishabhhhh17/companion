@@ -21,9 +21,11 @@ const line = (s: string, max = 160) => clip(redact(String(s ?? "")).replace(MAC_
 
 /** The plain summary a team sees for one receipt. Never code, file contents, a folder of this Mac, keys or the conversation. */
 export function receiptSummary(r: { project: string; tool: string; label: string; changed: number; proof: string; ended: string; undone: boolean;
-  checks: { label: string; status: string }[]; flags: string[]; asked?: { kept: number; missing: number } }): TeamReceipt {
+  checks: { label: string; status: string }[]; flags: string[]; asked?: { kept: number; missing: number }; still?: number; unchecked?: boolean }): TeamReceipt {
   const missing = r.asked?.missing ?? 0;
-  const verdict: Verdict = r.undone ? "put_back" : r.ended === "needs_you" ? "needs_you" : r.ended === "done" && r.proof === "passed" && missing === 0 ? "works" : "not_done";
+  // M104: a Fix it whose recheck still found problems, or could not recheck, is not "works".
+  const fixed = !r.still && !r.unchecked;
+  const verdict: Verdict = r.undone ? "put_back" : r.ended === "needs_you" ? "needs_you" : r.ended === "done" && r.proof === "passed" && missing === 0 && fixed ? "works" : "not_done";
   const lines = [line(r.label), r.changed === 1 ? "1 file changed" : `${r.changed} files changed`, ...r.flags.slice(0, 2).map((f) => line(f, 200))].filter(Boolean).slice(0, 6);
   const checks = r.checks.slice(0, 6).map((c) => ({ label: line(c.label, 80), result: (c.status === "passed" || c.status === "failed" ? c.status : "skipped") as "passed" | "failed" | "skipped" })).filter((c) => c.label);
   return { project: line(basename(r.project.replace(/\/+$/, "")), 80) || "project", tool: line(r.tool, 40) || "ai", verdict, lines, checks, flags: r.flags.slice(0, 2).map((f) => line(f, 200)).filter(Boolean),

@@ -181,8 +181,8 @@ export function cutNoticeLine(read: (key: string) => unknown = setting): string 
  *  an account already kept always shows, so it can be seen and disconnected (rule 6): it keeps working until then. */
 export function googleParts(accounts: readonly { signin?: boolean; apps: readonly string[] }[], connecting: boolean): { section: boolean; signIn: boolean; connect: boolean } {
   if (connecting) return { section: true, signIn: true, connect: true };
-  const signIn = accounts.some((a) => a.signin);
-  return { section: signIn || accounts.some((a) => a.apps.length > 0), signIn, connect: false };
+  // F29 (28 Nov 2026): Sign in with Google is how Squibby's AI starts, so it always shows; connecting apps stays with routines.
+  return { section: true, signIn: true, connect: false };
 }
 /** What Reset to the usual keys says, from the app's answer: each job that kept its keys because another app has its usual ones. */
 export function resetLine(v: unknown): string {

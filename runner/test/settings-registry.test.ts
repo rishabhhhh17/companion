@@ -120,7 +120,7 @@ describe("the shipped list of settings", () => {
       // M71: the style is retired (hidden, still loads); the Visor is the usual character.
       "look.style": "instrument", "look.character": "visor",
       // GLASS (19 Nov 2026, the founder picked the liquid glass look): Glass is the usual material; the look from before stays a choice.
-      "look.material": "glass",
+      "look.material": "squibby",   // M125, 28 Nov 2026: the website's touches on Liquid Glass are the usual
       // M66: a light tap on the trackpad as the notch opens under your own click or pointing. Off, like sounds (rule 16).
       "island.haptics": false,
       // M96: the small chat out of the notch first, on (the founder approved the mock, 15 Nov 2026).
@@ -382,7 +382,7 @@ describe("the shipped list of settings", () => {
     expect(validate(defOf("look.colour")!, "vivid").ok).toBe(true);
     expect(validate(defOf("look.colour")!, "calm").ok).toBe(true);
     // GLASS: the material, Glass (the usual) or Before (the black look with coloured tiles), for the pages only, live.
-    expect(defOf("look.material")).toMatchObject({ section: "look", kind: "choice", default: "glass", options: ["glass", "classic"], scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(defOf("look.material")).toMatchObject({ section: "look", kind: "choice", default: "squibby", options: ["squibby", "glass", "classic"], scope: "app", applies: ["pages"], store: "settings", live: true });
     expect(defOf("look.material")!.hidden).toBeUndefined();
     // The retired look keys stay, hidden, so every stored value still loads; no page offers them.
     for (const k of ["look.theme", "look.water", "look.gloss", "look.light", "look.corners", "look.icons", "look.stamps", "look.style", "look.density"]) expect(defOf(k)!.hidden, k).toBe(true);

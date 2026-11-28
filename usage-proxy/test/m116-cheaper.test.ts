@@ -113,11 +113,11 @@ describe("the words never tell anyone to add their own Claude key (F29)", () => 
       }
     });
     test("two tokens of one owner at once are metered against the one limit, and past the running cap the words say the other Mac", async () => {
-      // Room for one worst case (2,000 tokens out on Sonnet) and not two.
+      // Room for one answer cut to fit (S2: 1,500 of the 2,000 tokens out on Sonnet) and not two.
       const worst = costOf("claude-sonnet-5-5", { input_tokens: 0, output_tokens: 2000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 });
       const t = rig(kind.make(), { plan: "pro", upstream: async () => { await new Promise((r) => setTimeout(r, 10)); return json({ usage: { input_tokens: 1000, output_tokens: 500 } }); } });
       const [a, b] = [await t.ready, await t.addToken()];
-      t.store.setSpent("u1", NOW, { day: pro.dailyUsd - worst * 0.5, month: 1 });
+      t.store.setSpent("u1", NOW, { day: pro.dailyUsd - worst * 0.75, month: 1 });
       const rs = await Promise.all([t.send({ token: a }), t.send({ token: b })]);
       expect(rs.map((r) => r.status).sort()).toEqual([200, 402]);
       expect(t.forwarded()).toBe(1);

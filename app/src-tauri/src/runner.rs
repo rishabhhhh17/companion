@@ -189,6 +189,15 @@ pub fn engine_command(loc: &Locations, cleared: Option<(PathBuf, String)>) -> Co
     use std::os::unix::process::CommandExt;
     // Its own process group, so that when the engine has to be ended by force, what it started goes with it.
     let mut c = Command::new(&loc.bun);
+    // A release starts the engine from a clean environment: only these, and a fixed PATH (the runner adds the usual tool
+    // folders itself, runner/src/env.ts). Anything planted for the session (launchctl setenv) never reaches it.
+    if !loc.developer {
+        c.env_clear().env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
+        // The shell, locale, time zone and ssh agent (launchd gives it to apps opened from Finder) are what a person's own
+        // commands need; a proxy or certificate setting is never passed on (A6).
+        for k in ["HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "TZ", "SSH_AUTH_SOCK", "__CF_USER_TEXT_ENCODING"] { if let Some(v) = std::env::var_os(k) { c.env(k, v); } }
+        for (k, v) in std::env::vars_os() { if k.to_string_lossy().starts_with("LC_") { c.env(k, v); } }
+    }
     c.arg(&loc.runner).process_group(0).env("COMPANION_DATA", &loc.data).envs(&loc.env).env("COMPANION_KEY_SOURCE", "app");
     match claude_env(loc.developer, cleared) {
         ClaudeEnv::Set(p, id) => { c.env("COMPANION_CLAUDE_BIN", p).env("COMPANION_CLAUDE_ID", id); }
@@ -1532,13 +1541,34 @@ mod tests {
             engine_command(&loc, cleared).get_envs().map(|(k, v)| (k.to_string_lossy().into_owned(), v.map(|v| v.to_string_lossy().into_owned()))).collect()
         };
         let r = env_of(false, None);
-        assert_eq!(r.get("COMPANION_CLAUDE_BIN"), Some(&None), "removed, not inherited: {r:?}");
-        assert_eq!(r.get("COMPANION_CLAUDE_ID"), Some(&None));
+        // The cleared environment already drops an inherited one (the env_remove is then a no op get_envs does not list).
+        assert!(!matches!(r.get("COMPANION_CLAUDE_BIN"), Some(Some(_))), "removed, not inherited: {r:?}");
+        assert!(!matches!(r.get("COMPANION_CLAUDE_ID"), Some(Some(_))));
         assert!(!env_of(true, None).contains_key("COMPANION_CLAUDE_BIN"), "a development build leaves the developer's own");
         let s = env_of(false, checked);
         assert_eq!(s.get("COMPANION_CLAUDE_BIN"), Some(&Some("/data/claude/1/claude".to_string())));
         assert_eq!(s.get("COMPANION_CLAUDE_ID"), Some(&Some("1:2:3".to_string())));
         assert_eq!(s.get("COMPANION_KEY_SOURCE"), Some(&Some("app".to_string())));
+        // A release never passes on what the app inherited (launchctl setenv could plant COMPANION_ENGINE, a proxy or
+        // NODE_TLS_REJECT_UNAUTHORIZED): /usr/bin/env stands in for bun and prints what the engine would get.
+        std::env::set_var("COMPANION_A6_PLANTED", "scripted");
+        let printed = |developer: bool| {
+            let loc = Locations { bun: "/usr/bin/env".into(), runner: "/usr/bin/env".into(), data: "/d".into(), env: release_env(), claude: None, developer };
+            String::from_utf8(engine_command(&loc, None).output().unwrap().stdout).unwrap()
+        };
+        let rel = printed(false);
+        assert!(!rel.contains("COMPANION_A6_PLANTED"), "{rel}");
+        assert!(rel.lines().any(|l| l == "PATH=/usr/bin:/bin:/usr/sbin:/sbin") && rel.contains("COMPANION_ROUTE=managed") && rel.contains("HOME="), "{rel}");
+        assert!(printed(true).contains("COMPANION_A6_PLANTED=scripted"), "a development build keeps the developer's environment");
+    }
+    #[test]
+    fn a_release_still_passes_the_shell_locale_and_ssh_agent() {
+        // A6 follow up: the cleared environment keeps what a person's own commands need (git push over SSH, the shell,
+        // the locale and time zone), never a proxy or certificate setting someone planted.
+        for (k, v) in [("SHELL", "/bin/zsh"), ("LOGNAME", "me"), ("LC_ALL", "en_US.UTF-8"), ("TZ", "Asia/Kolkata"), ("SSH_AUTH_SOCK", "/tmp/agent.sock"), ("__CF_USER_TEXT_ENCODING", "0x1F5:0:0")] { std::env::set_var(k, v); }
+        let loc = Locations { bun: "/usr/bin/env".into(), runner: "/usr/bin/env".into(), data: "/d".into(), env: BTreeMap::new(), claude: None, developer: false };
+        let out = String::from_utf8(engine_command(&loc, None).output().unwrap().stdout).unwrap();
+        for l in ["SHELL=/bin/zsh", "LOGNAME=me", "LC_ALL=en_US.UTF-8", "TZ=Asia/Kolkata", "SSH_AUTH_SOCK=/tmp/agent.sock", "__CF_USER_TEXT_ENCODING=0x1F5:0:0"] { assert!(out.lines().any(|x| x == l), "{l} missing: {out}"); }
     }
     #[test]
     fn locations_carry_the_safe_settings() {

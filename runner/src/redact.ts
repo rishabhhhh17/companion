@@ -15,6 +15,7 @@ const PATTERNS: RegExp[] = [
   /rk_(?:live|test)_[A-Za-z0-9]{10,}/g,                    // Stripe restricted keys
   /\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/g,          // SendGrid keys
   /\bsb_secret_[A-Za-z0-9_-]{16,}/g,                       // Supabase secret keys
+  /\bcmp_[A-Za-z0-9_-]{20,}/g,                             // Squibby's own sign in tokens
   /\bre_(?=[A-Za-z0-9_]*[0-9])(?=[A-Za-z0-9_]*[A-Z])[A-Za-z0-9_]{20,}/g,   // Resend keys (a digit and a capital, so names are left alone)
   /\b[a-z][a-z0-9+.-]{0,30}:\/\/[^\s:@\/]+:[^\s@\/]+@/gi,         // passwords inside addresses (postgres://user:pass@host)
 ];

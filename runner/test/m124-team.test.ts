@@ -97,4 +97,11 @@ describe("the summary a team sees", () => {
     expect(receiptSummary({ ...base, proof: "passed", ended: "done", undone: true }).verdict).toBe("put_back");
     expect(receiptSummary({ ...base, proof: "passed", ended: "done", undone: false, asked: { kept: 1, missing: 1 } }).verdict).toBe("not_done");
   });
+  // M125 audit E11: a Fix it whose recheck still found the problem, or could not recheck, never tells the team "works".
+  test("a fix the recheck did not clear is not done", () => {
+    const base = { project: "/p/shop", tool: "squibby", label: "x", changed: 1, checks: [], flags: [], proof: "passed", ended: "done", undone: false };
+    expect(receiptSummary({ ...base, still: 2 }).verdict).toBe("not_done");
+    expect(receiptSummary({ ...base, unchecked: true }).verdict).toBe("not_done");
+    expect(receiptSummary({ ...base, still: 0, unchecked: false }).verdict).toBe("works");
+  });
 });

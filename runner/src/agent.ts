@@ -53,7 +53,7 @@ import { ciEvidence, type CiReader } from "./connections.ts";
 import { whereWasI, type ReviewState, type WatchLite } from "./wherewasi.ts";
 import type { CheckResult } from "./watchsite.ts";
 import { plainFailLine } from "./proof/failingtest.ts";
-import { nestedSandbox, SANDBOXED_CHECKS } from "./proof/box.ts";
+import { nestedSandbox, real as projectKey, SANDBOXED_CHECKS } from "./proof/box.ts";
 import { browserCheck, SIGN_IN_GAP, type SignInWindow } from "./proof/browser.ts";
 import { visibleWindow } from "./proof/browsersetup.ts";
 import { nextPauseAt, pauseAtUsd, usualTaskUsd, type CostChoice } from "./costpause.ts";
@@ -623,7 +623,7 @@ export class AgentRunner {
     return this.checkLive(project, signal, o);
   }
   private async checkLive(project: string, signal: AbortSignal, review: { asked: boolean; ask?: string; changed?: string[] } | null): Promise<CheckResult | { skip: string } | null> {
-    const key = resolve(project);
+    const key = projectKey(project);
     if (this.finding.has(project) || this.workBlocks(project) || this.watchRuns.has(key)) return { skip: `${PRODUCT} is working on this project right now.` };
     const run = { abort: new AbortController(), yielded: false };
     const stop = () => run.abort.abort();
@@ -1225,12 +1225,12 @@ export class AgentRunner {
   /** What the person said yes to running in this project's checks (proof/approvedruns.ts), kept beside its snapshots,
    *  outside the project. Every check is given it, so a no holds until the person says yes. */
   private approvals(project: string): RunApprovals {
-    const id = createHash("sha256").update(resolve(project)).digest("hex").slice(0, 16);
+    const id = createHash("sha256").update(projectKey(project)).digest("hex").slice(0, 16);
     return fileApprovals(join(this.o.shadowRoot, `${id}.approved-runs.json`));
   }
 
   private store(project: string): CheckpointStore {
-    const id = createHash("sha256").update(resolve(project)).digest("hex").slice(0, 16);
+    const id = createHash("sha256").update(projectKey(project)).digest("hex").slice(0, 16);
     const s = CheckpointStore.shared(join(this.o.shadowRoot, `${id}.git`), project);
     s.gitTimeoutMs = SNAPSHOT_LIMIT_MS * this.slow();   // "my internet is slow" doubles it
     // M74: Safety copies' size and age (undo.keepSize, undo.keepAge), read each time the store is used, so a change counts at
@@ -1270,7 +1270,7 @@ export class AgentRunner {
   /** M106: a background job's folder is gone: its shadow store (a full copy of it) and its yeses to scripts go too. Only a
    *  folder that no longer exists; the open project's own store is never removed here. */
   async dropCheckpoints(dir: string): Promise<void> {
-    const p = resolve(dir);
+    const p = projectKey(dir);
     if (existsSync(p)) return;
     const id = createHash("sha256").update(p).digest("hex").slice(0, 16);
     const shadow = join(this.o.shadowRoot, `${id}.git`);
@@ -1285,7 +1285,7 @@ export class AgentRunner {
   projectOf(agent: string): string | undefined { return this.plans.get(agent)?.project ?? this.lastTask.get(agent)?.project; }
   /** Whether any work of the engine is on this folder now, a watch's own check included. Read only: unlike projectInUse it
    *  never ends a watch's check. The review of changes waits while it is true. */
-  busyIn(project: string): boolean { return this.workBlocks(project) || this.watchRuns.has(resolve(project)); }
+  busyIn(project: string): boolean { return this.workBlocks(project) || this.watchRuns.has(projectKey(project)); }
 
   /** Is anything working on this project folder right now (a task, a check, an install, a copy, a ship step)? */
   private projectInUse(project: string): boolean {
@@ -1294,18 +1294,18 @@ export class AgentRunner {
   }
   /** Is a task or other work of the person's on this folder? A watch's own check does not count. */
   private workBlocks(project: string): boolean {
-    return this.projectBusy.has(resolve(project)) || this.otherWorkOn(project);
+    return this.projectBusy.has(projectKey(project)) || this.otherWorkOn(project);
   }
   /** The person's own work on a project ends a watch's check of it, so a slow check never makes them wait or press Stop. */
   private yieldWatch(project: string): void {
-    const w = this.watchRuns.get(resolve(project));
+    const w = this.watchRuns.get(projectKey(project));
     if (w) { w.yielded = true; w.abort.abort(); }
   }
   private watchRuns = new Map<string, { abort: AbortController; yielded: boolean }>();   // project folder -> the watch's check running in it
   /** Anything but a task: a check or a search (Point at the problem, Find which task broke it), an install, a copy, a ship step. */
   private otherWorkOn(project: string): boolean {
-    const key = resolve(project);
-    return this.shipping.has(key) || [...this.installing.keys()].some((k) => resolve(k) === key) || [...this.finding.keys()].some((k) => resolve(k) === key);
+    const key = projectKey(project);
+    return this.shipping.has(key) || [...this.installing.keys()].some((k) => projectKey(k) === key) || [...this.finding.keys()].some((k) => projectKey(k) === key);
   }
   private projectBusy = new Map<string, string>();   // project folder -> the agent working on it
   private openTasks = new Map<string, number>();     // agent -> its unfinished row in the task log
@@ -1328,7 +1328,7 @@ export class AgentRunner {
     return r;
   }
   private async runOnce(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: Stuck }> {
-    const key = resolve(cmd.project);
+    const key = projectKey(cmd.project);
     this.modes.set(cmd.agent, cmd.mode);
     // What the request carries (files into the ask box) is checked again here, whatever the page checked: anything off
     // refuses the whole request before anything is snapshotted or started.
@@ -1758,7 +1758,7 @@ export class AgentRunner {
     // M124: the team's plain summary, only when sharing is on (team.ts), never off the record and never for a practice.
     if (this.o.teamShare && !offRecord && !cmd.practice && (status === "done" || status === "needs_you" || proof === "failed")) {
       try { this.o.teamShare(receiptSummary({ project: cmd.project, tool: "squibby", label: lbl, changed: changed.length, proof, ended: status === "needs_you" ? "needs_you" : status === "done" ? "done" : "failed", undone: false,
-        checks: lastSteps.map((x) => ({ label: x.label, status: x.status })), flags: flags.map((f) => f.say),
+        checks: lastSteps.map((x) => ({ label: x.label, status: x.status })), flags: flags.map((f) => f.say), still, unchecked,
         ...(promised.some((o) => o.result !== "could_not_check") ? { asked: { kept: promised.filter((o) => o.result === "kept").length, missing: promised.filter((o) => o.result === "not_kept").length } } : {}) })); } catch { /* sharing never stops a task */ }
     }
     // A proven fix (M45: it ended done and its checks passed) counts once toward Free's month (plan.ts). Nothing else does,
@@ -2072,7 +2072,7 @@ export class AgentRunner {
    *  undo point. */
   private async sinceProven(project: string): Promise<"same" | "changed" | undefined> {
     const rec = this.proven(project);
-    if (!rec || rec.verdict !== "passed" || this.projectBusy.has(resolve(project))) return undefined;
+    if (!rec || rec.verdict !== "passed" || this.projectBusy.has(projectKey(project))) return undefined;
     try {
       const changed = (await this.store(project).changedSinceNow(rec.snapshot)).filter((c) => !c.file.startsWith(".vercel/") && !c.file.startsWith(".companion/"));
       return changed.length > 0 ? "changed" : "same";
@@ -2111,7 +2111,7 @@ export class AgentRunner {
 
   private async shipCheck(cmd: Extract<Command, { type: "ship.check" }>): Promise<void> {
     // Running the project's checks while a task is still writing to it would test a half-finished project.
-    if (cmd.runChecks && this.projectBusy.has(resolve(cmd.project))) { this.fail("A task is still working on this project. Wait for it to finish, or press Stop, then check it."); return; }
+    if (cmd.runChecks && this.projectBusy.has(projectKey(cmd.project))) { this.fail("A task is still working on this project. Wait for it to finish, or press Stop, then check it."); return; }
     const { report } = await this.gateReport(cmd.project, !!cmd.runChecks, cmd.confirm);
     this.emit({ type: "ship.gates", project: cmd.project, ...report } as never);
   }
@@ -2132,16 +2132,16 @@ export class AgentRunner {
   }
   private shipTools(project: string): Deployer | null {
     if (!this.o.deployer) { this.shipSay(project, "failed", "Putting a site on the internet is not set up on this Mac yet."); return null; }
-    if (this.shipping.has(resolve(project))) { this.shipSay(project, "refused", "Another ship step is already running. Wait for it to finish."); return null; }
-    if (this.projectBusy.has(resolve(project))) { this.shipSay(project, "refused", "A task is still working on this project. Wait for it to finish, or press Stop, then put it online."); return null; }
+    if (this.shipping.has(projectKey(project))) { this.shipSay(project, "refused", "Another ship step is already running. Wait for it to finish."); return null; }
+    if (this.projectBusy.has(projectKey(project))) { this.shipSay(project, "refused", "A task is still working on this project. Wait for it to finish, or press Stop, then put it online."); return null; }
     return this.o.deployer;
   }
 
   private async shipPreview(cmd: Extract<Command, { type: "ship.preview" }>): Promise<void> {
     const d = this.shipTools(cmd.project);
     if (!d) return;
-    const key = resolve(cmd.project), ac = new AbortController();
-    this.shipping.add(key);
+    const key = resolve(cmd.project), lock = projectKey(cmd.project), ac = new AbortController();
+    this.shipping.add(lock);
     const sk = this.openShipSession(ac);
     try {
       this.previews.delete(key);
@@ -2177,14 +2177,14 @@ export class AgentRunner {
       this.shipSay(cmd.project, "ready", "The preview works. Making it live puts it on the internet for everyone.", { previewUrl: r.url, canGoLive: true });
     } catch (e) {
       this.shipSay(cmd.project, "failed", `Something went wrong while putting up the preview. Nothing went live.`);
-    } finally { this.shipping.delete(key); this.sessions.delete(sk); }
+    } finally { this.shipping.delete(lock); this.sessions.delete(sk); }
   }
 
   private async shipLive(cmd: Extract<Command, { type: "ship.live" }>): Promise<void> {
     const d = this.shipTools(cmd.project);
     if (!d) return;
-    const key = resolve(cmd.project), ac = new AbortController();
-    this.shipping.add(key);
+    const key = resolve(cmd.project), lock = projectKey(cmd.project), ac = new AbortController();
+    this.shipping.add(lock);
     const sk = this.openShipSession(ac);
     try {
       if ((cmd as { confirm?: unknown }).confirm !== true) { this.shipSay(cmd.project, "refused", "Going live needs your yes."); return; }
@@ -2214,13 +2214,13 @@ export class AgentRunner {
       if (this.o.pictures) this.track(this.shareCard(cmd.project, r.productionUrl ?? p.url));
     } catch (e) {
       this.shipSay(cmd.project, "failed", `Something went wrong inside ${PRODUCT}. Try again.`);
-    } finally { this.shipping.delete(key); this.sessions.delete(sk); }
+    } finally { this.shipping.delete(lock); this.sessions.delete(sk); }
   }
 
   private async shipRollback(cmd: Extract<Command, { type: "ship.rollback" }>): Promise<void> {
     const d = this.shipTools(cmd.project);
     if (!d) return;
-    const key = resolve(cmd.project), ac = new AbortController();
+    const key = projectKey(cmd.project), ac = new AbortController();
     this.shipping.add(key);
     const sk = this.openShipSession(ac);
     try {
@@ -2243,10 +2243,10 @@ export class AgentRunner {
   private async shipSignIn(cmd: Extract<Command, { type: "ship.signIn" }>): Promise<void> {
     // Stop signing in (the review of 5 Nov): ends the login that is still waiting, so the project is free again. Nothing
     // waiting, nothing happens.
-    if (cmd.stop === true) { this.signIns.get(resolve(cmd.project))?.abort(); return; }
+    if (cmd.stop === true) { this.signIns.get(projectKey(cmd.project))?.abort(); return; }
     const d = this.shipTools(cmd.project);
     if (!d) return;
-    const key = resolve(cmd.project), ac = new AbortController();
+    const key = projectKey(cmd.project), ac = new AbortController();
     this.shipping.add(key);
     this.signIns.set(key, ac);
     const sk = this.openShipSession(ac);
@@ -2313,7 +2313,7 @@ export class AgentRunner {
     const offer = this.teachOffers.get(key);
     if (!offer || offer.checkpoint !== cmd.checkpoint) { say(false, { reason: "That fix is not the latest one any more, so there is nothing to try." }); return; }
     const { first, second } = offer.repeat;
-    this.projectBusy.set(key, "teach");   // nothing else starts on this project while its file is rewritten
+    this.projectBusy.set(projectKey(cmd.project), "teach");   // nothing else starts on this project while its file is rewritten
     try {
       const abs = this.placeFile(cmd.project, second.file);
       const store = this.store(cmd.project);
@@ -2330,7 +2330,7 @@ export class AgentRunner {
       say(true, { target: placeOf(second, "before"), example: { file: first.file, line: placeOf(first, "after").line, was: shown(first.before), now: shown(first.after) }, change: { was: offer.repeat.was, now: offer.repeat.now }, restore: restore.id });
     } catch (e) {
       say(false, { reason: `${PRODUCT} could not set that up. Nothing was changed.` });
-    } finally { if (this.projectBusy.get(key) === "teach") this.projectBusy.delete(key); }
+    } finally { if (this.projectBusy.get(projectKey(cmd.project)) === "teach") this.projectBusy.delete(projectKey(cmd.project)); }
   }
 
   // Check my change: the project's own checks (the proof ladder, no install, no Claude) on the project as the person left it,

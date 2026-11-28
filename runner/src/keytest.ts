@@ -7,6 +7,7 @@ export type KeyTest = "works" | "refused" | "no_connection" | "unknown";
 
 export async function testKey(key: string, fetchFn: typeof fetch = fetch, timeoutMs = 8_000): Promise<KeyTest> {
   if (!key) return "unknown";
+  if (/^\s*cmp_/.test(key)) return "refused";   // a Squibby sign in token, never a Claude key: never sent to Anthropic
   const stop = new AbortController();
   const timer = setTimeout(() => stop.abort(), timeoutMs);
   try {

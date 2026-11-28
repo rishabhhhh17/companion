@@ -180,7 +180,7 @@ describe("one ask field, and the main button does what the existing paths do", (
   test("the ask field keeps its id and its keys; its placeholder is the spec's; Start is a quiet drawing, never a second silver", () => {
     // M69 step 2: while the review card leads Now, the box asks about that change (spec 3.3).
     expect(card).toContain("placeholder={cardLeads ? S.homeNow.askAbout : S.home.ask} aria-label={cardLeads ? S.homeNow.askAbout : S.home.ask}");
-    expect(S.home.ask).toBe("What are you stuck on?");
+    expect(S.home.ask).toBe("Ask Squibby to check, fix or explain something");
     expect(card).toContain('<Button kind="icon" className="send" label={S.look.send} title={sendWhy ?? S.look.send} disabled={working || !!sendWhy} onClick={submit}>');
     expect(card).toMatch(/<textarea ref=\{box\} id=\{askId\}/);
   });

@@ -217,7 +217,7 @@ describe("money", () => {
   // Must fix 10: a cancelled stream booked its first event only (input, no output), so three cancelled streams cost almost
   // nothing and the budget never tripped. An incomplete stream is now booked as if it had used its whole max_tokens, and
   // past the daily limit the next request is refused.
-  test("a stream cancelled mid way is booked as its full output, and the day's limit then stops the next request", async () => {
+  test("a stream cancelled mid way is booked as its full output (cut to what fits, S2), and the day's limit then stops the next request", async () => {
     const cut = () => new Response(new ReadableStream({ async start(c) { c.enqueue(enc.encode(STREAM.split("event: content_block_delta")[0])); await new Promise((r) => setTimeout(r, 50)); try { c.enqueue(enc.encode("more")); c.close(); } catch { /* cancelled */ } } }), { headers: { "content-type": "text/event-stream" } });
     const t = rig({ plan: "free", upstream: cut });
     const body = { model: "claude-sonnet-5-5", max_tokens: 64_000, stream: true, messages: [] };
@@ -231,8 +231,12 @@ describe("money", () => {
       await new Promise((x) => setTimeout(x, 20));
     }
     expect(t.store.records[0].complete).toBe(false);
-    expect(t.store.records[0].usd).toBeCloseTo(full, 8);
-    expect(sent).toBeLessThanOrEqual(Math.ceil(PLANS.free.dailyUsd / full) + 1);
+    // S2: 64k tokens on Sonnet is past Free's day, so max_tokens was cut to what fits, and that whole answer is booked.
+    expect(full).toBeGreaterThan(PLANS.free.dailyUsd);
+    // Past the day only by the prompt the reply reported, which is larger than this tiny body (the fixture's numbers).
+    const prompt = costOf("claude-sonnet-5-5", { input_tokens: 2000, output_tokens: 0, cache_read_input_tokens: 8000, cache_creation_input_tokens: 0, web_search_requests: 0 });
+    expect(t.store.records[0].usage.output_tokens).toBeLessThan(64_000);
+    expect(t.store.records.reduce((n, r) => n + r.usd, 0)).toBeLessThanOrEqual(PLANS.free.dailyUsd + prompt + 1e-9);
     expect(sent).toBeLessThan(10);
   });
   // Review of M56 (a): every request already running holds its worst case (max_tokens as output) until it ends, so many
@@ -240,7 +244,8 @@ describe("money", () => {
   test("requests opened at once each hold their worst case, so only the first passes near the day's limit", async () => {
     let open: ((v?: unknown) => void) | undefined; const gate = new Promise((r) => { open = r; });
     const t = rig({ plan: "free", maxInFlight: 8, upstream: async () => { await gate; return sseResponse(STREAM); } });
-    t.store.setSpent("u1", NOW, { day: PLANS.free.dailyUsd - 0.01, month: 0.5 });
+    // Room for one short answer (S2: cut to about 2,500 tokens), not two.
+    t.store.setSpent("u1", NOW, { day: PLANS.free.dailyUsd - 0.025, month: 0.5 });
     const body = { model: "claude-sonnet-5-5", max_tokens: 64_000, stream: true, messages: [] };
     const pending = Array.from({ length: 6 }, () => t.send({ body }));
     await new Promise((x) => setTimeout(x, 20));

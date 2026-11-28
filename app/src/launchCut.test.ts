@@ -164,10 +164,11 @@ describe("an install from before the cut (settings.rs launch_cut)", () => {
     expect(page).toContain('onClick={() => void changeSetting("groups.cutNotice", [])}>{S.cutNoticeOk}</Button>');
   });
   test("a Google account already connected stays in Settings to disconnect, with watch routines off (rule 6)", () => {
+    // F29 (28 Nov 2026): Sign in with Google starts Squibby's AI, so it always shows; a connected account stays to disconnect.
     const acct = { signin: false, apps: ["gmail"] };
-    expect(googleParts([acct], false)).toEqual({ section: true, signIn: false, connect: false });
+    expect(googleParts([acct], false)).toEqual({ section: true, signIn: true, connect: false });
     expect(googleParts([{ signin: true, apps: [] }], false)).toEqual({ section: true, signIn: true, connect: false });
-    expect(googleParts([], false).section).toBe(false);
+    expect(googleParts([], false)).toEqual({ section: true, signIn: true, connect: false });
     expect(googleParts([], true)).toEqual({ section: true, signIn: true, connect: true });
     const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
     expect(page).toContain('case "google": return placeShown("google") ? <GoogleSection connecting={setting("watch.on") === true} /> : null;');

@@ -19,6 +19,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { cachePaths, ownDataPaths, sensitivePaths } from "../sandbox.ts";
 import { PRODUCT } from "../names.ts";
+import { PROTECTED, RUNS_ON_OPEN_DIRS, RUNS_ON_OPEN_FILES } from "../safety.ts";
 
 export const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 /** "local": only this Mac's own addresses. "open": the internet too (an install, a build allowed to download). */
@@ -27,8 +28,8 @@ export type Box = { project: string; net: Net };
 
 // Inside the project, never written by a check: git's folder (rule 10), Claude's and Companion's own folders (settings,
 // hooks, commands), editor settings that run code when the folder is opened, the MCP servers file and git's submodules file.
-const KEPT_DIRS = [".git", ".claude", ".companion", ".vscode", ".idea"];
-const KEPT_FILES = [".mcp.json", ".gitmodules"];
+const KEPT_DIRS = [...PROTECTED, ...RUNS_ON_OPEN_DIRS];
+const KEPT_FILES = [...RUNS_ON_OPEN_FILES, ".gitmodules"];
 
 // Two folders of this Mac's own per person folders (not the home folder) that Apple's build tools cannot work without, and
 // only those, never the other programs' caches and temporary files beside them: Clang's and Swift's shared module cache (a

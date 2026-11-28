@@ -84,7 +84,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   // The keys every job uses now (the person may have picked others, or another app may hold the usual ones).
   const keys = useKeys();
   void usage; void keyTested;
-  const ok = connected === "api_key" || connected === "plan";
+  const ok = connected === "api_key" || connected === "plan" || connected === "managed";
   // Which way the last move went, so the next screen slides in from the right going on and from the left going back.
   const [dir, setDir] = useState<"on" | "back">("on");
   // Anthropic's Claude (M22): asked about as the first run opens, and fetched in the background at once if it is missing, so

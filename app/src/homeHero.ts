@@ -436,15 +436,17 @@ export const askHintNow = (hint: string | null, busy: boolean): string | null =>
 
 /** What stops any work right now (item 12): no Claude key or plan, the engine stopped, or Anthropic's Claude missing or
  *  being fetched. Unknown (the engine has not said yet) blocks nothing. claude: claude_status's state, null until known. */
-export type Blocker = "key" | "engine" | "claude" | "claudeGetting" | "starting";
+export type Blocker = "key" | "signIn" | "engine" | "claude" | "claudeGetting" | "starting";
 /** `starting` (feel round 2): the engine has not said hello a little while after the page started (card.tsx waits
  *  HELLO_GRACE_MS first, so a normal start never flashes it). */
-export function blockerOf(o: { connected: Model["connected"] | string; runnerUp: boolean; claude: string | null; starting?: boolean }): Blocker | null {
+/** `account` (F29, 28 Nov 2026): on Squibby's own server with no sign in, the way out is Sign in with Google, never "not
+ *  switched on". */
+export function blockerOf(o: { connected: Model["connected"] | string; runnerUp: boolean; claude: string | null; starting?: boolean; account?: { managed: boolean; signedIn: boolean } | null }): Blocker | null {
   if (!o.runnerUp) return "engine";
   if (o.starting) return "starting";
   if (o.claude === "installing") return "claudeGetting";
   if (o.claude && o.claude !== "ready") return "claude";
-  if (o.connected === "none") return "key";
+  if (o.connected === "none") return o.account?.managed && !o.account.signedIn ? "signIn" : "key";
   return null;
 }
 /** M98 (F29): the main button while a blocker shows, when it is not the blocker's own (S.home.blocked[b].main). Fixing not
@@ -460,7 +462,7 @@ export function blockLineFor(b: Blocker, project: string): string {
 }
 /** Whether Fix it and Why did this break are offered on a found problem. Review of M98: both need the model, so while
  *  fixing is not switched on for this Mac they would only end in the engine's refusal; a plain line shows instead. */
-export const fixOffered = (b: Blocker | null): boolean => b !== "key";
+export const fixOffered = (b: Blocker | null): boolean => b !== "key" && b !== "signIn";
 /** The character's pose while a blocker shows: the error pose only when something really broke (the engine stopped, a part
  *  missing). Fixing not switched on yet, or a part on its way, is nothing broken (M98). */
 /** How long after Home's page starts the engine may take to say hello before Home says it is starting. */

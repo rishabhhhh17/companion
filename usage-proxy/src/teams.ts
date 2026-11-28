@@ -6,6 +6,10 @@ import type { StorageLike } from "./store-do.ts";
 export const MAX_MEMBERS = 50;
 export const MAX_RULES = 50;
 export const MAX_RECEIPTS = 500;
+/** S16: receipts one member may share to a team in any minute. */
+export const POSTS_PER_MINUTE = 10;
+/** S16: receipts one person may share in a day (UTC), across all their teams, so one account cannot use up the free row writes. */
+export const POSTS_PER_DAY = 100;
 export const RULE_KINDS = ["never_edit", "never_run", "ask_edit", "ask_run", "ask_install"] as const;
 export type RuleKind = (typeof RULE_KINDS)[number];
 export type TeamRule = { kind: RuleKind; pattern: string };
@@ -45,11 +49,16 @@ export const TEAM_OPS: Record<string, Op> = {
     if (!t || !m) return null;
     return { id: t.id, name: t.name, role: m.role, me: m.name, members: list.map(({ name, role }) => ({ name, role })), rules: (await s.get<TeamRule[]>("rules")) ?? [] };
   },
+  // S16: at most POSTS_PER_MINUTE a member a minute ("rate"), counted in the same write as the receipt.
   "team.post": async (s, a: { ownerId: string; receipt: SharedReceipt; now: number }) => {
     const m = me(await members(s), a.ownerId);
     if (!m) return null;
+    const posts = ((await s.get<[string, number[]][]>("posts")) ?? []).map(([o, at]): [string, number[]] => [o, at.filter((t) => a.now - t < 60_000)]).filter(([, at]) => at.length > 0);
+    const mine = posts.find(([o]) => o === a.ownerId);
+    if (mine && mine[1].length >= POSTS_PER_MINUTE) return "rate";
+    if (mine) mine[1].push(a.now); else posts.push([a.ownerId, [a.now]]);
     const seq = ((await s.get<number>("seq")) ?? 0) + 1;
-    await s.put({ seq, [RKEY(seq)]: { ...a.receipt, seq, by: m.name, at: a.now } satisfies KeptReceipt });
+    await s.put({ seq, posts, [RKEY(seq)]: { ...a.receipt, seq, by: m.name, at: a.now } satisfies KeptReceipt });
     // Keep the newest MAX_RECEIPTS: delete only the ones numbered at or below seq - MAX_RECEIPTS.
     if (seq > MAX_RECEIPTS) {
       const cut = RKEY(seq - MAX_RECEIPTS);
@@ -84,7 +93,7 @@ export const TEAM_OPS: Record<string, Op> = {
     const gone = list.find((x) => x.name.toLowerCase() === a.name.toLowerCase());
     if (!gone || gone.ownerId === a.ownerId) return "unknown";
     await s.put({ members: list.filter((x) => x !== gone) });
-    return "removed";
+    return { r: "removed", ownerId: gone.ownerId };   // S13: the route takes the team off the removed person's owner too
   },
   // Leaving: the last person out removes the whole team (its receipts too). If the last admin leaves, the member who joined
   // first becomes the admin, so a team is never left without one.
@@ -94,7 +103,7 @@ export const TEAM_OPS: Record<string, Op> = {
     const rest = list.filter((x) => x.ownerId !== a.ownerId);
     if (!rest.length) {
       for (;;) { const r = await s.list({ prefix: "r:", limit: 128 }); if (!r.size) break; await s.delete([...r.keys()]); }
-      await s.delete(["team", "members", "rules", "seq"]);
+      await s.delete(["team", "members", "rules", "seq", "posts"]);
       return "team_gone";
     }
     if (!rest.some((x) => x.role === "admin")) rest.sort((x, y) => x.joined - y.joined)[0].role = "admin";

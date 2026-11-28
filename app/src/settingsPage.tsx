@@ -1242,6 +1242,7 @@ function GoogleSection({ connecting }: { connecting: boolean }) {
     const b = listen("google-failed", (e) => { setWaiting(false); setProblem(S.google.failed(String(e.payload ?? ""))); load(); });
     return () => { a.then((f) => f()); b.then((f) => f()); };
   }, []);
+  // A18: Sign in and Connect stay pressable while waiting: if Google's tab was closed, a new press takes over the old wait.
   const start = (signin: boolean) => {
     setProblem("");
     void invoke("google_start", { signin, apps: signin ? [] : pick, label: signin ? null : label }).then(() => setWaiting(true))
@@ -1255,7 +1256,7 @@ function GoogleSection({ connecting }: { connecting: boolean }) {
   if (!parts.section) return null;
   return (<>
     {parts.signIn && <Row id={fixedAnchor("google")} label={S.google.signInTitle} description={me ? S.google.signedIn(me.name, me.email) : (st.ready ? S.google.signInLine : S.google.notSetUp)}
-      control={me ? <Button size="sm" onClick={() => drop(me.id, true)}>{S.google.signOut}</Button> : <Button size="sm" disabled={!st.ready || waiting} onClick={() => start(true)}>{S.google.signIn}</Button>} />}
+      control={me ? <Button size="sm" onClick={() => drop(me.id, true)}>{S.google.signOut}</Button> : <Button size="sm" disabled={!st.ready} onClick={() => start(true)}>{S.google.signIn}</Button>} />}
     {connected.map((a, i) => (
       <Row key={a.id} id={!parts.signIn && i === 0 ? fixedAnchor("google") : undefined} label={`${a.label} ${a.email}`} description={a.apps.map((x) => S.google.apps[x]).join(", ")}
         control={<Button kind="danger" size="sm" onClick={() => drop(a.id, false)}>{S.google.disconnect}</Button>} />
@@ -1269,7 +1270,7 @@ function GoogleSection({ connecting }: { connecting: boolean }) {
     ))}
     <Row indent label={S.google.label} control={<span className="set-pair">
       <Field value={label} maxLength={24} placeholder={S.google.label} label={S.google.label} onChange={setLabel} />
-      <Button size="sm" disabled={!st.ready || waiting || pick.length === 0} onClick={() => start(false)}>{S.google.connect}</Button>
+      <Button size="sm" disabled={!st.ready || pick.length === 0} onClick={() => start(false)}>{S.google.connect}</Button>
     </span>}>
       {waiting && <Note text={S.google.waiting} live />}
       <Problem text={problem} />
@@ -1283,6 +1284,8 @@ function GoogleSection({ connecting }: { connecting: boolean }) {
 let googleShown = false;
 export const googleInSettings = (): boolean => googleShown;
 void invoke("google_accounts").then((v) => { const o = v as { ready?: boolean; accounts?: unknown[] } | null; googleShown = !!o?.ready || (o?.accounts?.length ?? 0) > 0; }).catch(() => {});
+// F29: on Squibby's server the sign in always shows, even in a build where Google is not set up (it then says so).
+void invoke("account_state").then((v) => { if ((v as { managed?: unknown } | null)?.managed === true) googleShown = true; }).catch(() => {});
 export const placeShown = (fixed: string, google = googleShown): boolean => fixed !== "google" || google;
 
 // ---------- pages ----------

@@ -26,7 +26,7 @@ const ratio = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((
 
 describe("squibby.css: the website's look, held to its own rules", () => {
   test("every rule hangs off the squibby brand, so Glass and Before are untouched", () => {
-    const rules = body.replace(/@font-face\s*\{[^}]*\}/g, "").replace(/@keyframes[^{]+\{(?:[^{}]*\{[^}]*\})*[^}]*\}/g, "").replace(/@media[^{]+\{/g, "");
+    const rules = body.replace(/:root(?=\[data-brand="squibby"\])/g, "").replace(/@font-face\s*\{[^}]*\}/g, "").replace(/@keyframes[^{]+\{(?:[^{}]*\{[^}]*\})*[^}]*\}/g, "").replace(/@media[^{]+\{/g, "");
     for (const m of rules.matchAll(/([^{}]+)\{[^}]*\}/g)) {
       const sel = m[1].trim();
       if (!sel) continue;
@@ -42,33 +42,46 @@ describe("squibby.css: the website's look, held to its own rules", () => {
     const urls = [...body.matchAll(/url\("([^"]+)"\)/g)].map((m) => m[1]);
     expect(urls.length).toBe(4);
     for (const u of urls) {
-      expect(u).toMatch(/^\/fonts\/[\w-]+\.woff2$/);
-      expect(existsSync(new URL(`../../public${u}`, import.meta.url)), u).toBe(true);
+      expect(u).toMatch(/^\.\/fonts\/[\w-]+\.woff2$/);
+      expect(existsSync(new URL(u, import.meta.url)), u).toBe(true);
     }
   });
-  test("gradients only draw the sky and cut the paper's shapes, never a button's fill or a title", () => {
+  test("gradients only cut the paper's and the ticket's shapes, never a fill or a title", () => {
     for (const m of body.matchAll(/([^{}]+)\{([^}]*)\}/g)) for (const d of m[2].split(";")) {
       if (!/gradient\(/.test(d)) continue;
       const prop = d.split(":")[0].trim();
-      expect(["background-image", "-webkit-mask", "mask", "background"], `${m[1].trim()} ${prop}`).toContain(prop);
+      expect(["-webkit-mask", "mask", "-webkit-mask-image", "mask-image", "background"], `${m[1].trim()} ${prop}`).toContain(prop);
       if (prop === "background") expect(m[1], "only the pixel layer paints with a pattern").toMatch(/data-landed\]::before/);
     }
+  });
+  test("all glass: no black header, the ask box follows the work with no band, fade or border, in both layouts", () => {
+    expect(body).toMatch(/\.gl-top \{ position: relative !important; background: transparent; box-shadow: none; \}/);
+    expect(body).toMatch(/\.gl-top::before \{ display: none; \}/);
+    // As strong as the tall layout's sticky rule (system.css), which beat the first try on the real Mac.
+    expect(body).toMatch(/:root\[data-brand="squibby"\] \.home \.work > \.askwrap \{ position: static !important;[^}]*background: transparent !important; \}/);
+    expect(body).toMatch(/\.askwrap::after \{ display: none !important; \}/);
+    expect(body).not.toMatch(/backdrop-filter/);
   });
   test("motion is opacity only, with token times, and reduce motion turns it off", () => {
     for (const [, frames] of body.matchAll(/@keyframes[^{]+\{([\s\S]*?\})\s*\}/g)) for (const [, decl] of frames.matchAll(/\{([^}]*)\}/g)) for (const d of decl.split(";").map((x) => x.trim()).filter(Boolean)) expect(d.split(":")[0].trim(), d).toBe("opacity");
     for (const [, v] of body.matchAll(/(?:animation|transition)(?:-duration)?:\s*([^;]+);/g)) expect(v.replace(/var\([^)]*\)/g, ""), v).not.toMatch(/\d+m?s\b|cubic-bezier|steps\(/);
     expect(body).toMatch(/@media \(prefers-reduced-motion: reduce\)/);
   });
-  test("the words read: measured contrast on the sky and on the paper", () => {
-    const sky = tokenValue("--sq-sky"), paper = tokenValue("--sq-paper");
+  test("the words read: measured contrast on the receipt's paper and on the white ticket", () => {
+    const paper = tokenValue("--sq-paper");
     expect(ratio(tokenValue("--sq-ink"), paper)).toBeGreaterThanOrEqual(7);
     expect(ratio(tokenValue("--sq-ink-2"), paper)).toBeGreaterThanOrEqual(7);
     expect(ratio(tokenValue("--sq-ink-3"), paper)).toBeGreaterThanOrEqual(4.5);
     for (const t of ["--sq-proven", "--sq-caught", "--sq-review", "--sq-link", "--sq-working"]) expect(ratio(tokenValue(t), paper), t).toBeGreaterThanOrEqual(4.5);
-    for (const t of ["--fg", "--mat-ink"]) expect(ratio(tokenValue(t), sky), t).toBeGreaterThanOrEqual(7);
-    for (const t of ["--fg-2", "--mat-ink-2"]) expect(ratio(tokenValue(t), sky), t).toBeGreaterThanOrEqual(7);
-    for (const t of ["--fg-3", "--ok", "--bad", "--amber", "--mat-focus"]) expect(ratio(tokenValue(t), sky), t).toBeGreaterThanOrEqual(4.5);
     expect(ratio(tokenValue("--acc-ink"), tokenValue("--acc")), "ink on the white ticket").toBeGreaterThanOrEqual(7);
+    expect(ratio(tokenValue("--sq-paper"), tokenValue("--sq-ink")), "the ink ticket on paper").toBeGreaterThanOrEqual(7);
+  });
+  test("the glass stays the glass: no sky, no tint, no surface or word colour is changed outside the receipt", () => {
+    // Only the glass's tint and the notch fade change (Liquid Glass does the dark); no surface or word colour.
+    expect(tokenBlock.match(/--mat-[\w-]+(?=:)/g)).toEqual(["--mat-tint", "--mat-fade-h"]);
+    expect(tokenBlock).not.toMatch(/--(surface-|bg:|fg)/);
+    expect(body.replace(/\.panel\.receipt[^{]*\{[^}]*\}/g, "")).not.toMatch(/--(fg|surface|mat-)[\w-]*:/);
+    expect(body).not.toMatch(/\.card\.home\b|\.gl-tab\b|\.ui-mlist|\.setup/);
   });
   test("the root's data-material is only ever a structure (glass or classic); squibby rides on data-brand", () => {
     // 28 Nov 2026, the first real Mac look: useLook wrote "squibby" into data-material, so no glass layout rule matched and

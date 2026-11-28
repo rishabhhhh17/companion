@@ -24,7 +24,7 @@ const SAFE_FIELDS: &[&str] = &["run", "seq", "ev", "t", "ms", "id", "down", "sto
 const ENGINE_LINES: usize = 60;
 const ENGINE_LINE_MAX: usize = 300;
 
-const SECRET_STARTS: &[&str] = &["sk-", "sk_", "pk_live_", "pk_test_", "rk_live_", "ghp_", "gho_", "ghs_", "ghu_", "ghr_", "github_pat_", "glpat-", "xoxb-", "xoxp-", "xoxa-", "xoxs-", "xoxe", "AKIA", "ASIA", "eyJ", "npm_", "AIza", "hf_", "gsk_"];
+const SECRET_STARTS: &[&str] = &["sk-", "sk_", "pk_live_", "pk_test_", "rk_live_", "ghp_", "gho_", "ghs_", "ghu_", "ghr_", "github_pat_", "glpat-", "xoxb-", "xoxp-", "xoxa-", "xoxs-", "xoxe", "AKIA", "ASIA", "eyJ", "npm_", "AIza", "hf_", "gsk_", "ya29.", "cmp_"];
 /// Common folder names that are not worth hiding when they are all that is left of a project's name.
 const COMMON_FOLDERS: &[&str] = &["src", "app", "web", "api", "lib", "site", "docs", "dist", "build", "test", "tests", "public", "client", "server", "main", "code", "project", "projects", "home", "users", "tmp"];
 
@@ -263,6 +263,11 @@ mod tests {
         let t = scrub(r#"key="sk-ant-api03-AbCdEfGhIjKlMnOpQrSt" token: ghp_abcdefghijklmnopqrstuvwxyz0123 mail (sam@example.com), aws AKIAABCDEFGHIJKLMNOP jwt eyJhbGciOiJIUzI1NiJ9.abc.def https://x.io/v1/sk-ant-api03-AbCdEfGhIjKlMnOpQrSt?x=1 /tmp/sk-ant-api03-AbCdEfGhIjKlMnOpQrSt sam+tag@x.com sam%40x.com hf_abcdefghijklmnopqrstuvwxyz0123 0123456789abcdef0123456789abcdef0123456789abcdef"#, HOME, &n(&["sam"]), &[]);
         for leaked in ["sk-ant", "ghp_", "@example", "AKIAABC", "eyJhbGci", "+tag", "%40x", "hf_abc", "0123456789abcdef0123"] { assert!(!t.contains(leaked), "{leaked} in {t}"); }
         assert!(t.contains("[secret]") && t.contains("[email]"));
+    }
+    #[test]
+    fn google_access_tokens_and_squibby_sign_in_tokens_are_covered() {
+        let t = scrub("google ya29.a0AfB_byCdEfGh.xyz squibby cmp_abcdefghijklmnopqrst", HOME, &[], &[]);
+        for leaked in ["ya29.", "cmp_"] { assert!(!t.contains(leaked), "{leaked} in {t}"); }
     }
     #[test]
     fn identifiers_in_a_crash_report_are_covered() {

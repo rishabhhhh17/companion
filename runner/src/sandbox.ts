@@ -33,9 +33,10 @@ const SENSITIVE = [
 // settings.xml, Gradle's gradle.properties and init scripts, and Cargo's config and credentials sit beside them. (Go's build
 // cache, SwiftPM's cache and Xcode's other caches are under Library/Caches already.) Not here on purpose: SwiftPM's own folder
 // (its mirrors.json and registries.json redirect later package fetches), and the Gradle and Maven wrapper folders (the build
-// tools a check later runs outside this sandbox without asking; a check fetches those itself).
+// tools a check later runs outside this sandbox without asking; a check fetches those itself). Nor pnpm's or Yarn's whole folders: their
+// bin folders (PNPM_HOME, ~/.yarn/bin) are on PATH, so only their stores and caches.
 const CACHES = [
-  ".npm", ".cache", "Library/Caches", ".bun/install", ".local/share/pnpm", "Library/pnpm", ".yarn", ".cargo/registry", ".cargo/git", ".gem/ruby", ".gem/specs", ".pnpm-store",
+  ".npm", ".cache", "Library/Caches", ".bun/install", ".local/share/pnpm/store", "Library/pnpm/store", ".yarn/berry/cache", ".yarn/cache", ".cargo/registry", ".cargo/git", ".gem/ruby", ".gem/specs", ".pnpm-store",
   ".cargo/.package-cache", ".cargo/.package-cache-mutate", ".cargo/.global-cache",   // cargo's lock and usage files, which it writes beside the registry
   "go/pkg/mod", ".m2/repository", ".gradle/caches", ".gradle/native", ".gradle/daemon", "Library/Developer/Xcode/DerivedData",
 ];

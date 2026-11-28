@@ -2,7 +2,9 @@
 // links or loads), a daily limit, 30 days, and deletable. A page served with a policy that lets nothing run. Stand in stores only.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { checkPage, makeLinkRoutes, LINK_DAYS, type LinkStore } from "../src/receipt-links.ts";
+import { checkPage, makeLinkRoutes, DAILY_LINKS, LINK_DAYS, type LinkStore } from "../src/receipt-links.ts";
+import { FakeNamespace } from "./fake-do.ts";
+import { callObject, OWNER } from "../src/store-do.ts";
 
 const PAGE = '<!doctype html><html><head><meta charset="utf-8"><title>Receipt</title><style>body{font:16px system-ui}</style></head><body><h1>Works</h1><p>a pricing page opens at /pricing: kept</p><img alt="x" src="data:image/jpeg;base64,/9j/4AAQ"></body></html>';
 const TOKEN = "cmp_" + "a".repeat(40);
@@ -13,7 +15,11 @@ function kv(): LinkStore & { data: Map<string, { v: string; ttl?: number }> } {
 }
 function setup(o: { on?: boolean; user?: "active" | "suspended" | null } = {}) {
   const links = kv();
+  // S16: the daily count lives on the owner's own Durable Object (a fake of it here), with someone signed in on it.
+  const ns = new FakeNamespace();
+  ns.storageFor(OWNER("u1")).data.set("tokens", [["h", { plan: "free", status: "active" }]]);
   const routes = makeLinkRoutes({ links, on: () => o.on !== false, origin: "https://api.example.test", now: () => Date.UTC(2026, 10, 27),
+    madeLink: (ownerId, id, now) => callObject<boolean>(ns, OWNER(ownerId), "owner.linkMade", { id, now, max: DAILY_LINKS }),
     userOf: async (t) => (t === TOKEN && o.user !== null ? { id: "u1", active: (o.user ?? "active") === "active" } : null) });
   const call = (method: string, path: string, init: { body?: unknown; token?: string; del?: string } = {}) => {
     const headers: Record<string, string> = { "content-type": "application/json" };
@@ -22,7 +28,7 @@ function setup(o: { on?: boolean; user?: "active" | "suspended" | null } = {}) {
     const req = new Request(`https://api.example.test${path}`, { method, headers, ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}) });
     return routes(req, new URL(req.url));
   };
-  return { links, call };
+  return { links, ns, call };
 }
 
 describe("the page check", () => {
@@ -91,6 +97,14 @@ describe("the routes", () => {
     let last = 0;
     for (let i = 0; i < 31; i++) last = (await t.call("POST", "/v1/receipts", { token: TOKEN, body: { html: PAGE } }))!.status;
     expect(last).toBe(429);
+    // S16: counted on the owner's own object in one step, never by a read then a write in KV; KV holds only the pages.
+    expect([...t.links.data.keys()].every((k) => k.startsWith("r:"))).toBe(true);
+    expect(t.links.data.size).toBe(DAILY_LINKS);
+  });
+  test("S16: links sent at once never pass the daily limit", async () => {
+    const t = setup();
+    const all = await Promise.all(Array.from({ length: DAILY_LINKS + 10 }, () => t.call("POST", "/v1/receipts", { token: TOKEN, body: { html: PAGE } })));
+    expect(all.filter((r) => r!.status === 200).length).toBe(DAILY_LINKS);
   });
   test("other paths are not ours", async () => {
     const t = setup();

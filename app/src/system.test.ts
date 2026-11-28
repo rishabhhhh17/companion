@@ -262,7 +262,7 @@ describe("one layout grammar (spec 3)", () => {
     expect(at('className="ask-token"')).toBeLessThan(at('className="ask-chip"'));
     expect(at('className="ask-chip"')).toBeLessThan(at('className="ask-mic"'));
     expect(at('className="ask-mic"')).toBeLessThan(at('className="send"'));
-    expect(S.home.ask).toBe("What are you stuck on?");
+    expect(S.home.ask).toBe("Ask Squibby to check, fix or explain something");
   });
   test("More ways to ask never covers the hero or the ask box: in the flow, under it, capped, jobs over a divider", () => {
     const sys = SYSTEM_CSS();

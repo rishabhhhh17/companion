@@ -13,7 +13,9 @@ export const RECEIPTS_PATH = "/v1/receipts";
 export const PAGE_PREFIX = "/r/";
 export const LINK_DAYS = 30;
 export const DAILY_LINKS = 30;
-export const MAX_PAGE = 4_000_000;
+/** S16: the app's share page carries one screenshot (a JPEG at quality 75), well under this. 4 MB a page at 30 a day let a few
+ *  accounts fill Cloudflare's free 1 GB of KV for everyone. */
+export const MAX_PAGE = 1_500_000;
 export const MAX_PICTURES = 6;
 
 export type LinkStore = {
@@ -28,6 +30,9 @@ export type LinkDeps = {
   userOf: (token: string) => Promise<{ id: string; active: boolean } | null>;
   origin: string;
   now: () => number;
+  /** S16: counts a new link against the person's DAILY_LINKS in one step on their own record (and keeps its id there, so an
+   *  account delete deletes it, S13). False: over the day's limit. */
+  madeLink: (ownerId: string, id: string, now: number) => Promise<boolean>;
 };
 
 const TAGS = new Set(["html", "head", "meta", "title", "style", "body", "main", "header", "footer", "section", "article", "div", "span", "p",
@@ -83,11 +88,8 @@ export function makeLinkRoutes(d: LinkDeps): (req: Request, url: URL) => Promise
     try { html = raw === null ? null : (JSON.parse(raw) as { html?: unknown }).html; } catch { html = null; }
     const why = typeof html === "string" ? checkPage(html) : "no_page";
     if (why) return jsonNoStore({ error: "This page cannot be shared as a link.", why }, 400);
-    const now = d.now(), day = new Date(now).toISOString().slice(0, 10), countKey = `n:${user.id}:${day}`;
-    const count = Number(await d.links!.get(countKey) ?? 0);
-    if (count >= DAILY_LINKS) return jsonNoStore({ error: `You can make ${DAILY_LINKS} links a day. Saving as a file still works.` }, 429);
-    await d.links!.put(countKey, String(count + 1), { expirationTtl: 2 * 86_400 });
-    const id = b64url(crypto.getRandomValues(new Uint8Array(16))), deleteToken = b64url(crypto.getRandomValues(new Uint8Array(24)));
+    const now = d.now(), id = b64url(crypto.getRandomValues(new Uint8Array(16))), deleteToken = b64url(crypto.getRandomValues(new Uint8Array(24)));
+    if (!(await d.madeLink(user.id, id, now))) return jsonNoStore({ error: `You can make ${DAILY_LINKS} links a day. Saving as a file still works.` }, 429);
     const exp = now + LINK_DAYS * 86_400_000;
     const kept: Kept = { html: html as string, owner: user.id, del: await hashToken(deleteToken), exp };
     await d.links!.put(`r:${id}`, JSON.stringify(kept), { expirationTtl: LINK_DAYS * 86_400 });

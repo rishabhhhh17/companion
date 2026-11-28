@@ -5,7 +5,7 @@
 // It never stores or logs a request or a reply body, and never puts one in an error. What it logs is the SafeEvent below, and
 // nothing else: a test holds it to that.
 import { checkRequest, MAX_BODY_BYTES } from "./filter.ts";
-import { budgetCheck, nextReset, planOf, type Plan } from "./plans.ts";
+import { budgetCheck, MIN_ANSWER_TOKENS, nextReset, planOf, REQUESTS_PER_MINUTE, type Plan, type Spent } from "./plans.ts";
 import { paidPlanCounts, type Store, type UsageRecord } from "./store.ts";
 import { hashToken, tokenFromHeaders } from "./tokens.ts";
 import { UsageSniffer, costOf, usageFromJson, type Usage } from "./usage.ts";
@@ -37,6 +37,11 @@ export type Deps = {
   now?: () => number;
   log?: (e: SafeEvent) => void;
   maxInFlight?: number;
+  /** S3: model requests one account may start a minute (REQUESTS_PER_MINUTE when missing). */
+  perMinute?: number;
+  /** S3: true while this token hash may try again (ratelimit.ts, in memory). Checked before the store, so refused requests
+   *  ('rate', 'over', 'busy') cost no store requests past it. Missing: no limit. */
+  requestLimit?: (tokenHash: string) => boolean;
   /** How long to wait before each background try at letting go of a slot the store failed to let go of. Tests make it short. */
   releaseRetryMs?: number[];
   /** Keeps the server running until a streamed reply's cost is booked (a Worker's ctx.waitUntil). Without it, a server that
@@ -66,6 +71,8 @@ export const SWITCHED_OFF_WORDS = `${PRODUCT_S} included use is not switched on 
 export const NOT_READY_WORDS = `${PRODUCT_S} included use is not ready yet. Nothing was sent to Claude. Try again later.`;
 /** Past the per account running cap: the usual reason is the same account busy on another Mac (M116 section 1). */
 export const BUSY_WORDS = `${PRODUCT} is busy on your other Mac. Try again when it finishes.`;
+/** S3: past REQUESTS_PER_MINUTE. */
+export const TOO_FAST_WORDS = `${PRODUCT} sent too many requests in a minute. Nothing was sent to Claude. Try again in a minute.`;
 /** Over the day's or the month's included use. On Free, one more line says Pro has more. */
 export function overLimitWords(reason: "day" | "month", onFree: boolean): string {
   const words = reason === "day"
@@ -114,11 +121,13 @@ function metered(body: ReadableStream<Uint8Array>, sniffer: UsageSniffer, finish
  *  it may cost (`worst`: held while it runs). Search re-attack: `worst` also counts every search the request allows, with its
  *  fee and room for its results as input, and is priced as one request, so results that carry the prompt over a model's long
  *  prompt line are held at the long rate card. A prompt with a cache marker is priced at the cache write rate. */
-export function holdOf(c: Extract<ReturnType<typeof checkRequest>, { ok: true }>): { need: number; worst: number } {
+export function holdOf(c: Extract<ReturnType<typeof checkRequest>, { ok: true }>): { need: number; worst: number; outUsd: number } {
   const priced = (input: number, output: number, searches: number) => costOf(c.model, {
     input_tokens: c.cacheWrite ? 0 : input, cache_creation_input_tokens: c.cacheWrite ? input : 0,
     output_tokens: output, cache_read_input_tokens: 0, web_search_requests: searches });
-  return { need: priced(c.inputTokens, 0, 0), worst: priced(c.inputTokens + c.searchTokens, c.maxTokens, c.searches) };
+  const worst = priced(c.inputTokens + c.searchTokens, c.maxTokens, c.searches);
+  // S2: what each answer token adds to the worst case, so the store can cut max_tokens to what is left.
+  return { need: priced(c.inputTokens, 0, 0), worst, outUsd: (worst - priced(c.inputTokens + c.searchTokens, 0, c.searches)) / c.maxTokens };
 }
 
 /** Audit run 2, finding 6 (re-attack round 3): what a reply cut short is booked at. Anthropic may have written it all (Must fix
@@ -138,6 +147,12 @@ export function cutShortUsage(c: Extract<ReturnType<typeof checkRequest>, { ok: 
   };
 }
 
+/** S2: a request's thinking budget (budget_tokens), or 0. An answer cut to fit must stay above it, or Anthropic refuses it. */
+function thinkingBudget(body: string): number {
+  const b = (JSON.parse(body) as { thinking?: { budget_tokens?: unknown } }).thinking?.budget_tokens;
+  return typeof b === "number" && Number.isFinite(b) && b > 0 ? b : 0;
+}
+
 export function createProxy(d: Deps): (req: Request) => Promise<Response> {
   const doFetch = d.fetch ?? fetch, upstream = checkUpstream(d.upstream ?? "https://api.anthropic.com"), now = d.now ?? Date.now, log = d.log ?? (() => {}), maxInFlight = d.maxInFlight ?? 4;
   const releaseRetryMs = d.releaseRetryMs ?? RELEASE_RETRY_MS;
@@ -151,9 +166,11 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
     // Audit run 2, finding 4, close round 3: a sign in's and a delete's store steps are kept running if the client goes away.
     ...(d.waitUntil ? { waitUntil: d.waitUntil } : {}) });
 
-  const overBudget = (b: ReturnType<typeof budgetCheck>, plan: Plan, userId: string) => {
+  const overBudget = (spent: Spent, need: number, plan: Plan, userId: string) => {
+    const b = budgetCheck(plan, spent, now(), need);
     // Only reached when the hold did not fit, so a check that now passes (a hold let go meanwhile) still counts as the day.
-    const reason = b.ok ? "day" : b.reason;
+    // S2: the prompt fit but no answer did; the reason is the limit with less room left.
+    const reason = b.ok ? (plan.monthlyUsd - spent.month < plan.dailyUsd - spent.day ? "month" : "day") : b.reason;
     const resetsAt = b.ok ? nextReset("day", now()) : b.resetsAt;
     // M116 (F29): the app shows the time in the person's own zone from x-companion-resets-at; these words are the fallback.
     const message = overLimitWords(reason, plan.name === "free");
@@ -177,6 +194,7 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
     const token = tokenFromHeaders(req.headers);
     if (!token) return refuse("no_token", error(401, "authentication_error", `Sign in to ${PRODUCT} again.`));
     const tokenHash = await hashToken(token);
+    if (d.requestLimit && !d.requestLimit(tokenHash)) return refuse("rate", error(429, "rate_limit_error", TOO_FAST_WORDS, { "retry-after": "60" }));
     const user = await d.store.userByTokenHash(tokenHash);
     if (!user) return refuse("unknown_token", error(401, "authentication_error", `Sign in to ${PRODUCT} again.`));
     if (user.status === "suspended") return refuse("suspended", error(403, "permission_error", `Your ${PRODUCT} account is paused. If you think this is a mistake, you can appeal: see the acceptable use page.`), user.id);
@@ -185,8 +203,9 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
     if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) return refuse("too_big", error(413, "invalid_request_error", "That request is too big to send."), user.id);
     const raw = await readCapped(req);
     if (raw === null) return refuse("too_big", error(413, "invalid_request_error", "That request is too big to send."), user.id);
-    const checked = checkRequest(req.method, url.pathname, raw, await deriveUserId(user.id, d.userIdSecret as string), { loopOn: d.loopOn?.() === true });
-    if (!checked.ok) return refuse("bad_request", error(checked.status, "invalid_request_error", checked.message), user.id);
+    const first = checkRequest(req.method, url.pathname, raw, await deriveUserId(user.id, d.userIdSecret as string), { loopOn: d.loopOn?.() === true });
+    if (!first.ok) return refuse("bad_request", error(first.status, "invalid_request_error", first.message), user.id);
+    let checked = first;
 
     // A plan kept through a late payment lasts only until its end date (Dodo's past_due_ends_at); then it is free.
     // Audit run 2, finding 5: while payments are in test mode a paid plan cost nobody anything, so it has Free's limits on
@@ -204,13 +223,23 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
     // writes at most 3 rows on Cloudflare's free plan. The hold goes when it ends. Audit run 2, finding 6: the hold covers
     // the prompt too (estimated from the body), and the prompt must fit under the limits with what is spent and held, so
     // large prompts sent at once with a tiny max_tokens cannot all pass at zero spend.
-    const { need, worst } = holdOf(checked);
-    const started = await d.store.start(user.id, { max: maxInFlight, usd: worst, now: now(), limits: plan, id, need, hash: tokenHash });
+    // S2: when the whole answer does not fit what is left, the store cuts max_tokens to what does (never under a short answer,
+    // nor at or under a thinking budget, which Anthropic would refuse), and holds only that. S3: a cap on starts a minute.
+    const { need, worst, outUsd } = holdOf(checked);
+    const minTokens = Math.max(MIN_ANSWER_TOKENS, thinkingBudget(checked.body) + 1);
+    const started = await d.store.start(user.id, { max: maxInFlight, usd: worst, now: now(), limits: plan, id, need, hash: tokenHash,
+      outUsd, maxTokens: checked.maxTokens, minTokens, perMinute: d.perMinute ?? REQUESTS_PER_MINUTE });
     if (!started.ok) {
-      if (started.why === "over") return overBudget(budgetCheck(plan, started.spent, now(), need), plan, user.id);
+      if (started.why === "over") return overBudget(started.spent, need, plan, user.id);
+      if (started.why === "rate") return refuse("rate", error(429, "rate_limit_error", TOO_FAST_WORDS, { "retry-after": String(Math.max(1, Math.ceil(started.retryAfterMs / 1000))) }), user.id);
       // Audit run 2, finding 4 (re-attack round 2): the account was deleted after the token was read. Nothing is sent.
       if (started.why === "gone") return refuse("unknown_token", error(401, "authentication_error", `Sign in to ${PRODUCT} again.`), user.id);
       return refuse("busy", error(429, "rate_limit_error", BUSY_WORDS), user.id);
+    }
+    if (started.maxTokens !== undefined && started.maxTokens < checked.maxTokens) {
+      const j = JSON.parse(checked.body);
+      j.max_tokens = started.maxTokens;
+      checked = { ...checked, body: JSON.stringify(j), maxTokens: started.maxTokens };
     }
 
     // Best effort: a failure here never costs the person their answer. With a record, the slot and hold go in the same step as
@@ -243,7 +272,17 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
       // request costs (a 1 hour cache, a longer context) in ways the price table does not count.
       const headers = new Headers({ "content-type": "application/json", "x-api-key": d.anthropicKey, "anthropic-version": req.headers.get("anthropic-version") ?? "2023-06-01" });
       const target = `${upstream}${url.pathname}${url.searchParams.get("beta") === "true" ? "?beta=true" : ""}`;
-      const res = await doFetch(target, { method: "POST", headers, body: checked.body, redirect: "manual" });
+      let res: Response;
+      try { res = await doFetch(target, { method: "POST", headers, body: checked.body, redirect: "manual" }); }
+      catch (e) {
+        // S12: the request may have reached Anthropic and been answered in full before the connection broke, so it is booked
+        // as a reply cut short (its worst case), never let go for free.
+        const usage = cutShortUsage(checked, { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 }, false);
+        const usd = costOf(checked.model, usage);
+        const ok = await finish(usd > 0 ? { userId: user.id, model: checked.model, usage, usd, at: now(), complete: false } : undefined);
+        log({ kind: "request", userId: user.id, model: checked.model, usd, complete: false, ...(ok ? {} : { reason: "booking_failed" }) });
+        throw e;
+      }
       const back = new Headers();
       for (const h of PASS_BACK) { const v = res.headers.get(h); if (v) back.set(h, v); }
 

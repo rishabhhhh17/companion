@@ -270,13 +270,19 @@ pub fn post_form_with(program: &str, url: &str, form: &str) -> Result<String, St
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// Waits for the browser's one answer on `listener` (already bound to 127.0.0.1 on a free port), up to `WAIT_SECS`.
-/// Answers anything that is not ours with a 404 and keeps waiting; the first answer with our state ends it.
-pub fn wait_for_code(listener: std::net::TcpListener, state: &str, product: &str) -> Result<String, String> {
+/// What a wait ends with when a newer sign in replaced it (never shown to the person).
+pub const SUPERSEDED: &str = "superseded";
+
+/// Waits for the browser's one answer on `listener` (already bound to 127.0.0.1 on a free port), up to `WAIT_SECS`, and
+/// only while `current()` says this sign in is still the one wanted. Answers anything that is not ours with a 404 and keeps
+/// waiting; the first answer with our state ends it. The code comes back with the browser's connection, which the caller
+/// answers (answer_tab) once it knows whether the sign in worked.
+pub fn wait_for_code(listener: std::net::TcpListener, state: &str, product: &str, current: &dyn Fn() -> bool) -> Result<(String, std::net::TcpStream), String> {
     use std::io::{Read, Write};
     listener.set_nonblocking(true).map_err(|_| "Could not start the sign in.".to_string())?;
     let until = std::time::Instant::now() + std::time::Duration::from_secs(WAIT_SECS);
     while std::time::Instant::now() < until {
+        if !current() { return Err(SUPERSEDED.into()); }
         match listener.accept() {
             Ok((mut s, _)) => {
                 let _ = s.set_nonblocking(false);
@@ -285,7 +291,7 @@ pub fn wait_for_code(listener: std::net::TcpListener, state: &str, product: &str
                 let n = s.read(&mut buf).unwrap_or(0);
                 let req = String::from_utf8_lossy(&buf[..n]).into_owned();
                 match read_back(&req, state) {
-                    Back::Code(c) => { let _ = s.write_all(done_page(true, product).as_bytes()); return Ok(c); }
+                    Back::Code(c) => return Ok((c, s)),
                     Back::Refused(_) => { let _ = s.write_all(done_page(false, product).as_bytes()); return Err("Google sign in was cancelled.".into()); }
                     Back::NotOurs => { let _ = s.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"); }
                 }
@@ -295,6 +301,12 @@ pub fn wait_for_code(listener: std::net::TcpListener, state: &str, product: &str
         }
     }
     Err("The sign in took too long. Try again.".into())
+}
+
+/// Tells the browser tab whether the sign in worked, then closes it.
+pub fn answer_tab(mut tab: std::net::TcpStream, ok: bool, product: &str) {
+    use std::io::Write;
+    let _ = tab.write_all(done_page(ok, product).as_bytes());
 }
 
 #[cfg(test)]
@@ -475,10 +487,57 @@ mod tests {
         use std::io::{Read, Write};
         let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = l.local_addr().unwrap().port();
-        let h = std::thread::spawn(move || wait_for_code(l, "ST", "Squibby"));
+        // The tab is answered by the caller, after the rest of the sign in: here it failed, so the tab says not connected.
+        let h = std::thread::spawn(move || wait_for_code(l, "ST", "Squibby", &|| true).map(|(c, tab)| { answer_tab(tab, false, "Squibby"); c }));
         let send = |line: &str| { let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap(); s.write_all(format!("{line}\r\nHost: x\r\n\r\n").as_bytes()).unwrap(); let mut r = String::new(); let _ = s.read_to_string(&mut r); r };
         assert!(send("GET /favicon.ico HTTP/1.1").starts_with("HTTP/1.1 404"));
-        assert!(send("GET /?state=ST&code=abc HTTP/1.1").contains("You're connected"));
+        assert!(send("GET /?state=ST&code=abc HTTP/1.1").contains("Nothing was connected"));
         assert_eq!(h.join().unwrap(), Ok("abc".into()));
+    }
+
+    #[test]
+    fn a_newer_sign_in_ends_the_old_wait_at_once() {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let t = std::time::Instant::now();
+        assert_eq!(wait_for_code(l, "ST", "Squibby", &|| false).map(|(c, _)| c), Err(SUPERSEDED.to_string()));
+        assert!(t.elapsed() < std::time::Duration::from_secs(2));
+        let src = crate::main_src();
+        let start = &src[src.find("fn google_start(").unwrap()..]; let start = &start[..start.find("\n}\n").unwrap()];
+        assert!(!start.contains("Err(\"busy\""), "a second press is never refused as busy");
+        assert!(start.contains("GOOGLE_GEN.fetch_add(1"), "{start}");
+    }
+
+    #[test]
+    fn the_squibby_token_is_saved_only_after_the_google_answer_is_whole_and_the_tab_answered_after() {
+        let src = crate::main_src();
+        let f = &src[src.find("fn google_finish(").unwrap()..]; let f = &f[..f.find("\n}\n").unwrap()];
+        let at = |n: &str| f.find(n).unwrap_or_else(|| panic!("{n}"));
+        assert!(at("let person =") < at("squibby_sign_in(") && at("let refresh =") < at("squibby_sign_in("), "{f}");
+        let flow = &src[src.find("fn google_flow(").unwrap()..];
+        assert!(flow.find("google_finish(").unwrap() < flow.find("google::answer_tab(tab, r.is_ok()").unwrap());
+    }
+
+    #[test]
+    fn signing_out_and_delete_everything_remove_the_squibby_token() {
+        let src = crate::main_src();
+        let d = &src[src.find("fn google_disconnect(").unwrap()..]; let d = &d[..d.find("\n}\n").unwrap()];
+        assert!(d.contains("if k.signin { squibby_sign_out(); hand_key_over(&app, None); }"), "{d}");
+        let o = &src[src.find("fn squibby_sign_out(").unwrap()..]; let o = &o[..o.find("\n}\n").unwrap()];
+        assert!(o.contains("keystore::delete_token()") && o.contains("/v1/signout") && o.contains("\"-H\", \"@-\"") && o.contains(".env_clear()"), "{o}");
+        assert!(o.contains("write_all(format!(\"Authorization: Bearer {t}") && !o.contains(".arg(&t"), "the token goes on standard input, never the command line");
+        let w = &src[src.find("fn wipe_helper_mode()").unwrap()..]; let w = &w[..w.find("\n}\n").unwrap()];
+        assert!(w.contains("keystore::delete_token() &"), "{w}");
+        assert!(include_str!("wipe.rs")[..2000].contains("`squibby-account`"));
+    }
+
+    #[test]
+    fn account_state_never_reads_the_secret_and_the_keychain_is_read_off_the_main_thread() {
+        let src = crate::main_src();
+        let a = &src[src.find("async fn account_state(").expect("async")..]; let a = &a[..a.find("\n}\n").unwrap()];
+        assert!(a.contains("keystore::presence(&keystore::service(), keystore::ACCOUNT_TOKEN)") && a.contains("spawn_blocking") && !a.contains("read_token"), "{a}");
+        let g = &src[src.find("async fn google_accounts(").expect("async")..]; let g = &g[..g.find("\n}\n").unwrap()];
+        assert!(g.contains("spawn_blocking(|| google_kept()"), "{g}");
+        let r = &src[src.find("fn remove_api_key(").unwrap()..]; let r = &r[..r.find("\n}\n").unwrap()];
+        assert!(r.contains("hand_key_over(&app, None)") && !r.contains(".hand_key(None"), "managed usage keeps its token: {r}");
     }
 }

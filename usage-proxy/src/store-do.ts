@@ -11,9 +11,10 @@
 // It needs nothing from Cloudflare at build time: the object talks through `fetch`, and the types below are the small part of the
 // Durable Object API it uses, so the tests run it on a fake of that API (test/fake-do.ts) with Bun alone.
 import { TEAM_OPS } from "./teams.ts";
-import { budgetCheck, dayKey, monthKey, type Plan, type Spent } from "./plans.ts";
+import { budgetCheck, dayKey, fitHold, MINUTE_MS, monthKey, type Plan, type Spent } from "./plans.ts";
 import { bestPlan, carriedFor, mergeCarry, chargeableSub, countsNow, keptSub, liveSubCount, shownPlan, usageSummary, type Account, type Billing, type Carry, type Deleted, type DodoMode, type FinishAsk, type OwnerPage, type OwnerUsage, type RefundNeeded, type Release, type ReportCredit, type ReportRemoved, type ReportUse, type SignIn, type StartAsk, type Started, type Store, type Sub, type SubChange, type SuspensionRecord, type UsageRecord, type User, type OwnerPlan } from "./store.ts";
 import type { DodoLedger, LinkBook } from "./dodo.ts";
+import { LINK_DAYS, type LinkStore } from "./receipt-links.ts";
 import { DELETED_PREFIX, deletedLineLive, deletedUntil, isDeletedMarker, mergeDeletedLines, type DeletedLine } from "./deleted.ts";
 
 /** The part of Durable Object storage used here (the key value calls, on SQLite backed objects too). */
@@ -50,13 +51,18 @@ export const MAX_TOKENS_KEPT = 50;
  *  with a fresh signature and the same id (https://docs.dodopayments.com/developer-resources/webhooks). The in memory ledger
  *  keeps the same (dodo.ts). */
 export const WEBHOOK_KEEP_MS = 48 * 3600 * 1000;
+/** S13: the most teams one person may be in, so the list of them kept on the owner stays small. */
+export const MAX_TEAMS_PER_OWNER = 20;
+/** S13, S16: the owner's receipt links (id and when, so an account delete can delete them) and today's count, in one key. */
+type Links = { day: string; n: number; ids: [string, number][] };
 
 type Tok = { plan: string; status: User["status"] };
 /** `id`: the request's own id, so a request that ends late lets go of only its own slot or hold, never another's of the same amount. */
 type Lease = { at: number; usd: number; id?: string };
 /** M116 step 3: an owner's running requests, their holds, the record count and the day of the last tidy, in one key, so starting
  *  a request writes one row and finishing it two (this key and its record). Rows written are what the free plan counts. */
-type Live = { running: Lease[]; holds: Lease[]; seq: number; prunedOn?: string };
+/** `recent`: when this owner's last model requests started, within the last minute (S3), kept in the same row. */
+type Live = { running: Lease[]; holds: Lease[]; seq: number; prunedOn?: string; recent?: number[] };
 /** The day and month totals as of a record, carried by the record itself (the newest one is the one read). */
 type Totals = { day: string; dayUsd: number; month: string; monthUsd: number };
 type KeptRecord = UsageRecord & { totals: Totals };
@@ -134,7 +140,7 @@ async function present(s: StorageLike): Promise<boolean> { return (await s.get("
 async function ownerTokens(s: StorageLike): Promise<[string, Tok][]> { return (await s.get<[string, Tok][]>("tokens")) ?? []; }
 async function liveOf(s: StorageLike): Promise<Live> {
   const l = await s.get<Live>("live");
-  return { running: l?.running ?? [], holds: l?.holds ?? [], seq: l?.seq ?? 0, ...(l?.prunedOn ? { prunedOn: l.prunedOn } : {}) };
+  return { running: l?.running ?? [], holds: l?.holds ?? [], seq: l?.seq ?? 0, ...(l?.prunedOn ? { prunedOn: l.prunedOn } : {}), ...(l?.recent ? { recent: l.recent } : {}) };
 }
 async function newestRecord(s: StorageLike): Promise<KeptRecord | undefined> {
   for (const r of (await s.list<KeptRecord>({ prefix: "rec:", reverse: true, limit: 1 })).values()) return r;
@@ -327,6 +333,37 @@ const OPS: Record<string, Op> = {
   },
   // M116 step 5: is anyone here (an email or a token)? A deleted account's object holds nothing.
   // Audit run 2, finding 4 (re-attack): does this owner still hold this token? A delete's wipe takes every token off.
+  // S13: the teams this owner is in, kept so an account delete can leave each one. Added before the team is joined or made.
+  "owner.joinTeam": async (s, a: { teamId: string }) => {
+    if (!(await present(s))) return false;
+    const teams = (await s.get<string[]>("teams")) ?? [];
+    // "had" or "added" (both truthy): a join that fails takes the id off again only when it was "added" here.
+    if (teams.includes(a.teamId)) return "had";
+    if (teams.length >= MAX_TEAMS_PER_OWNER) return false;
+    await s.put({ teams: [...teams, a.teamId] });
+    return "added";
+  },
+  "owner.leaveTeam": async (s, a: { teamId: string }) => {
+    const teams = (await s.get<string[]>("teams")) ?? [];
+    if (teams.includes(a.teamId)) await s.put({ teams: teams.filter((t) => t !== a.teamId) });
+  },
+  // S16: today's shared receipt count, across all this owner's teams, checked and raised in one row. False: over `max`.
+  "owner.postMade": async (s, a: { now: number; max: number }) => {
+    if (!(await present(s))) return false;
+    const p = await s.get<{ day: string; n: number }>("posts"), day = dayKey(a.now), n = p?.day === day ? p.n : 0;
+    if (n >= a.max) return false;
+    await s.put({ posts: { day, n: n + 1 } });
+    return true;
+  },
+  // S16: today's link count checked and raised, and the link's id kept (S13), in one step and one row. False: over `max`.
+  "owner.linkMade": async (s, a: { id: string; now: number; max: number }) => {
+    if (!(await present(s))) return false;
+    const l = await s.get<Links>("links"), day = dayKey(a.now), n = l?.day === day ? l.n : 0;
+    if (n >= a.max) return false;
+    const ids = (l?.ids ?? []).filter(([, at]) => a.now - at < LINK_DAYS * 86_400_000);
+    await s.put({ links: { day, n: n + 1, ids: [...ids, [a.id, a.now]] } satisfies Links });
+    return true;
+  },
   "owner.holdsToken": async (s, a: { hash: string }) => (await ownerTokens(s)).some(([h]) => h === a.hash),
   "owner.present": async (s) => present(s),
   // M116 step 5, POST /v1/report/use: the oldest unused credit, in one step.
@@ -362,8 +399,9 @@ const OPS: Record<string, Op> = {
     const hashes = (await ownerTokens(s)).map(([h]) => h);
     const customerIds = [...new Set([b.customerId, ...b.subs.map(([, x]) => x.customerId)].filter((x): x is string => !!x))];
     const paymentIds = b.reports.map(([id]) => id);
+    const teamIds = (await s.get<string[]>("teams")) ?? [], linkIds = ((await s.get<Links>("links"))?.ids ?? []).map(([id]) => id);
     await deleteAll(s, await allKeys(s));
-    return { ok: true, line, hashes, customerIds, paymentIds };
+    return { ok: true, line, hashes, customerIds, paymentIds, teamIds, linkIds };
   },
   // M116 step 5, the operator's `usage`: reads only.
   "owner.usage": async (s, a: { month: string; now: number; liveNow?: boolean }): Promise<OwnerUsage> => {
@@ -488,20 +526,28 @@ const OPS: Record<string, Op> = {
   // proxy finds the user from the token first and starts later, so a delete can run whole in between; a start then would
   // take a request on the wiped object, with a spend of zero, and book onto it. It is refused ("gone": the person signs in
   // again), as is a start for a token signed out in between.
-  "owner.start": async (s, a: { max: number; usd: number; now: number; limits: Plan | null; id: string; need?: number; hash?: string }) => {
+  // S2: a worst case past what is left is cut to the longest answer that fits (fitHold), and the new max_tokens comes back.
+  // S3: at most `perMinute` starts a minute, counted in the same row (`recent`), so a refusal still writes nothing.
+  "owner.start": async (s, a: StartAsk) => {
     if (a.hash !== undefined && !(await ownerTokens(s)).some(([h]) => h === a.hash)) return { ok: false, why: "gone" };
     const l = await liveOf(s);
+    const recent = (l.recent ?? []).filter((t) => a.now - t < MINUTE_MS);
+    if (a.perMinute !== undefined && recent.length >= a.perMinute) return { ok: false, why: "rate", retryAfterMs: MINUTE_MS - (a.now - recent[0]) };
+    let fit: { usd: number; maxTokens?: number } = { usd: a.usd };
     if (a.limits) {
       const spent = await spentNow(s, a.now, l);
-      if (!budgetCheck(a.limits, spent, a.now, a.need ?? 0).ok) return { ok: false, why: "over", spent };
+      const f = budgetCheck(a.limits, spent, a.now, a.need ?? 0).ok ? fitHold(a.limits, spent, a) : null;
+      if (!f) return { ok: false, why: "over", spent };
+      fit = f;
     }
     const running = alive(l.running, a.now), holds = keptHolds(l.holds, a.now);
     if (running.length >= a.max || holds.length >= MAX_HOLDS) return { ok: false, why: "busy" };
     l.running = [...running, { at: a.now, usd: 0, id: a.id }];
     l.holds = holds;
-    if (a.usd > 0) l.holds.push({ at: a.now, usd: a.usd, id: a.id });
+    if (a.perMinute !== undefined) l.recent = [...recent, a.now];
+    if (fit.usd > 0) l.holds.push({ at: a.now, usd: fit.usd, id: a.id });
     await s.put({ live: l });
-    return { ok: true };
+    return fit.maxTokens !== undefined ? { ok: true, maxTokens: fit.maxTokens } : { ok: true };
   },
   // The slot and hold let go (only this request's own, by its id) and the record booked: one put, two rows.
   // Finding 6, re-attack round 2: a request that started before a delete and ends after the wipe finds an object with nobody
@@ -688,7 +734,8 @@ export async function callObject<T>(ns: NamespaceLike, name: string, op: string,
 }
 
 export class DurableStore implements Store {
-  constructor(protected ns: NamespaceLike, private clock: () => number = Date.now) {}
+  /** `links`: the receipt link pages (the RECEIPTS KV namespace), so an account delete deletes them too (S13). */
+  constructor(protected ns: NamespaceLike, private clock: () => number = Date.now, private links?: LinkStore) {}
   protected call<T>(name: string, op: string, args: Record<string, unknown> = {}) { return callObject<T>(this.ns, name, op, args); }
 
   async addUser(hash: string, u: User) {
@@ -829,7 +876,7 @@ export class DurableStore implements Store {
     // the owner changed since the line was written ("changed", with the line as of now), and the newer line is written and
     // the wipe tried again. Writing the line again after the wipe left a gap in which a sign in on the wiped owner carried
     // the older, lower line, and a carry is never raised once the owner books.
-    type Wiped = { ok: false; why: Exclude<Deleted, { ok: true }>["why"] } | { ok: false; why: "changed"; line: DeletedLine } | { ok: true; line: DeletedLine; hashes: string[]; customerIds: string[]; paymentIds: string[] };
+    type Wiped = { ok: false; why: Exclude<Deleted, { ok: true }>["why"] } | { ok: false; why: "changed"; line: DeletedLine } | { ok: true; line: DeletedLine; hashes: string[]; customerIds: string[]; paymentIds: string[]; teamIds?: string[]; linkIds?: string[] };
     let line = info.line, w: Wiped | undefined;
     for (let i = 0; i < WIPE_TRIES; i++) {
       await this.call(DIRECTORY, "dir.deletedPut", { key: a.key, line });
@@ -847,6 +894,10 @@ export class DurableStore implements Store {
     if (w.customerIds.length || w.paymentIds.length)
       await tidy(() => this.call(PAYMENTS, "pay.forget", { ownerId, customerIds: w.customerIds, paymentIds: w.paymentIds, marker: `${DELETED_PREFIX}${a.key}` }));
     for (const h of w.hashes) await tidy(() => this.call(TOKEN(h), "token.drop", { ownerId }));
+    // S13: out of every team, and every receipt link deleted.
+    for (const t of w.teamIds ?? []) await tidy(() => this.call(`team:${t}`, "team.leave", { ownerId }));
+    const links = this.links;
+    if (links) for (const id of w.linkIds ?? []) await tidy(() => links.delete(`r:${id}`));
     return { ok: true, leftovers };
   }
   async isDeletedOwner(ownerId: string, key: string, now: number) {

@@ -64,6 +64,13 @@ export function resolveLinks(input: string, depth = 0): string {
 // Folders Companion and Claude keep their own settings in, and git's own. An agent never writes into them, in any spelling.
 // (The project's notes never import from them either: sandbox.ts.)
 export const PROTECTED: ReadonlySet<string> = new Set([".git", ".claude", ".companion"]);
+// Inside the project, where code runs when the folder is opened (editor tasks and settings) or MCP servers are named. A
+// boxed command never writes them (proof/box.ts); a file tool asks first, and the fixing loop refuses (executor.ts).
+export const RUNS_ON_OPEN_DIRS = [".vscode", ".idea"] as const;
+export const RUNS_ON_OPEN_FILES = [".mcp.json"] as const;
+/** A path inside the project (its parts, small letters) in one of those places. */
+export const runsOnOpen = (segments: readonly string[]): boolean =>
+  segments.some((x) => (RUNS_ON_OPEN_DIRS as readonly string[]).includes(x)) || (RUNS_ON_OPEN_FILES as readonly string[]).includes(segments[0] ?? "");
 
 type Where = { inside: boolean; segments: string[]; protectedPart: string | null; abs: string };
 // A file tool may be handed "~/.aws/credentials" or "$HOME/.ssh/id_rsa": those are the home folder, not a name inside the project.
@@ -118,14 +125,35 @@ const namedPaths = (a: string): string[] => [a, a.slice(a.indexOf("=") + 1), a.r
 function namesSettingsFile(a: string, ctx: Context, cwd: string): boolean {
   for (const c of namedPaths(a)) {
     if (!c || c.startsWith("-") && c.length < 2) continue;
-    if (/[*?[]/.test(c)) { if (globMayMatchSettings(c)) return true; continue; }
+    if (/[*?[]/.test(c)) { if (globMayMatchSettings(c) || globMatchesKeyFile(c, ctx, cwd)) return true; continue; }
     const w = whereIs(ctx.project, c, cwd);
-    if (w.inside && isSettingsFile(w.abs)) return true;
+    if (w.inside && (isSettingsFile(w.abs) || keyFile(w.segments.join("/"), w.abs))) return true;
   }
   return false;
 }
+// Besides a private settings file, a command may not read a key or credential file the file tools refuse (secretfiles.ts, the
+// person's own "never sent" patterns among them), when it is really there: a word like `rg SECRET` is a pattern, not a file.
+// The shared templates (.env.example) stay readable: refusals point to them.
+const keyFile = (rel: string, abs: string): boolean => {
+  if (!isEnvFile(rel) || SETTINGS_TEMPLATE.test(basename(rel))) return false;
+  try { lstatSync(abs); return true; } catch { return false; }
+};
+// What the shell would expand a glob to, here and now: refused when any match is a key file (`cat *` reads terraform.tfstate).
+// shortcut: a bounded look (2000 matches); a glob past that many files is judged on the first ones only.
+function globMatchesKeyFile(pattern: string, ctx: Context, cwd: string): boolean {
+  const abs = isAbsolute(pattern);
+  let seen = 0;
+  try {
+    for (const m of new Bun.Glob(abs ? pattern.slice(1) : pattern).scanSync({ cwd: abs ? "/" : cwd, absolute: true, followSymlinks: false })) {
+      const w = whereIs(ctx.project, m, cwd);
+      if (w.inside && keyFile(w.segments.join("/"), w.abs)) return true;
+      if (++seen >= 2000) break;
+    }
+  } catch { /* a folder that cannot be read expands to nothing here */ }
+  return false;
+}
 // Does this folder, or any folder under it, hold a private settings file? A bounded look that skips installed packages and git.
-function holdsSettingsFile(dir: string): boolean {
+function holdsSettingsFile(dir: string, root: string): boolean {
   const todo = [dir]; let seen = 0;
   while (todo.length && seen < 5000) {
     const d = todo.pop()!;
@@ -134,7 +162,7 @@ function holdsSettingsFile(dir: string): boolean {
     for (const e of entries) {
       seen++;
       if (e.isDirectory()) { if (e.name !== "node_modules" && e.name !== ".git") todo.push(join(d, e.name)); }
-      else if (isSettingsFile(e.name)) return true;
+      else if (isSettingsFile(e.name) || keyFile(relative(root, join(d, e.name)), join(d, e.name))) return true;
     }
   }
   return false;
@@ -150,7 +178,7 @@ function settingsReadVerdict(name: string, args: string[], ctx: Context, cwd: st
       && !args.some((a, i) => /^--exclude(=|$)/.test(a) && /env/i.test(a.includes("=") ? a : args[i + 1] ?? ""))) {
     // Only where it would really reach one: the folders it searches (the current folder when none is named) hold a settings file.
     const dirs = args.filter((a) => !a.startsWith("-")).map((a) => whereIs(ctx.project, a, cwd)).filter((w) => w.inside || w.abs === resolveLinks(ctx.project)).map((w) => w.abs).filter((d) => { try { return statSync(d).isDirectory(); } catch { return false; } });
-    if ((dirs.length ? dirs : [resolveLinks(cwd)]).some((d) => holdsSettingsFile(d))) return refuse;
+    if ((dirs.length ? dirs : [resolveLinks(cwd)]).some((d) => holdsSettingsFile(d, resolveLinks(ctx.project)))) return refuse;
   }
   if (["rg", "ag"].includes(name) && args.some((a) => a === "--hidden" || /^-u{2,}$/.test(a) || /^-[A-Za-z]*uu/.test(a) || a === "-H" && name === "ag")) return refuse;
   // --exclude=.env* names a pattern to skip, not a file to read.
@@ -255,6 +283,7 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
     const w = whereIs(ctx.project, p);
     if (w.protectedPart) return deny(w.protectedPart.startsWith(".git") ? "git" : "outside_project", protectedWhy(w.protectedPart));
     if (!w.inside) return deny("outside_project", "writes must stay inside the project folder");
+    if (runsOnOpen(w.segments)) return ask("settings", `changes editor or tool settings (${w.segments.join("/")}) that can run code when the folder is opened`, true);
     if (isSettingsFile(w.abs)) return settingsVerdict(w.abs, settingNames(writtenText(input)));
     return allow();
   }

@@ -329,7 +329,8 @@ fn wipe_helper_mode() -> bool {
     let bundle = std::env::current_exe().ok().and_then(|e| e.ancestors().find(|a| a.extension().is_some_and(|x| x == "app")).map(|p| p.to_path_buf()));
     wipe::run_helper(&home, &data, &projects, with_projects, &wipe::Helper {
         parent_gone: &|| !std::process::Command::new("/bin/kill").args(["-0", &pid]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success()),
-        delete_key: &|| { keystore::delete_item(&keystore::service(), keystore::ACCOUNT) || keystore::gone(&keystore::service(), keystore::ACCOUNT) },
+        // The Squibby sign in token goes with the Claude key (both are tried; `&` never skips one).
+        delete_key: &|| { keystore::delete_token() & (keystore::delete_item(&keystore::service(), keystore::ACCOUNT) || keystore::gone(&keystore::service(), keystore::ACCOUNT)) },
         // Every Google connection (google.rs SERVICE): revoked at Google when it answers, then its Keychain items removed.
         delete_google: &|| google::forget_all(&google_index(),
             &|a| security_framework::passwords::get_generic_password(google::SERVICE, a).ok().map(|b| String::from_utf8_lossy(&b).into_owned()),

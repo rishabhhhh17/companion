@@ -40,7 +40,7 @@
 // Logs are the SafeEvent lines the proxy and the webhook already make: ids, reasons, counts and dollars, never a body or a secret.
 import { makeTeamRoutes } from "./team-routes.ts";
 import { hashToken } from "./tokens.ts";
-import { makeLinkRoutes, type LinkStore } from "./receipt-links.ts";
+import { DAILY_LINKS, makeLinkRoutes, type LinkStore } from "./receipt-links.ts";
 import { createProxy, parseTestPayers, storeFailed, type SafeEvent } from "./proxy.ts";
 import { createGoogleVerifier } from "./google.ts";
 import { createDodoWebhook, parseDodoCatalog, constantTimeEqual, type SafeDodoEvent } from "./dodo.ts";
@@ -50,9 +50,10 @@ import { paymentProviderFromSetting, webhookRouteFor } from "./payments.ts";
 import { runOperator } from "./operator.ts";
 import { accountStoreFailed, isAccountPath } from "./account-routes.ts";
 import { USER_ID_SECRET_SETTING } from "./userid.ts";
-import { DurableDodoLedger, DurableLinkBook, DurableStore, type NamespaceLike } from "./store-do.ts";
+import { callObject, DurableDodoLedger, DurableLinkBook, DurableStore, OWNER, type NamespaceLike } from "./store-do.ts";
 import { PRODUCT } from "./names.ts";
 import { createRateLimiter, SIGNIN_TRIES_PER_MINUTE } from "./ratelimit.ts";
+import { REQUESTS_PER_MINUTE } from "./plans.ts";
 import { createUpdateRoute, RELEASES_REPO_SETTING, UPDATE_PATH_PREFIX } from "./updates.ts";
 
 export { StoreObject } from "./store-do.ts";
@@ -133,9 +134,11 @@ function googleFor(clientId: string, now: () => number, jwksUrl?: string) {
 const signinTries = createRateLimiter({ limit: SIGNIN_TRIES_PER_MINUTE, windowMs: 60_000 });
 // M116: checkout and portal presses per account, the same way.
 const billingPresses = createRateLimiter({ limit: BILLING_PRESSES_PER_MINUTE, windowMs: 60_000 });
+// S3: model requests per sign in token, refused ones too, counted before the store is asked anything.
+const proxyTries = createRateLimiter({ limit: REQUESTS_PER_MINUTE, windowMs: 60_000 });
 
 function partsFor(env: Env, ctx: Ctx, now: () => number, url: URL): Parts {
-  const store = new DurableStore(env.STORE, now);
+  const store = new DurableStore(env.STORE, now, env.RECEIPTS);
   const proxy = createProxy({
     store,
     anthropicKey: env.ANTHROPIC_API_KEY ?? "",
@@ -144,6 +147,7 @@ function partsFor(env: Env, ctx: Ctx, now: () => number, url: URL): Parts {
     loopOn: () => loopSwitchOn(env.LOOP_ON),
     paymentsOn: () => switchOn(env.PAYMENTS_ON),
     signinLimit: (address) => signinTries(address, now()),
+    requestLimit: (tokenHash) => proxyTries(tokenHash, now()),
     now,
     log: logLine,
     ...(env.UPSTREAM_BASE ? { upstream: env.UPSTREAM_BASE } : {}),
@@ -236,6 +240,7 @@ async function route(req: Request, env: Env, ctx: Ctx, now: () => number): Promi
   // M123 slice 5: a receipt shared as a link (signed in only, off unless SHARE_ON and RECEIPTS are set).
   const shared = await makeLinkRoutes({
     ...(env.RECEIPTS ? { links: env.RECEIPTS } : {}), on: () => switchOn(env.SHARE_ON), origin: url.origin, now,
+    madeLink: (ownerId, id, at) => callObject<boolean>(env.STORE, OWNER(ownerId), "owner.linkMade", { id, now: at, max: DAILY_LINKS }),
     userOf: async (t) => { const a = await parts.store.account(await hashToken(t), now()); return a ? { id: a.user.id, active: a.user.status !== "suspended" && a.user.status !== "revoked" && a.user.status !== "canceled" } : null; },
   })(req, url);
   if (shared) return shared;

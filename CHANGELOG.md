@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Squibby looks like Squibby, and the server got stricter: 28 Nov 2026
+
+- **A new usual look, still Liquid Glass.** The app now uses the website's own fonts (Geist, and Supreme for the headline), the white ticket button, and the cream receipt with a torn edge when a check finishes, with a short pixel moment as it lands. No black bands, borders or fake shadows: the top strip and the ask box are glass and scroll with the page. Glass and Before are still in Settings, Look.
+- **Signing in is right on Home.** Signed out, Home shows "Sign in to start" with the Google button.
+- **Signing out really signs you out.** Sign out and Delete everything now also remove Squibby's own sign in from the Keychain and tell the server.
+- **The server keeps spending inside your plan.** A long answer is cut to what is left of today's limit instead of going past it, each account can send at most 30 requests a minute, and a request that breaks halfway is still counted. Deleting your account now also removes you from your teams and deletes your shared links.
+- **Tighter safety while fixing.** Package manager folders that run programs are no longer writable, secret files cannot be read with shell commands, editor settings files need approval, and a slow search pattern can no longer freeze the engine.
+
 ## Nobody brings a key: 28 Nov 2026
 
 - **Sign in with Google, and Squibby does the rest.** The Mac app now runs on Squibby's own server (api.getsquibby.com). Squibby picks the AI and pays for it inside your plan. You never make a key or sign in to an AI company.

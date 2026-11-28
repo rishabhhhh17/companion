@@ -38,6 +38,31 @@ export function budgetCheck(plan: Plan, spent: Spent, now: number, need = 0): Bu
   return { ok: true };
 }
 
+/** S3: model requests one account may start in any minute (Cloudflare's free plan counts every Durable Object request for
+ *  everyone, so one account sending tiny requests all day must not use it up). */
+export const REQUESTS_PER_MINUTE = 30;
+export const MINUTE_MS = 60_000;
+/** S2: the shortest answer worth sending. When even this many output tokens do not fit what is left, the request is refused. */
+export const MIN_ANSWER_TOKENS = 1024;
+/** S2: how long an answer the room left can pay for, on top of `need` (the prompt), at `outUsd` a token. It all fits:
+ *  maxTokens. Otherwise the most that fit, never under `minTokens` (or maxTokens, if shorter); null when not even that fits.
+ *  Web search fees and results stay held but are not counted here, as before (they are a high guess, filter.ts). */
+export function answerThatFits(plan: Plan, spent: Spent, need: number, outUsd: number, maxTokens: number, minTokens = MIN_ANSWER_TOKENS): number | null {
+  const room = Math.min(plan.dailyUsd - spent.day, plan.monthlyUsd - spent.month) - need;
+  if (maxTokens * outUsd <= room) return maxTokens;
+  const n = outUsd > 0 ? Math.floor(room / outUsd) : -1;
+  return n >= Math.min(minTokens, maxTokens) ? n : null;
+}
+
+/** S2: what a start holds once its answer is cut to fit (`maxTokens` given only when it was cut), or null when it cannot go.
+ *  Without `outUsd` and `maxTokens` the hold is taken as asked. */
+export function fitHold(plan: Plan, spent: Spent, a: { usd: number; need?: number; outUsd?: number; maxTokens?: number; minTokens?: number }): { usd: number; maxTokens?: number } | null {
+  if (a.outUsd === undefined || a.maxTokens === undefined) return { usd: a.usd };
+  const n = answerThatFits(plan, spent, a.need ?? 0, a.outUsd, a.maxTokens, a.minTokens);
+  if (n === null) return null;
+  return n < a.maxTokens ? { usd: a.usd - (a.maxTokens - n) * a.outUsd, maxTokens: n } : { usd: a.usd };
+}
+
 // ---------- M97: how many fixes an allowance covers (the measuring, not the number) ----------
 
 export type AllowanceReport = {
